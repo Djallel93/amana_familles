@@ -17,7 +17,7 @@ function getOrCreateBulkImportSheet() {
         const headers = [
             'nom', 'prenom', 'nombre_adulte', 'nombre_enfant', 'adresse',
             'code_postal', 'ville', 'telephone', 'telephone_bis', 'email',
-            'circonstances', 'ressentit', 'specificites', 'statut', 'commentaire'
+            'circonstances', 'ressentit', 'specificites', 'criticite', 'statut', 'commentaire'
         ];
 
         sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
@@ -32,6 +32,7 @@ function getOrCreateBulkImportSheet() {
         sheet.setFrozenRows(1);
 
         // Set column widths
+        sheet.setColumnWidth(BULK_COLUMNS.CRITICITE + 1, 80);
         sheet.setColumnWidth(BULK_COLUMNS.STATUT + 1, 100);
         sheet.setColumnWidth(BULK_COLUMNS.COMMENTAIRE + 1, 300);
 
@@ -61,7 +62,7 @@ function processBulkImport(batchSize = 10) {
     }
 
     // Get all data
-    const data = sheet.getRange(2, 1, lastRow - 1, 15).getValues();
+    const data = sheet.getRange(2, 1, lastRow - 1, 16).getValues();
 
     // Find pending rows
     const pendingRows = [];
@@ -112,7 +113,7 @@ function processBulkImport(batchSize = 10) {
                 results.succeeded++;
                 sheet.getRange(rowNumber, BULK_COLUMNS.STATUT + 1).setValue(CONFIG.BULK_STATUS.SUCCESS);
                 sheet.getRange(rowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue(
-                    `Importé: ${result.familyId}`
+                    `Importé: ${result.familyId} - Criticité: ${result.criticite}`
                 );
             } else {
                 results.failed++;
@@ -157,8 +158,18 @@ function processBulkImportRow(row, sheet, rowNumber) {
         email: row[BULK_COLUMNS.EMAIL] || '',
         circonstances: row[BULK_COLUMNS.CIRCONSTANCES] || '',
         ressentit: row[BULK_COLUMNS.RESSENTIT] || '',
-        specificites: row[BULK_COLUMNS.SPECIFICITES] || ''
+        specificites: row[BULK_COLUMNS.SPECIFICITES] || '',
+        criticite: row[BULK_COLUMNS.CRITICITE] || 0
     };
+
+    // Validate criticite
+    const criticite = parseInt(formData.criticite);
+    if (isNaN(criticite) || criticite < CONFIG.CRITICITE.MIN || criticite > CONFIG.CRITICITE.MAX) {
+        return {
+            success: false,
+            error: `Criticité invalide (${formData.criticite}). Doit être entre ${CONFIG.CRITICITE.MIN} et ${CONFIG.CRITICITE.MAX}`
+        };
+    }
 
     // Validate required fields
     const fieldValidation = validateRequiredFields(formData);
@@ -202,7 +213,8 @@ function processBulkImportRow(row, sheet, rowNumber) {
         status: CONFIG.STATUS.VALIDATED,
         familyId: generateFamilyId(),
         quartierId: addressValidation.quartierId,
-        quartierName: addressValidation.quartierName
+        quartierName: addressValidation.quartierName,
+        criticite: criticite
     });
 
     // Sync contact
@@ -220,7 +232,8 @@ function processBulkImportRow(row, sheet, rowNumber) {
 
     return {
         success: true,
-        familyId: familyId
+        familyId: familyId,
+        criticite: criticite
     };
 }
 

@@ -43,7 +43,8 @@ function processFormSubmission(formData, sourceSheet, sourceRow) {
     if (!fieldValidation.isValid) {
         writeToFamilySheet(formData, {
             status: CONFIG.STATUS.REJECTED,
-            comment: `Champs requis manquants: ${fieldValidation.errors.join(', ')}`
+            comment: `Champs requis manquants: ${fieldValidation.errors.join(', ')}`,
+            criticite: 0
         });
         notifyAdmin('Soumission rejetée', fieldValidation.errors.join(', '));
         return;
@@ -58,7 +59,8 @@ function processFormSubmission(formData, sourceSheet, sourceRow) {
     if (!addressValidation.isValid) {
         writeToFamilySheet(formData, {
             status: CONFIG.STATUS.REJECTED,
-            comment: `Adresse invalide: ${addressValidation.error}`
+            comment: `Adresse invalide: ${addressValidation.error}`,
+            criticite: 0
         });
         notifyAdmin('Soumission rejetée', addressValidation.error);
         return;
@@ -74,7 +76,8 @@ function processFormSubmission(formData, sourceSheet, sourceRow) {
         writeToFamilySheet(formData, {
             status: CONFIG.STATUS.REJECTED,
             comment: `Documents invalides: ${docValidation.errors.join(', ')}`,
-            quartierId: addressValidation.quartierId
+            quartierId: addressValidation.quartierId,
+            criticite: 0
         });
         notifyAdmin('Soumission rejetée', docValidation.errors.join(', '));
         return;
@@ -98,7 +101,8 @@ function processFormSubmission(formData, sourceSheet, sourceRow) {
             quartierName: addressValidation.quartierName,
             identityIds: docValidation.identityIds,
             cafIds: docValidation.cafIds,
-            resourceIds: docValidation.resourceIds
+            resourceIds: docValidation.resourceIds,
+            criticite: 0 // Default for form submissions
         });
         notifyAdmin('Nouvelle soumission', `ID: ${familyId}`);
     }
@@ -121,10 +125,11 @@ function writeToFamilySheet(formData, options = {}) {
         quartierName = '',
         identityIds = [],
         cafIds = [],
-        resourceIds = []
+        resourceIds = [],
+        criticite = 0
     } = options;
 
-    const row = Array(20).fill('');
+    const row = Array(21).fill('');
     row[OUTPUT_COLUMNS.ID] = familyId;
     row[OUTPUT_COLUMNS.NOM] = formData.lastName || '';
     row[OUTPUT_COLUMNS.PRENOM] = formData.firstName || '';
@@ -143,6 +148,7 @@ function writeToFamilySheet(formData, options = {}) {
     row[OUTPUT_COLUMNS.CIRCONSTANCES] = formData.circonstances || '';
     row[OUTPUT_COLUMNS.RESSENTIT] = '';
     row[OUTPUT_COLUMNS.SPECIFICITES] = '';
+    row[OUTPUT_COLUMNS.CRITICITE] = criticite;
     row[OUTPUT_COLUMNS.ETAT_DOSSIER] = status;
     row[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] = comment;
 

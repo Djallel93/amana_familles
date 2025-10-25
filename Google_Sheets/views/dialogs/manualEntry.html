@@ -76,6 +76,27 @@
                 <input type="number" id="nombreEnfant" name="nombreEnfant" min="0" required value="0">
             </div>
 
+            <!-- Criticité -->
+            <div class="section-title">Priorité</div>
+
+            <div class="form-group">
+                <label class="required">Criticité (0-5)</label>
+                <select id="criticite" name="criticite" required>
+                    <option value="">-- Sélectionner --</option>
+                    <option value="0">0 - Non évalué</option>
+                    <option value="1">1 - Faible</option>
+                    <option value="2">2 - Modérée</option>
+                    <option value="3">3 - Moyenne</option>
+                    <option value="4">4 - Haute</option>
+                    <option value="5">5 - Urgente</option>
+                </select>
+                <small style="color: #666; display: block; margin-top: 5px;">
+                    💡 La criticité permet de prioriser les familles lors des livraisons.<br>
+                    0 = Dossier non encore évalué (par défaut pour les formulaires)<br>
+                    5 = Situation urgente nécessitant une intervention immédiate
+                </small>
+            </div>
+
             <!-- Informations Complémentaires -->
             <div class="section-title">Informations Complémentaires (Optionnel)</div>
 
@@ -108,6 +129,13 @@
         document.getElementById('familyForm').addEventListener('submit', function (e) {
             e.preventDefault();
 
+            const criticite = parseInt(document.getElementById('criticite').value);
+
+            if (isNaN(criticite) || criticite < 0 || criticite > 5) {
+                showAlert('error', 'La criticité doit être entre 0 et 5');
+                return;
+            }
+
             document.getElementById('loadingBox').style.display = 'block';
             document.getElementById('alertBox').style.display = 'none';
 
@@ -122,6 +150,7 @@
                 city: document.getElementById('city').value.trim(),
                 nombreAdulte: parseInt(document.getElementById('nombreAdulte').value),
                 nombreEnfant: parseInt(document.getElementById('nombreEnfant').value),
+                criticite: criticite,
                 circonstances: document.getElementById('circonstances').value.trim(),
                 ressentit: document.getElementById('ressentit').value.trim(),
                 specificites: document.getElementById('specificites').value.trim()
@@ -140,7 +169,7 @@
             if (result.success) {
                 alertBox.className = 'alert alert-success';
                 alertBox.style.display = 'block';
-                alertBox.innerHTML = `<strong>✅ Succès!</strong><br>Famille enregistrée avec succès.<br>ID: <strong>${result.familyId}</strong><br>${result.quartierName ? 'Quartier: ' + result.quartierName : ''}`;
+                alertBox.innerHTML = `<strong>✅ Succès!</strong><br>Famille enregistrée avec succès.<br>ID: <strong>${result.familyId}</strong><br>${result.quartierName ? 'Quartier: ' + result.quartierName : ''}<br>Criticité: ${result.criticite}`;
                 document.getElementById('familyForm').reset();
 
                 setTimeout(() => {
@@ -164,6 +193,13 @@
             alertBox.className = 'alert alert-error';
             alertBox.style.display = 'block';
             alertBox.innerHTML = `<strong>❌ Erreur Système</strong><br>${error.message}`;
+        }
+
+        function showAlert(type, message) {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.className = `alert alert-${type}`;
+            alertBox.innerHTML = message;
+            alertBox.style.display = 'block';
         }
     </script>
 </body>

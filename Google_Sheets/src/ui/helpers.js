@@ -10,6 +10,15 @@ function processManualEntry(formData) {
     try {
         logInfo('Processing manual entry', formData);
 
+        // Validate criticite
+        const criticite = parseInt(formData.criticite);
+        if (isNaN(criticite) || criticite < CONFIG.CRITICITE.MIN || criticite > CONFIG.CRITICITE.MAX) {
+            return {
+                success: false,
+                error: `Criticité invalide. Doit être entre ${CONFIG.CRITICITE.MIN} et ${CONFIG.CRITICITE.MAX}.`
+            };
+        }
+
         const fieldValidation = validateRequiredFields(formData);
         if (!fieldValidation.isValid) {
             return {
@@ -51,7 +60,8 @@ function processManualEntry(formData) {
             status: CONFIG.STATUS.VALIDATED,
             familyId: generateFamilyId(),
             quartierId: addressValidation.quartierId,
-            quartierName: addressValidation.quartierName
+            quartierName: addressValidation.quartierName,
+            criticite: criticite
         });
 
         const contactData = {
@@ -66,13 +76,14 @@ function processManualEntry(formData) {
 
         syncFamilyContact(contactData);
 
-        logInfo('Manual entry processed successfully', { familyId });
+        logInfo('Manual entry processed successfully', { familyId, criticite });
 
         return {
             success: true,
             familyId: familyId,
             quartierId: addressValidation.quartierId,
-            quartierName: addressValidation.quartierName
+            quartierName: addressValidation.quartierName,
+            criticite: criticite
         };
 
     } catch (error) {
@@ -154,7 +165,8 @@ function calculateStatistics() {
             inProgress: 0,
             rejected: 0,
             totalAdults: 0,
-            totalChildren: 0
+            totalChildren: 0,
+            byCriticite: {}
         };
     }
 
@@ -165,12 +177,21 @@ function calculateStatistics() {
         inProgress: 0,
         rejected: 0,
         totalAdults: 0,
-        totalChildren: 0
+        totalChildren: 0,
+        byCriticite: {
+            0: 0,
+            1: 0,
+            2: 0,
+            3: 0,
+            4: 0,
+            5: 0
+        }
     };
 
     for (let i = 1; i < data.length; i++) {
         const row = data[i];
         const status = row[OUTPUT_COLUMNS.ETAT_DOSSIER];
+        const criticite = parseInt(row[OUTPUT_COLUMNS.CRITICITE]) || 0;
 
         if (status === CONFIG.STATUS.VALIDATED) stats.validated++;
         if (status === CONFIG.STATUS.IN_PROGRESS) stats.inProgress++;
@@ -178,6 +199,10 @@ function calculateStatistics() {
 
         stats.totalAdults += parseInt(row[OUTPUT_COLUMNS.NOMBRE_ADULTE]) || 0;
         stats.totalChildren += parseInt(row[OUTPUT_COLUMNS.NOMBRE_ENFANT]) || 0;
+
+        if (criticite >= 0 && criticite <= 5) {
+            stats.byCriticite[criticite]++;
+        }
     }
 
     return stats;

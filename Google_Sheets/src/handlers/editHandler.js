@@ -1,6 +1,6 @@
 /**
  * @file src/handlers/editHandler.js
- * @description Handle onEdit triggers for status changes
+ * @description Handle onEdit triggers for status changes with criticite validation
  */
 
 /**
@@ -19,11 +19,73 @@ function handleEdit(e) {
 
         if (row === 1) return;
 
+        // Check if status column was edited
         if (col === OUTPUT_COLUMNS.ETAT_DOSSIER + 1) {
             const newStatus = e.value;
 
+            // Validate criticite before allowing status change to "Validé"
             if (newStatus === CONFIG.STATUS.VALIDATED) {
+                const criticite = sheet.getRange(row, OUTPUT_COLUMNS.CRITICITE + 1).getValue();
+
+                // Check if criticite is 0 or empty
+                if (!criticite || criticite === 0) {
+                    // Rollback status change
+                    const oldStatus = e.oldValue || CONFIG.STATUS.IN_PROGRESS;
+                    sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatus);
+
+                    // Show warning dialog
+                    SpreadsheetApp.getUi().alert(
+                        '⚠️ Criticité non définie',
+                        'Vous devez définir une criticité (1-5) avant de valider le dossier.\n\n' +
+                        'La criticité permet de prioriser les familles lors des livraisons.\n\n' +
+                        'Le statut a été rétabli à: ' + oldStatus,
+                        SpreadsheetApp.getUi().ButtonSet.OK
+                    );
+
+                    logInfo(`Validation blocked for row ${row}: criticite not set`);
+                    return;
+                }
+
+                // Validate criticite range
+                if (criticite < CONFIG.CRITICITE.MIN || criticite > CONFIG.CRITICITE.MAX) {
+                    const oldStatus = e.oldValue || CONFIG.STATUS.IN_PROGRESS;
+                    sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatus);
+
+                    SpreadsheetApp.getUi().alert(
+                        '⚠️ Criticité invalide',
+                        `La criticité doit être entre ${CONFIG.CRITICITE.MIN} et ${CONFIG.CRITICITE.MAX}.\n\n` +
+                        'Le statut a été rétabli à: ' + oldStatus,
+                        SpreadsheetApp.getUi().ButtonSet.OK
+                    );
+
+                    logInfo(`Validation blocked for row ${row}: invalid criticite ${criticite}`);
+                    return;
+                }
+
+                // Proceed with validation
                 processValidatedFamily(sheet, row);
+            }
+        }
+
+        // Validate criticite value when it's edited
+        if (col === OUTPUT_COLUMNS.CRITICITE + 1) {
+            const criticite = e.value;
+
+            if (criticite !== '' && criticite !== null) {
+                const numCriticite = parseInt(criticite);
+
+                if (isNaN(numCriticite) || numCriticite < CONFIG.CRITICITE.MIN || numCriticite > CONFIG.CRITICITE.MAX) {
+                    sheet.getRange(row, OUTPUT_COLUMNS.CRITICITE + 1).setValue(e.oldValue || 0);
+
+                    SpreadsheetApp.getUi().alert(
+                        '⚠️ Valeur invalide',
+                        `La criticité doit être un nombre entier entre ${CONFIG.CRITICITE.MIN} et ${CONFIG.CRITICITE.MAX}.\n\n` +
+                        'La valeur a été rétablie.',
+                        SpreadsheetApp.getUi().ButtonSet.OK
+                    );
+
+                    return;
+                }
             }
         }
 
@@ -82,7 +144,8 @@ function processValidatedFamily(sheet, row) {
             logInfo(`Contact synced for family: ${familyId}`);
 
             const existingComment = data[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
-            const newComment = `${existingComment}\nValidé et traité le ${new Date().toLocaleString('fr-FR')}`;
+            const criticite = data[OUTPUT_COLUMNS.CRITICITE];
+            const newComment = `${existingComment}\nValidé et traité le ${new Date().toLocaleString('fr-FR')} - Criticité: ${criticite}`;
             sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
         } else {
             logError(`Contact sync failed for family: ${familyId}`, contactResult.error);

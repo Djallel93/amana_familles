@@ -36,7 +36,7 @@ const CONFIG = {
         PROCESSING: 'En cours',
         SUCCESS: 'Succès',
         ERROR: 'Erreur',
-        SKIPPED: 'Ignoré' // For already processed rows
+        SKIPPED: 'Ignoré'
     },
 
     // Document types
@@ -44,6 +44,12 @@ const CONFIG = {
         IDENTITY: 'identity',
         CAF: 'CAF',
         RESOURCE: 'resource'
+    },
+
+    // Criticite validation
+    CRITICITE: {
+        MIN: 0,
+        MAX: 5
     },
 
     OAUTH_CONFIG: {
@@ -75,8 +81,9 @@ const BULK_COLUMNS = {
     CIRCONSTANCES: 10,
     RESSENTIT: 11,
     SPECIFICITES: 12,
-    STATUT: 13,
-    COMMENTAIRE: 14
+    CRITICITE: 13,
+    STATUT: 14,
+    COMMENTAIRE: 15
 };
 
 // Multilingual column mapping - maps form questions to standardized field names
@@ -233,8 +240,9 @@ const OUTPUT_COLUMNS = {
     CIRCONSTANCES: 15,
     RESSENTIT: 16,
     SPECIFICITES: 17,
-    ETAT_DOSSIER: 18,
-    COMMENTAIRE_DOSSIER: 19
+    CRITICITE: 18,
+    ETAT_DOSSIER: 19,
+    COMMENTAIRE_DOSSIER: 20
 };
 
 /**
@@ -262,5 +270,7 @@ function getScriptConfig() {
         gestionFamillesFolderId: getProperty('GESTION_FAMILLES_FOLDER_ID'),
         spreadsheetId: getProperty('SPREADSHEET_ID'),
         geoApiUrl: getProperty('GEO_API_URL'),
+        referenceLatitude: parseFloat(getProperty('REFERENCE_LATITUDE')) || null,
+        referenceLongitude: parseFloat(getProperty('REFERENCE_LONGITUDE')) || null
     };
 }

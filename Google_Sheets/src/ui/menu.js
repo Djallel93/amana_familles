@@ -18,6 +18,9 @@ function onOpen() {
             .addItem('📊 Statistiques Import', 'showBulkImportStats')
             .addItem('🔄 Réinitialiser "Processing"', 'resetProcessingStatusWithConfirm'))
         .addSeparator()
+        .addSubMenu(ui.createMenu('🛠️ Configuration')
+            .addItem('📍 Configurer Point de Référence', 'setupDistanceSortingProperties'))
+        .addSeparator()
         .addItem('🔄 Rafraîchir Cache', 'clearAllCaches')
         .addItem('📊 Statistiques Générales', 'showStatistics')
         .addToUi();
@@ -157,4 +160,62 @@ Enfants: ${stats.totalChildren}
     SpreadsheetApp.getUi().alert('Statistiques', message, SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
+/**
+ * Update script properties for distance sorting
+ */
+function setupDistanceSortingProperties() {
+    const ui = SpreadsheetApp.getUi();
+    
+    const response = ui.prompt(
+        '📍 Configuration: Point de référence',
+        'Entrez la latitude du point de référence (ex: 47.2173):',
+        ui.ButtonSet.OK_CANCEL
+    );
 
+    if (response.getSelectedButton() !== ui.Button.OK) {
+        ui.alert('Configuration annulée');
+        return;
+    }
+
+    const latitude = response.getResponseText();
+
+    const response2 = ui.prompt(
+        '📍 Configuration: Point de référence',
+        'Entrez la longitude du point de référence (ex: -1.5536):',
+        ui.ButtonSet.OK_CANCEL
+    );
+
+    if (response2.getSelectedButton() !== ui.Button.OK) {
+        ui.alert('Configuration annulée');
+        return;
+    }
+
+    const longitude = response2.getResponseText();
+
+    // Validate
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+
+    if (isNaN(lat) || isNaN(lng)) {
+        ui.alert('❌ Erreur', 'Coordonnées invalides', ui.ButtonSet.OK);
+        return;
+    }
+
+    // Save to script properties
+    PropertiesService.getScriptProperties().setProperties({
+        'REFERENCE_LATITUDE': latitude,
+        'REFERENCE_LONGITUDE': longitude
+    });
+
+    // Clear cache
+    CacheService.getScriptCache().removeAll([]);
+
+    ui.alert(
+        '✅ Configuration enregistrée',
+        `Point de référence:\nLatitude: ${latitude}\nLongitude: ${longitude}\n\n` +
+        'Vous pouvez maintenant utiliser le tri par distance dans l\'API.',
+        ui.ButtonSet.OK
+    );
+
+    logInfo('Distance sorting properties configured', { latitude, longitude });
+}

@@ -1,6 +1,6 @@
 /**
  * @file src/api/familyApiHandler.js
- * @description REST API endpoints for external access
+ * @description REST API endpoints for external access with criticite and geo sorting
  */
 
 /**
@@ -36,6 +36,9 @@ function doGet(e) {
             case 'familiessedeplace':
                 return getFamiliesSeDeplace(e);
 
+            case 'familiesbycriticite':
+                return getFamiliesByCriticite(e);
+
             case 'ping':
                 return jsonResponse({
                     status: 'ok',
@@ -54,11 +57,15 @@ function doGet(e) {
 }
 
 /**
- * Get all validated families
+ * Get all validated families with optional sorting
  */
 function getAllFamilies(e) {
+    const orderBy = e.parameter.orderBy; // 'criticite' or 'distance'
+    const lat = parseFloat(e.parameter.lat);
+    const lng = parseFloat(e.parameter.lng);
+
+    const cacheKey = `api_all_families_${orderBy}_${lat}_${lng}`;
     const cache = CacheService.getScriptCache();
-    const cacheKey = 'api_all_families';
 
     const cached = cache.get(cacheKey);
     if (cached) {
@@ -72,7 +79,7 @@ function getAllFamilies(e) {
     }
 
     const data = sheet.getDataRange().getValues();
-    const families = [];
+    let families = [];
 
     for (let i = 1; i < data.length; i++) {
         const row = data[i];
@@ -81,14 +88,119 @@ function getAllFamilies(e) {
         }
     }
 
+    // Sort families
+    if (orderBy === 'criticite') {
+        families.sort((a, b) => b.criticite - a.criticite); // Descending order
+    } else if (orderBy === 'distance' && !isNaN(lat) && !isNaN(lng)) {
+        families = sortFamiliesByDistance(families, lat, lng);
+    }
+
     const result = jsonResponse({
         count: families.length,
+        orderBy: orderBy || 'none',
         families: families
     });
 
     cache.put(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
 
     return result;
+}
+
+/**
+ * Get families by criticite level
+ */
+function getFamiliesByCriticite(e) {
+    const criticite = parseInt(e.parameter.criticite);
+
+    if (isNaN(criticite) || criticite < CONFIG.CRITICITE.MIN || criticite > CONFIG.CRITICITE.MAX) {
+        return jsonResponse({
+            error: `Invalid criticite. Must be between ${CONFIG.CRITICITE.MIN} and ${CONFIG.CRITICITE.MAX}`
+        }, 400);
+    }
+
+    const cache = CacheService.getScriptCache();
+    const cacheKey = `api_criticite_${criticite}`;
+
+    const cached = cache.get(cacheKey);
+    if (cached) {
+        return ContentService.createTextOutput(cached)
+            .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    const families = getValidatedFamilies(
+        row => parseInt(row[OUTPUT_COLUMNS.CRITICITE]) === criticite
+    );
+
+    const result = jsonResponse({
+        criticite: criticite,
+        count: families.length,
+        families: families
+    });
+
+    cache.put(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
+    return result;
+}
+
+/**
+ * Sort families by distance from reference point
+ */
+function sortFamiliesByDistance(families, refLat, refLng) {
+    const config = getScriptConfig();
+    const geoApiUrl = config.geoApiUrl;
+
+    // Add distance to each family
+    families.forEach(family => {
+        if (family.adresse) {
+            try {
+                // Geocode family address if not already cached
+                const cacheKey = `geocode_${family.adresse}`;
+                const cache = CacheService.getScriptCache();
+
+                let coords = cache.get(cacheKey);
+                if (!coords) {
+                    const geocodeResult = callGeoApi('geocode', {
+                        address: family.adresse,
+                        country: 'France'
+                    });
+
+                    if (geocodeResult && geocodeResult.isValid) {
+                        coords = JSON.stringify(geocodeResult.coordinates);
+                        cache.put(cacheKey, coords, CONFIG.CACHE.VERY_LONG);
+                    }
+                }
+
+                if (coords) {
+                    const coordinates = JSON.parse(coords);
+
+                    // Calculate distance using GEO API
+                    const distanceResult = callGeoApi('calculatedistance', {
+                        lat1: refLat,
+                        lng1: refLng,
+                        lat2: coordinates.latitude,
+                        lng2: coordinates.longitude
+                    });
+
+                    if (distanceResult && !distanceResult.error) {
+                        family.distance = distanceResult.distance;
+                    } else {
+                        family.distance = 999999; // Put at end if error
+                    }
+                } else {
+                    family.distance = 999999;
+                }
+            } catch (e) {
+                logError(`Failed to calculate distance for family ${family.id}`, e);
+                family.distance = 999999;
+            }
+        } else {
+            family.distance = 999999;
+        }
+    });
+
+    // Sort by distance ascending
+    families.sort((a, b) => a.distance - b.distance);
+
+    return families;
 }
 
 /**
@@ -139,7 +251,8 @@ function getFamilyAddressById(e) {
         nom: family.nom,
         prenom: family.prenom,
         adresse: family.adresse,
-        idQuartier: family.idQuartier
+        idQuartier: family.idQuartier,
+        criticite: family.criticite
     });
 }
 
@@ -314,7 +427,8 @@ function rowToFamilyObject(row) {
         telephoneBis: row[OUTPUT_COLUMNS.TELEPHONE_BIS],
         circonstances: row[OUTPUT_COLUMNS.CIRCONSTANCES],
         ressentit: row[OUTPUT_COLUMNS.RESSENTIT],
-        specificites: row[OUTPUT_COLUMNS.SPECIFICITES]
+        specificites: row[OUTPUT_COLUMNS.SPECIFICITES],
+        criticite: parseInt(row[OUTPUT_COLUMNS.CRITICITE]) || 0
     };
 }
 
