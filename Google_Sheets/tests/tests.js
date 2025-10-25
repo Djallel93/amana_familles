@@ -1,3 +1,5 @@
+// https://docs.google.com/forms/d/e/1FAIpQLScNXm-Elggt9KmcVaaDgBbnD30u-gaJViAotRE3kK6S4XTnRg/viewform?usp=pp_url&entry.539546559=J'accepte+les+termes+et+conditions+concernant+la+collecte+et+le+traitement+de+mes+donn%C3%A9es+personnelles.&entry.35203781=BOUAKKAZ&entry.1584708515=Djallel&entry.1845584820=0123456789&entry.725085572=Non&entry.1664545685=33+rue+de+la+chicotiere&entry.2118961567=44800&entry.496951487=St+Herblain&entry.163296825=1&entry.1174320112=0&entry.642162858=sfrgdbthy+sxdfhdvbncmv+aersythdxjckv&entry.704065237=Nationalite&entry.1269559835=Temp+plein&entry.1718168332=Livraison&entry.1141152855=Association
+
 /**
  * @file tests/tests.js
  * @description Unit tests for core functions

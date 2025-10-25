@@ -1,6 +1,6 @@
 /**
- * @file src/ui/menu.js
- * @description Spreadsheet menu creation and UI functions (with template support)
+ * @file src/ui/menu.js (UPDATED)
+ * @description Updated menu with insert/update functionality
  */
 
 /**
@@ -9,14 +9,20 @@
 function onOpen() {
     const ui = SpreadsheetApp.getUi();
     ui.createMenu('📦 Gestion Familles')
-        .addItem('➕ Inscription Manuelle', 'showManualEntryDialog')
+        .addItem('➕ Nouvelle Famille / ✏️ Mise à Jour', 'showManualEntryDialog')
         .addSeparator()
         .addSubMenu(ui.createMenu('📥 Import en Masse')
-            .addItem('📑 Créer/Ouvrir Feuille Import', 'createBulkImportSheet')
             .addItem('⚙️ Traiter Import', 'showBulkImportDialog')
             .addItem('🧹 Effacer Feuille Import', 'clearBulkImportSheetWithConfirm')
             .addItem('📊 Statistiques Import', 'showBulkImportStats')
             .addItem('🔄 Réinitialiser "Processing"', 'resetProcessingStatusWithConfirm'))
+        .addSeparator()
+        .addSubMenu(ui.createMenu('✏️ Mise à Jour en Masse')
+            .addItem('📑 Créer/Ouvrir Feuille Update', 'createBulkUpdateSheet')
+            .addItem('⚙️ Traiter Mises à Jour', 'showBulkUpdateDialog')
+            .addItem('🧹 Effacer Feuille Update', 'clearBulkUpdateSheetWithConfirm')
+            .addItem('📊 Statistiques Update', 'showBulkUpdateStats')
+            .addItem('🔄 Réinitialiser "Processing"', 'resetUpdateProcessingStatusWithConfirm'))
         .addSeparator()
         .addSubMenu(ui.createMenu('🛠️ Configuration')
             .addItem('📍 Configurer Point de Référence', 'setupDistanceSortingProperties'))
@@ -28,13 +34,6 @@ function onOpen() {
 
 /**
  * Generic dialog renderer using HTML templates
- * Supports <?!= include('file.html'); ?> syntax
- *
- * @param {string} viewPath - Path to the HTML view (without .html extension)
- * @param {string} title - Dialog title
- * @param {number} width - Width in px
- * @param {number} height - Height in px
- * @param {Object} [data] - Optional data to inject into the template
  */
 function showDialog(viewPath, title, width, height, data) {
     const template = HtmlService.createTemplateFromFile(viewPath);
@@ -52,18 +51,10 @@ function showDialog(viewPath, title, width, height, data) {
 }
 
 /**
- * Include partial HTML (CSS, JS, etc.)
- * Usage: <?!= include('path/to/file.html'); ?>
- */
-function include(filename) {
-    return HtmlService.createHtmlOutputFromFile(filename).getContent();
-}
-
-/**
- * Show manual entry dialog
+ * Show manual entry/update dialog (unified)
  */
 function showManualEntryDialog() {
-    showDialog('views/dialogs/manualEntry', 'Inscription Famille', 600, 700);
+    showDialog('views/dialogs/manualEntry', 'Gestion Famille', 600, 750);
 }
 
 /**
@@ -74,13 +65,24 @@ function showBulkImportDialog() {
 }
 
 /**
+ * Show bulk update dialog
+ */
+function showBulkUpdateDialog() {
+    showDialog('views/dialogs/bulkUpdate', 'Mise à Jour en Masse', 600, 750);
+}
+
+// ============================================
+// BULK IMPORT MENU FUNCTIONS
+// ============================================
+
+/**
  * Create Bulk Import sheet
  */
 function createBulkImportSheet() {
     getOrCreateBulkImportSheet();
     SpreadsheetApp.getUi().alert(
         '✅ Feuille "Bulk Import" prête',
-        'Vous pouvez maintenant coller vos données.\n\nColonnes requises:\nnom, prenom, nombre_adulte, nombre_enfant, adresse, code_postal, ville, telephone',
+        'Vous pouvez maintenant coller vos données.\n\nColonnes requises:\nnom, prenom, nombre_adulte, nombre_enfant, adresse, code_postal, ville, telephone, criticite',
         SpreadsheetApp.getUi().ButtonSet.OK
     );
 }
@@ -140,6 +142,81 @@ function resetProcessingStatusWithConfirm() {
     }
 }
 
+// ============================================
+// BULK UPDATE MENU FUNCTIONS
+// ============================================
+
+/**
+ * Create Bulk Update sheet
+ */
+function createBulkUpdateSheet() {
+    getOrCreateBulkUpdateSheet();
+    SpreadsheetApp.getUi().alert(
+        '✅ Feuille "Bulk Update" prête',
+        'Vous pouvez maintenant coller vos mises à jour.\n\n⚠️ IMPORTANT:\n• Colonne "id" OBLIGATOIRE\n• Au moins une autre colonne doit contenir une valeur\n• Seules les colonnes non vides seront mises à jour',
+        SpreadsheetApp.getUi().ButtonSet.OK
+    );
+}
+
+/**
+ * Clear bulk update sheet with confirmation
+ */
+function clearBulkUpdateSheetWithConfirm() {
+    const ui = SpreadsheetApp.getUi();
+    const response = ui.alert(
+        '⚠️ Confirmation',
+        'Êtes-vous sûr de vouloir effacer toutes les données de la feuille "Bulk Update" ?\n\nCette action est irréversible.',
+        ui.ButtonSet.YES_NO
+    );
+
+    if (response === ui.Button.YES) {
+        const result = clearBulkUpdateSheet();
+        ui.alert('✅ ' + result.message);
+    }
+}
+
+/**
+ * Show bulk update statistics
+ */
+function showBulkUpdateStats() {
+    const stats = getBulkUpdateStatistics();
+    const message = `
+📊 Statistiques Mise à Jour en Masse
+
+Total de lignes: ${stats.total}
+━━━━━━━━━━━━━━━━━━━━
+⏳ En attente: ${stats.pending}
+⚙️ En traitement: ${stats.processing}
+✅ Réussies: ${stats.success}
+❌ Erreurs: ${stats.error}
+
+${stats.pending > 0 ? '\n💡 Cliquez sur "Traiter Mises à Jour" pour continuer.' : ''}
+`;
+
+    SpreadsheetApp.getUi().alert('Statistiques Update', message, SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+/**
+ * Reset update processing status with confirmation
+ */
+function resetUpdateProcessingStatusWithConfirm() {
+    const ui = SpreadsheetApp.getUi();
+    const response = ui.alert(
+        '🔄 Réinitialiser les statuts "Processing"',
+        'Cette action réinitialisera toutes les lignes "Processing" en "Pending" dans Bulk Update.\n\nUtile après un timeout de script.\n\nContinuer ?',
+        ui.ButtonSet.YES_NO
+    );
+
+    if (response === ui.Button.YES) {
+        resetUpdateProcessingStatus();
+        ui.alert('✅ Statuts réinitialisés');
+    }
+}
+
+// ============================================
+// OTHER MENU FUNCTIONS
+// ============================================
+
 /**
  * Show statistics dialog
  */
@@ -192,7 +269,6 @@ function setupDistanceSortingProperties() {
 
     const longitude = response2.getResponseText();
 
-    // Validate
     const lat = parseFloat(latitude);
     const lng = parseFloat(longitude);
 
@@ -201,13 +277,11 @@ function setupDistanceSortingProperties() {
         return;
     }
 
-    // Save to script properties
     PropertiesService.getScriptProperties().setProperties({
         'REFERENCE_LATITUDE': latitude,
         'REFERENCE_LONGITUDE': longitude
     });
 
-    // Clear cache
     CacheService.getScriptCache().removeAll([]);
 
     ui.alert(

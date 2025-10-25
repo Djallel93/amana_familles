@@ -7,7 +7,11 @@
  * Normalize field name by trimming whitespace
  */
 function normalizeFieldName(fieldName) {
-    return fieldName ? fieldName.trim() : '';
+    if (!fieldName) return '';
+    
+    return fieldName
+        .trim()
+        .replace(/[\u2018\u2019]/g, "'");
 }
 
 /**
@@ -43,11 +47,11 @@ function parseFormResponse(headers, values) {
     const parsed = {};
 
     headers.forEach((header, i) => {
-        const normalizedHeader = normalizeFieldName(header);
+        const normalizedHeader = normalizeFieldName(header.trim()); // Also add .trim() here
         const fieldName = COLUMN_MAP[normalizedHeader];
-
         if (fieldName) {
-            parsed[fieldName] = values[i] || '';
+            logInfo(`field : "${fieldName}" value: "${values[i]}"`);
+            parsed[fieldName] = values[i] ?? ''; // Change || to ??
         }
     });
 
@@ -138,8 +142,8 @@ function validateRequiredFields(data) {
     if (!data.address) errors.push('Adresse requise');
     if (!data.postalCode) errors.push('Code postal requis');
     if (!data.city) errors.push('Ville requise');
-    if (!data.nombreAdulte || isNaN(data.nombreAdulte)) errors.push('Nombre d\'adultes requis');
-    if (!data.nombreEnfant || isNaN(data.nombreEnfant)) errors.push('Nombre d\'enfants requis');
+    if (data.nombreAdulte == null || isNaN(data.nombreAdulte)) errors.push('Nombre d\'adultes requis');
+    if (data.nombreEnfant == null || isNaN(data.nombreEnfant)) errors.push('Nombre d\'enfants requis');
 
     return {
         isValid: errors.length === 0,

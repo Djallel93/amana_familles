@@ -215,3 +215,126 @@ function clearAllCaches() {
     CacheService.getScriptCache().removeAll([]);
     SpreadsheetApp.getUi().alert('✅ Cache effacé avec succès');
 }
+
+/**
+ * Write data to Famille sheet
+ */
+function writeToFamilySheet(formData, options = {}) {
+    const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE_CLEANED);
+    if (!sheet) {
+        throw new Error('Famille sheet not found');
+    }
+
+    const {
+        status = CONFIG.STATUS.IN_PROGRESS,
+        comment = '',
+        familyId = generateFamilyId(),
+        quartierId = null,
+        quartierName = '',
+        identityIds = [],
+        cafIds = [],
+        resourceIds = [],
+        criticite = 0
+    } = options;
+
+    const row = Array(21).fill('');
+    row[OUTPUT_COLUMNS.ID] = familyId;
+    row[OUTPUT_COLUMNS.NOM] = formData.lastName || '';
+    row[OUTPUT_COLUMNS.PRENOM] = formData.firstName || '';
+    row[OUTPUT_COLUMNS.ZAKAT_EL_FITR] = false;
+    row[OUTPUT_COLUMNS.SADAQA] = false;
+    row[OUTPUT_COLUMNS.NOMBRE_ADULTE] = parseInt(formData.nombreAdulte) || 0;
+    row[OUTPUT_COLUMNS.NOMBRE_ENFANT] = parseInt(formData.nombreEnfant) || 0;
+    row[OUTPUT_COLUMNS.ADRESSE] = formData.address || '';
+    row[OUTPUT_COLUMNS.ID_QUARTIER] = quartierId || '';
+    row[OUTPUT_COLUMNS.SE_DEPLACE] = false;
+    row[OUTPUT_COLUMNS.EMAIL] = formData.email || '';
+    row[OUTPUT_COLUMNS.TELEPHONE] = normalizePhone(formData.phone);
+    row[OUTPUT_COLUMNS.TELEPHONE_BIS] = normalizePhone(formData.phoneBis) || '';
+    row[OUTPUT_COLUMNS.IDENTITE] = formatDocumentLinks(identityIds);
+    row[OUTPUT_COLUMNS.CAF] = formatDocumentLinks(cafIds);
+    row[OUTPUT_COLUMNS.CIRCONSTANCES] = formData.circonstances || '';
+    row[OUTPUT_COLUMNS.RESSENTIT] = '';
+    row[OUTPUT_COLUMNS.SPECIFICITES] = '';
+    row[OUTPUT_COLUMNS.CRITICITE] = criticite;
+    row[OUTPUT_COLUMNS.ETAT_DOSSIER] = status;
+    row[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] = comment;
+
+    sheet.appendRow(row);
+
+    const cache = CacheService.getScriptCache();
+    const cacheKey = `dup_${normalizePhone(formData.phone)}_${formData.lastName.toLowerCase().trim()}`;
+    cache.remove(cacheKey);
+
+    logInfo('Family written to sheet', { familyId, status });
+
+    return familyId;
+}
+
+/**
+ * Update existing family record
+ */
+function updateExistingFamily(duplicate, formData, addressValidation, docValidation) {
+    const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE_CLEANED);
+    if (!sheet) return;
+
+    const row = duplicate.row;
+    const existingData = duplicate.data;
+    const changes = [];
+
+    const newPhone = normalizePhone(formData.phone);
+    const oldPhone = normalizePhone(existingData[OUTPUT_COLUMNS.TELEPHONE]);
+    if (newPhone !== oldPhone) {
+        sheet.getRange(row, OUTPUT_COLUMNS.TELEPHONE + 1).setValue(newPhone);
+        changes.push('téléphone');
+    }
+
+    const newAddress = formData.address || '';
+    const oldAddress = existingData[OUTPUT_COLUMNS.ADRESSE] || '';
+    if (newAddress !== oldAddress) {
+        sheet.getRange(row, OUTPUT_COLUMNS.ADRESSE + 1).setValue(newAddress);
+        sheet.getRange(row, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue(addressValidation.quartierId || '');
+        changes.push('adresse');
+    }
+
+    if (docValidation.identityIds.length > 0) {
+        sheet.getRange(row, OUTPUT_COLUMNS.IDENTITE + 1).setValue(formatDocumentLinks(docValidation.identityIds));
+        changes.push('documents');
+    }
+
+    if (docValidation.cafIds.length > 0) {
+        sheet.getRange(row, OUTPUT_COLUMNS.CAF + 1).setValue(formatDocumentLinks(docValidation.cafIds));
+        changes.push('CAF');
+    }
+
+    if (formData.email) {
+        const newEmail = formData.email.toLowerCase().trim();
+        const oldEmail = (existingData[OUTPUT_COLUMNS.EMAIL] || '').toLowerCase().trim();
+        if (newEmail !== oldEmail) {
+            sheet.getRange(row, OUTPUT_COLUMNS.EMAIL + 1).setValue(formData.email);
+            changes.push('email');
+        }
+    }
+
+    const comment = `Mis à jour: ${changes.join(', ')} - ${new Date().toLocaleString('fr-FR')}`;
+    const existingComment = existingData[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
+    sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(
+        existingComment + '\n' + comment
+    );
+
+    sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(CONFIG.STATUS.IN_PROGRESS);
+
+    logInfo('Family updated', { id: duplicate.id, changes });
+}
+
+function buildUrlWithParams(baseUrl, action, params) {
+    const queryParams = ['action=' + encodeURIComponent(action)];
+    
+    Object.keys(params).forEach(key => {
+        if (params[key] !== null && params[key] !== undefined) {
+            queryParams.push(encodeURIComponent(key) + '=' + encodeURIComponent(params[key]));
+        }
+    });
+    
+    return baseUrl + '?' + queryParams.join('&');
+}

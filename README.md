@@ -123,7 +123,7 @@ clasp push
 In Apps Script editor → **Triggers**:
 
 1. **Form Submission Trigger**
-   - Function: `handleFormSubmission`
+   - Function: `handleInsertFormSubmission`
    - Event source: From spreadsheet
    - Event type: On form submit
 

@@ -17,15 +17,8 @@ function callGeoApi(action, params) {
         return JSON.parse(cached);
     }
 
-    const url = new URL(config.geoApiUrl);
-    url.searchParams.append('action', action);
-
-    Object.keys(params).forEach(key => {
-        if (params[key] !== null && params[key] !== undefined) {
-            url.searchParams.append(key, params[key]);
-        }
-    });
-
+    const url = buildUrlWithParams(config.geoApiUrl, action, params);
+    
     try {
         const response = retryOperation(() => {
             return UrlFetchApp.fetch(url.toString(), {

@@ -1,31 +1,45 @@
 /**
- * @file src/handlers/formHandler.js
- * @description Process form submissions from multiple languages
+ * @file unifiedFormHandler.js
+ * @description Unified handler for all form submissions (INSERT and UPDATE)
  */
 
 /**
- * Main form submission handler (triggered by onFormSubmit)
+ * Unified form submission handler
+ * Automatically routes to INSERT or UPDATE processing based on form content
+ * 
+ * @param {Object} e - Form submit event object
  */
-function handleFormSubmission(e) {
+function onFormSubmit(e) {
     try {
-        logInfo('Form submission received');
 
         const sheet = e.range.getSheet();
         const sheetName = sheet.getName();
+        const row = e.range.getRow();
 
-        if (!Object.values(CONFIG.SHEETS).includes(sheetName) ||
-            sheetName === CONFIG.SHEETS.FAMILLE_CLEANED) {
-            logInfo(`Ignoring sheet: ${sheetName}`);
+        logInfo(`Processing sheet: ${sheetName}, row: ${row}`);
+
+        // Ignore Famille sheet (output sheet)
+        if (sheetName === CONFIG.SHEETS.FAMILLE_CLEANED) {
+            logInfo('Ignoring Famille sheet - output only');
             return;
         }
 
+        // Parse form data
         const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-        const row = e.range.getRow();
         const values = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
-
         const formData = parseFormResponse(headers, values);
 
-        processFormSubmission(formData, sheetName, row);
+        // Auto-detect form type based on data content
+        const formType = detectFormType(formData, sheetName);
+
+        logInfo(`Detected form type: ${formType}`);
+
+        // Route to appropriate handler
+        if (formType === 'UPDATE') {
+            processUpdate(formData, sheet, row);
+        } else {
+            processInsert(formData, sheet, row, sheetName);
+        }
 
     } catch (error) {
         logError('Form submission processing failed', error);
@@ -34,189 +48,289 @@ function handleFormSubmission(e) {
 }
 
 /**
- * Process parsed form submission
+ * Detect whether this is an INSERT or UPDATE form
+ * 
+ * @param {Object} formData - Parsed form data
+ * @param {string} sheetName - Name of the sheet
+ * @returns {string} - 'INSERT' or 'UPDATE'
  */
-function processFormSubmission(formData, sourceSheet, sourceRow) {
-    logInfo('Processing form submission', { sourceSheet, sourceRow });
+function detectFormType(formData, sheetName) {
+    // Check 1: Does form data contain a family ID?
+    const hasFamilyId = !!(formData.familyId || formData.id);
 
-    const fieldValidation = validateRequiredFields(formData);
-    if (!fieldValidation.isValid) {
-        writeToFamilySheet(formData, {
-            status: CONFIG.STATUS.REJECTED,
-            comment: `Champs requis manquants: ${fieldValidation.errors.join(', ')}`,
-            criticite: 0
-        });
-        notifyAdmin('Soumission rejetée', fieldValidation.errors.join(', '));
-        return;
+    if (hasFamilyId) {
+        logInfo('Family ID detected in form data - UPDATE form');
+        return 'UPDATE';
     }
 
-    const addressValidation = validateAddressAndGetQuartier(
-        formData.address,
-        formData.postalCode,
-        formData.city
-    );
+    // Check 2: Sheet name contains update keywords?
+    const updateKeywords = [
+        'update',
+        'mise à jour',
+        'mise a jour',
+        'maj',
+        'modification',
+        'تحديث', // Arabic: "Update"
+        'actualisation',
+        'modifier'
+    ];
 
-    if (!addressValidation.isValid) {
-        writeToFamilySheet(formData, {
-            status: CONFIG.STATUS.REJECTED,
-            comment: `Adresse invalide: ${addressValidation.error}`,
-            criticite: 0
-        });
-        notifyAdmin('Soumission rejetée', addressValidation.error);
-        return;
+    const lowerName = sheetName.toLowerCase();
+    const isUpdateSheet = updateKeywords.some(keyword => lowerName.includes(keyword));
+
+    if (isUpdateSheet) {
+        logInfo('Update keyword detected in sheet name - UPDATE form');
+        return 'UPDATE';
     }
 
-    const docValidation = validateDocuments(
-        formData.identityDoc,
-        formData.cafDoc || formData.cafDocOptional,
-        formData.resourceDoc
-    );
+    // Default: INSERT form
+    logInfo('No update indicators found - INSERT form');
+    return 'INSERT';
+}
 
-    if (!docValidation.isValid) {
-        writeToFamilySheet(formData, {
-            status: CONFIG.STATUS.REJECTED,
-            comment: `Documents invalides: ${docValidation.errors.join(', ')}`,
-            quartierId: addressValidation.quartierId,
-            criticite: 0
-        });
-        notifyAdmin('Soumission rejetée', docValidation.errors.join(', '));
-        return;
-    }
+/**
+ * Process INSERT form submission (new family)
+ * 
+ * @param {Object} formData - Parsed form data
+ * @param {Sheet} sheet - Source sheet
+ * @param {number} row - Source row number
+ * @param {string} sheetName - Sheet name
+ */
+function processInsert(formData, sheet, row, sheetName) {
+    try {
+        logInfo('Processing INSERT form submission');
 
-    const duplicate = findDuplicateFamily(
-        formData.phone,
-        formData.lastName,
-        formData.email
-    );
+        // Validate required fields
+        const fieldValidation = validateRequiredFields(formData);
+        if (!fieldValidation.isValid) {
+            writeToFamilySheet(formData, {
+                status: CONFIG.STATUS.REJECTED,
+                comment: `Champs requis manquants: ${fieldValidation.errors.join(', ')}`,
+                criticite: 0
+            });
+            notifyAdmin('Soumission rejetée', fieldValidation.errors.join(', '));
+            return;
+        }
 
-    if (duplicate.exists) {
-        updateExistingFamily(duplicate, formData, addressValidation, docValidation);
-        notifyAdmin('Famille mise à jour', `ID: ${duplicate.id}`);
-    } else {
-        const familyId = generateFamilyId();
-        writeToFamilySheet(formData, {
-            status: CONFIG.STATUS.IN_PROGRESS,
-            familyId: familyId,
-            quartierId: addressValidation.quartierId,
-            quartierName: addressValidation.quartierName,
-            identityIds: docValidation.identityIds,
-            cafIds: docValidation.cafIds,
-            resourceIds: docValidation.resourceIds,
-            criticite: 0 // Default for form submissions
-        });
-        notifyAdmin('Nouvelle soumission', `ID: ${familyId}`);
+        // Validate address
+        logInfo('Validating address');
+        const addressValidation = validateAddressAndGetQuartier(
+            formData.address,
+            formData.postalCode,
+            formData.city
+        );
+
+        if (!addressValidation.isValid) {
+            writeToFamilySheet(formData, {
+                status: CONFIG.STATUS.REJECTED,
+                comment: `Adresse invalide: ${addressValidation.error}`,
+                criticite: 0
+            });
+            notifyAdmin('Soumission rejetée', addressValidation.error);
+            return;
+        }
+
+        logInfo('Address validated successfully');
+
+        // Validate documents
+        logInfo('Validating documents');
+        const docValidation = validateDocuments(
+            formData.identityDoc,
+            formData.cafDoc || formData.cafDocOptional,
+            formData.resourceDoc
+        );
+
+        if (!docValidation.isValid) {
+            writeToFamilySheet(formData, {
+                status: CONFIG.STATUS.REJECTED,
+                comment: `Documents invalides: ${docValidation.errors.join(', ')}`,
+                quartierId: addressValidation.quartierId,
+                criticite: 0
+            });
+            notifyAdmin('Soumission rejetée', docValidation.errors.join(', '));
+            return;
+        }
+        logInfo('Documents validated successfully');
+
+        logInfo('Checking for duplicate family submissions');
+        // Check for duplicates
+        const duplicate = findDuplicateFamily(
+            formData.phone,
+            formData.lastName,
+            formData.email
+        );
+
+        if (duplicate.exists) {
+            updateExistingFamily(duplicate, formData, addressValidation, docValidation);
+            notifyAdmin('Famille mise à jour', `ID: ${duplicate.id}`);
+        } else {
+            const familyId = generateFamilyId();
+            writeToFamilySheet(formData, {
+                status: CONFIG.STATUS.IN_PROGRESS,
+                familyId: familyId,
+                quartierId: addressValidation.quartierId,
+                quartierName: addressValidation.quartierName,
+                identityIds: docValidation.identityIds,
+                cafIds: docValidation.cafIds,
+                resourceIds: docValidation.resourceIds,
+                criticite: 0
+            });
+            notifyAdmin('Nouvelle soumission', `ID: ${familyId}`);
+        }
+
+        logInfo('INSERT form processed successfully');
+
+    } catch (error) {
+        logError('INSERT processing failed', error);
+        throw error;
     }
 }
 
 /**
- * Write data to Famille sheet
+ * Process UPDATE form submission (existing family)
+ * 
+ * @param {Object} formData - Parsed form data
+ * @param {Sheet} sheet - Source sheet
+ * @param {number} row - Source row number
  */
-function writeToFamilySheet(formData, options = {}) {
-    const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE_CLEANED);
-    if (!sheet) {
-        throw new Error('Famille sheet not found');
+function processUpdate(formData, sheet, row) {
+    try {
+        logInfo('Processing UPDATE form submission');
+
+        // Extract family ID
+        const familyId = formData.familyId || formData.id;
+
+        if (!familyId) {
+            logError('Update form missing family ID', { row });
+            notifyAdmin('Update échouée', 'ID famille manquant dans le formulaire');
+            return;
+        }
+
+        // Build update data (only non-empty fields)
+        const updateData = buildUpdateData(formData);
+
+        if (Object.keys(updateData).length === 0) {
+            logError('Update form has no data to update', { familyId });
+            notifyAdmin('Update échouée', `Aucune donnée à mettre à jour pour ${familyId}`);
+            return;
+        }
+
+        // Validate update data
+        const validation = validateUpdateData(updateData);
+        if (!validation.isValid) {
+            logError('Update validation failed', { familyId, error: validation.error });
+            notifyAdmin('Update échouée', `${familyId}: ${validation.error}`);
+            return;
+        }
+
+        // Perform the update
+        const result = updateFamilyById(familyId, updateData);
+
+        if (result.success) {
+            logInfo('Update form processed successfully', {
+                familyId,
+                updatedFields: result.updatedFields
+            });
+            notifyAdmin(
+                'Famille mise à jour via formulaire',
+                `ID: ${familyId}\nChamps: ${result.updatedFields.join(', ')}`
+            );
+        } else {
+            logError('Update form processing failed', { familyId, error: result.error });
+            notifyAdmin('Update échouée', `ID: ${familyId}\nErreur: ${result.error}`);
+        }
+
+    } catch (error) {
+        logError('UPDATE processing failed', error);
+        throw error;
     }
+}
 
-    const {
-        status = CONFIG.STATUS.IN_PROGRESS,
-        comment = '',
-        familyId = generateFamilyId(),
-        quartierId = null,
-        quartierName = '',
-        identityIds = [],
-        cafIds = [],
-        resourceIds = [],
-        criticite = 0
-    } = options;
 
-    const row = Array(21).fill('');
-    row[OUTPUT_COLUMNS.ID] = familyId;
-    row[OUTPUT_COLUMNS.NOM] = formData.lastName || '';
-    row[OUTPUT_COLUMNS.PRENOM] = formData.firstName || '';
-    row[OUTPUT_COLUMNS.ZAKAT_EL_FITR] = false;
-    row[OUTPUT_COLUMNS.SADAQA] = false;
-    row[OUTPUT_COLUMNS.NOMBRE_ADULTE] = parseInt(formData.nombreAdulte) || 0;
-    row[OUTPUT_COLUMNS.NOMBRE_ENFANT] = parseInt(formData.nombreEnfant) || 0;
-    row[OUTPUT_COLUMNS.ADRESSE] = formData.address || '';
-    row[OUTPUT_COLUMNS.ID_QUARTIER] = quartierId || '';
-    row[OUTPUT_COLUMNS.SE_DEPLACE] = false;
-    row[OUTPUT_COLUMNS.EMAIL] = formData.email || '';
-    row[OUTPUT_COLUMNS.TELEPHONE] = normalizePhone(formData.phone);
-    row[OUTPUT_COLUMNS.TELEPHONE_BIS] = normalizePhone(formData.phoneBis) || '';
-    row[OUTPUT_COLUMNS.IDENTITE] = formatDocumentLinks(identityIds);
-    row[OUTPUT_COLUMNS.CAF] = formatDocumentLinks(cafIds);
-    row[OUTPUT_COLUMNS.CIRCONSTANCES] = formData.circonstances || '';
-    row[OUTPUT_COLUMNS.RESSENTIT] = '';
-    row[OUTPUT_COLUMNS.SPECIFICITES] = '';
-    row[OUTPUT_COLUMNS.CRITICITE] = criticite;
-    row[OUTPUT_COLUMNS.ETAT_DOSSIER] = status;
-    row[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] = comment;
+/**
+ * Build update data object from form data (only non-empty fields)
+ * 
+ * @param {Object} formData - Raw form data
+ * @returns {Object} - Clean update data
+ */
+function buildUpdateData(formData) {
+    const updateData = {};
 
-    sheet.appendRow(row);
+    const fieldMapping = {
+        lastName: 'lastName',
+        firstName: 'firstName',
+        phone: 'phone',
+        phoneBis: 'phoneBis',
+        email: 'email',
+        address: 'address',
+        postalCode: 'postalCode',
+        city: 'city',
+        nombreAdulte: 'nombreAdulte',
+        nombreEnfant: 'nombreEnfant',
+        circonstances: 'circonstances',
+        ressentit: 'ressentit',
+        specificites: 'specificites',
+        criticite: 'criticite'
+    };
 
-    const cache = CacheService.getScriptCache();
-    const cacheKey = `dup_${normalizePhone(formData.phone)}_${formData.lastName.toLowerCase().trim()}`;
-    cache.remove(cacheKey);
+    Object.keys(fieldMapping).forEach(key => {
+        const value = formData[key];
 
-    logInfo('Family written to sheet', { familyId, status });
+        // Skip empty values
+        if (value === undefined || value === null || value === '') {
+            return;
+        }
 
-    return familyId;
+        // Parse numbers
+        if (key === 'nombreAdulte' || key === 'nombreEnfant' || key === 'criticite') {
+            const parsed = parseInt(value);
+            if (!isNaN(parsed)) {
+                updateData[fieldMapping[key]] = parsed;
+            }
+        } else {
+            updateData[fieldMapping[key]] = value;
+        }
+    });
+
+    return updateData;
 }
 
 /**
- * Update existing family record
+ * Validate update data
+ * 
+ * @param {Object} updateData - Update data to validate
+ * @returns {Object} - {isValid: boolean, error: string}
  */
-function updateExistingFamily(duplicate, formData, addressValidation, docValidation) {
-    const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE_CLEANED);
-    if (!sheet) return;
-
-    const row = duplicate.row;
-    const existingData = duplicate.data;
-    const changes = [];
-
-    const newPhone = normalizePhone(formData.phone);
-    const oldPhone = normalizePhone(existingData[OUTPUT_COLUMNS.TELEPHONE]);
-    if (newPhone !== oldPhone) {
-        sheet.getRange(row, OUTPUT_COLUMNS.TELEPHONE + 1).setValue(newPhone);
-        changes.push('téléphone');
+function validateUpdateData(updateData) {
+    // Validate email if provided
+    if (updateData.email && !isValidEmail(updateData.email)) {
+        return {
+            isValid: false,
+            error: 'Email invalide'
+        };
     }
 
-    const newAddress = formData.address || '';
-    const oldAddress = existingData[OUTPUT_COLUMNS.ADRESSE] || '';
-    if (newAddress !== oldAddress) {
-        sheet.getRange(row, OUTPUT_COLUMNS.ADRESSE + 1).setValue(newAddress);
-        sheet.getRange(row, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue(addressValidation.quartierId || '');
-        changes.push('adresse');
+    // Validate phone if provided
+    if (updateData.phone && !isValidPhone(updateData.phone)) {
+        return {
+            isValid: false,
+            error: 'Téléphone invalide'
+        };
     }
 
-    if (docValidation.identityIds.length > 0) {
-        sheet.getRange(row, OUTPUT_COLUMNS.IDENTITE + 1).setValue(formatDocumentLinks(docValidation.identityIds));
-        changes.push('documents');
-    }
-
-    if (docValidation.cafIds.length > 0) {
-        sheet.getRange(row, OUTPUT_COLUMNS.CAF + 1).setValue(formatDocumentLinks(docValidation.cafIds));
-        changes.push('CAF');
-    }
-
-    if (formData.email) {
-        const newEmail = formData.email.toLowerCase().trim();
-        const oldEmail = (existingData[OUTPUT_COLUMNS.EMAIL] || '').toLowerCase().trim();
-        if (newEmail !== oldEmail) {
-            sheet.getRange(row, OUTPUT_COLUMNS.EMAIL + 1).setValue(formData.email);
-            changes.push('email');
+    // Validate criticite if provided
+    if (updateData.criticite !== undefined) {
+        if (isNaN(updateData.criticite) ||
+            updateData.criticite < CONFIG.CRITICITE.MIN ||
+            updateData.criticite > CONFIG.CRITICITE.MAX) {
+            return {
+                isValid: false,
+                error: 'Criticité invalide (doit être entre 0 et 5)'
+            };
         }
     }
 
-    const comment = `Mis à jour: ${changes.join(', ')} - ${new Date().toLocaleString('fr-FR')}`;
-    const existingComment = existingData[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
-    sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(
-        existingComment + '\n' + comment
-    );
-
-    sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(CONFIG.STATUS.IN_PROGRESS);
-
-    logInfo('Family updated', { id: duplicate.id, changes });
+    return { isValid: true };
 }
 
 /**

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <base target="_top">
+    <?!= include('assets/css/styles.html'); ?>
+</head>
+
+<body>
+    <div class="form-container">
+        <h2>✏️ Mise à Jour en Masse</h2>
+
+        <div id="alertBox" class="alert"></div>
+        <div id="loadingBox" class="loading">
+            <div class="spinner"></div>
+            <p id="loadingText">Traitement en cours...</p>
+        </div>
+
+        <div id="statsBox" style="background: #fff3cd; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+            <h3 style="margin-top: 0;">📊 Statistiques</h3>
+            <div id="statsContent">Chargement...</div>
+        </div>
+
+        <form id="bulkUpdateForm">
+            <div class="form-group">
+                <label class="required">Nombre de familles à traiter</label>
+                <input type="number" id="batchSize" name="batchSize" min="1" max="100" value="10" required>
+                <small style="color: #666; display: block; margin-top: 5px;">
+                    ⏱️ Limite de temps GAS: ~6 minutes<br>
+                    💡 Recommandé: 10-20 familles par exécution
+                </small>
+            </div>
+
+            <div
+                style="background: #e3f2fd; padding: 12px; border-radius: 4px; margin: 15px 0; border-left: 4px solid #2196f3;">
+                <strong>ℹ️ Comment ça marche :</strong>
+                <ol style="margin: 10px 0 0 0; padding-left: 20px;">
+                    <li>Collez vos données dans la feuille "Bulk Update"</li>
+                    <li>La colonne "id" est <strong>OBLIGATOIRE</strong></li>
+                    <li>Remplissez uniquement les colonnes à mettre à jour</li>
+                    <li>Les colonnes vides seront ignorées</li>
+                    <li>Cliquez sur "Lancer le traitement"</li>
+                    <li>Consultez les résultats (colonnes statut/commentaire)</li>
+                </ol>
+            </div>
+
+            <div class="button-group">
+                <button type="button" class="btn-secondary" onclick="google.script.host.close()">Annuler</button>
+                <button type="button" class="btn-secondary" onclick="refreshStats()">🔄 Actualiser</button>
+                <button type="submit" class="btn-primary">▶️ Lancer le traitement</button>
+            </div>
+        </form>
+
+        <div id="resultsBox"
+            style="display: none; margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px;">
+            <h3>📋 Résultats</h3>
+            <div id="resultsContent"></div>
+        </div>
+    </div>
+
+    <script>
+        window.onload = function () {
+            refreshStats();
+        };
+
+        function refreshStats() {
+            document.getElementById('statsContent').innerHTML = '⏳ Chargement...';
+
+            google.script.run
+                .withSuccessHandler(displayStats)
+                .withFailureHandler(onError)
+                .getBulkUpdateStatistics();
+        }
+
+        function displayStats(stats) {
+            const remaining = stats.pending + stats.processing;
+            const total = stats.total;
+            const progress = total > 0 ? Math.round((stats.success / total) * 100) : 0;
+
+            document.getElementById('statsContent').innerHTML = `
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div><strong>Total:</strong> ${total}</div>
+            <div><strong>Progression:</strong> ${progress}%</div>
+            <div style="color: #666;"><strong>⏳ En attente:</strong> ${stats.pending}</div>
+            <div style="color: #ff9800;"><strong>⚙️ En traitement:</strong> ${stats.processing}</div>
+            <div style="color: #4caf50;"><strong>✅ Réussies:</strong> ${stats.success}</div>
+            <div style="color: #f44336;"><strong>❌ Erreurs:</strong> ${stats.error}</div>
+        </div>
+        ${remaining > 0 ? `<div style="margin-top: 10px; padding: 8px; background: #e3f2fd; border-radius: 4px;">💡 <strong>${remaining} familles</strong> restent à traiter</div>` : ''}
+        ${stats.processing > 0 ? `<div style="margin-top: 10px; padding: 8px; background: #fff3cd; border-radius: 4px;">⚠️ ${stats.processing} lignes en "Processing". Utilisez "Réinitialiser Processing" dans le menu.</div>` : ''}`;
+        }
+
+        document.getElementById('bulkUpdateForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const batchSize = parseInt(document.getElementById('batchSize').value);
+
+            if (batchSize < 1 || batchSize > 100) {
+                showAlert('error', 'Le nombre doit être entre 1 et 100');
+                return;
+            }
+
+            document.getElementById('loadingBox').style.display = 'block';
+            document.getElementById('alertBox').style.display = 'none';
+            document.getElementById('resultsBox').style.display = 'none';
+            document.getElementById('bulkUpdateForm').style.display = 'none';
+            document.getElementById('loadingText').textContent = `Mise à jour de ${batchSize} familles...`;
+
+            google.script.run
+                .withSuccessHandler(onSuccess)
+                .withFailureHandler(onError)
+                .processBulkUpdate(batchSize);
+        });
+
+        function onSuccess(result) {
+            document.getElementById('loadingBox').style.display = 'none';
+            document.getElementById('bulkUpdateForm').style.display = 'block';
+
+            if (!result.success) {
+                showAlert('warning', result.message);
+                return;
+            }
+
+            const resultHtml = `
+        <div style="background: white; padding: 15px; border-radius: 4px; border: 1px solid #ddd;">
+            <div style="margin-bottom: 10px;">
+                <strong>✅ Traitement terminé</strong>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0;">
+                <div>📊 Traitées: <strong>${result.processed}</strong></div>
+                <div style="color: #4caf50;">✅ Réussies: <strong>${result.succeeded}</strong></div>
+                <div style="color: #f44336;">❌ Erreurs: <strong>${result.failed}</strong></div>
+                <div style="color: #ff9800;">⏳ Restantes: <strong>${result.remaining}</strong></div>
+            </div>
+            ${result.errors.length > 0 ? `
+            <div style="margin-top: 15px; padding: 10px; background: #fff3cd; border-radius: 4px;">
+                <strong>⚠️ Erreurs détectées:</strong>
+                <ul style="margin: 5px 0; padding-left: 20px; max-height: 150px; overflow-y: auto;">
+                    ${result.errors.slice(0, 10).map(e => `<li>Ligne ${e.row}: ${e.error}</li>`).join('')}
+                    ${result.errors.length > 10 ? `<li><em>... et ${result.errors.length - 10} autres erreurs</em></li>` : ''}
+                </ul>
+                <small>💡 Consultez la colonne "commentaire" pour plus de détails</small>
+            </div>` : ''}
+            ${result.remaining > 0 ? `
+            <div style="margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 4px;">
+                <strong>💡 ${result.remaining} familles restent à traiter</strong><br>
+                <small>Cliquez sur "Lancer le traitement" pour continuer</small>
+            </div>` : `
+            <div style="margin-top: 15px; padding: 10px; background: #d4edda; border-radius: 4px; color: #155724;">
+                <strong>🎉 Toutes les familles ont été mises à jour !</strong>
+            </div>`}
+        </div>`;
+
+            document.getElementById('resultsContent').innerHTML = resultHtml;
+            document.getElementById('resultsBox').style.display = 'block';
+
+            refreshStats();
+
+            showAlert('success', `✅ ${result.succeeded} familles mises à jour${result.failed > 0 ? `, ${result.failed} erreurs` : ''}`);
+        }
+
+        function onError(error) {
+            document.getElementById('loadingBox').style.display = 'none';
+            document.getElementById('bulkUpdateForm').style.display = 'block';
+            showAlert('error', `Erreur: ${error.message}`);
+        }
+
+        function showAlert(type, message) {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.className = `alert alert-${type}`;
+            alertBox.innerHTML = message;
+            alertBox.style.display = 'block';
+        }
+    </script>
+</body>
+
+</html>
