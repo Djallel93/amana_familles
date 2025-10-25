@@ -161,7 +161,7 @@ Create three sheets for multilingual forms:
 
 ### Output Sheet
 
-`Famille (Cleaned & Enriched)` with columns:
+`Famille` with columns:
 
 | Column              | Type     | Description         |
 | ------------------- | -------- | ------------------- |

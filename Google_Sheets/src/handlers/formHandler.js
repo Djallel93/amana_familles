@@ -105,7 +105,7 @@ function processFormSubmission(formData, sourceSheet, sourceRow) {
 }
 
 /**
- * Write data to Famille (Cleaned & Enriched) sheet
+ * Write data to Famille sheet
  */
 function writeToFamilySheet(formData, options = {}) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE_CLEANED);
