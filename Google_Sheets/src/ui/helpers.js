@@ -132,3 +132,61 @@ function updateManualEntryWithFormData(manualFamilyId, formData, docValidation) 
     logInfo('Manual entry updated with form documents', manualFamilyId);
     return true;
 }
+
+/**
+ * Inclut le contenu d'un fichier (pour use avec <?!= include('file') ?> dans HTML)
+ * @param {string} filename - Nom du fichier à inclure
+ * @returns {string} Contenu du fichier
+ */
+function include(filename) {
+    return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+/**
+ * Calculate statistics from famille sheet
+ */
+function calculateStatistics() {
+    const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE_CLEANED);
+    if (!sheet) {
+        return {
+            total: 0,
+            validated: 0,
+            inProgress: 0,
+            rejected: 0,
+            totalAdults: 0,
+            totalChildren: 0
+        };
+    }
+
+    const data = sheet.getDataRange().getValues();
+    const stats = {
+        total: data.length - 1,
+        validated: 0,
+        inProgress: 0,
+        rejected: 0,
+        totalAdults: 0,
+        totalChildren: 0
+    };
+
+    for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        const status = row[OUTPUT_COLUMNS.ETAT_DOSSIER];
+
+        if (status === CONFIG.STATUS.VALIDATED) stats.validated++;
+        if (status === CONFIG.STATUS.IN_PROGRESS) stats.inProgress++;
+        if (status === CONFIG.STATUS.REJECTED) stats.rejected++;
+
+        stats.totalAdults += parseInt(row[OUTPUT_COLUMNS.NOMBRE_ADULTE]) || 0;
+        stats.totalChildren += parseInt(row[OUTPUT_COLUMNS.NOMBRE_ENFANT]) || 0;
+    }
+
+    return stats;
+}
+
+/**
+ * Clear all caches
+ */
+function clearAllCaches() {
+    CacheService.getScriptCache().removeAll([]);
+    SpreadsheetApp.getUi().alert('✅ Cache effacé avec succès');
+}

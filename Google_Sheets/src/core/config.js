@@ -31,6 +31,14 @@ const CONFIG = {
         ARCHIVED: 'Archivé'
     },
 
+    BULK_STATUS: {
+        PENDING: 'En attente',
+        PROCESSING: 'En cours',
+        SUCCESS: 'Succès',
+        ERROR: 'Erreur',
+        SKIPPED: 'Ignoré' // For already processed rows
+    },
+
     // Document types
     DOC_TYPES: {
         IDENTITY: 'identity',
@@ -38,10 +46,37 @@ const CONFIG = {
         RESOURCE: 'resource'
     },
 
+    OAUTH_CONFIG: {
+        REDIRECT_URI: 'https://script.google.com/macros/d/1f5BqHS_e2pJeWTck3S_5WFxQ1V-i6m8HFlKR9zGmq6VgxGgLfrjNjwOW/usercallback',
+        SCOPES: 'https://www.googleapis.com/auth/forms https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/contacts',
+        FORMS_API_BASE_URL: 'https://forms.googleapis.com/v1'
+    },
+
     // API Configuration
     GEO_API: {
         MAX_DISTANCE: 50 // km
     }
+};
+
+const BULK_IMPORT_SHEET_NAME = 'Bulk Import';
+
+// Column indices for Bulk Import sheet (0-based)
+const BULK_COLUMNS = {
+    NOM: 0,
+    PRENOM: 1,
+    NOMBRE_ADULTE: 2,
+    NOMBRE_ENFANT: 3,
+    ADRESSE: 4,
+    CODE_POSTAL: 5,
+    VILLE: 6,
+    TELEPHONE: 7,
+    TELEPHONE_BIS: 8,
+    EMAIL: 9,
+    CIRCONSTANCES: 10,
+    RESSENTIT: 11,
+    SPECIFICITES: 12,
+    STATUT: 13,
+    COMMENTAIRE: 14
 };
 
 // Multilingual column mapping - maps form questions to standardized field names
