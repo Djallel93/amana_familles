@@ -11,7 +11,7 @@
  */
 function updateFamilyById(familyId, updateData) {
     try {
-        const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE_CLEANED);
+        const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
         if (!sheet) {
             return { success: false, error: 'Feuille Famille introuvable' };
         }
@@ -148,7 +148,11 @@ function updateFamilyById(familyId, updateData) {
 
         // Add comment
         const existingComment = existingData[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
-        const updateComment = `\nMis à jour: ${changes.join(', ')} - ${new Date().toLocaleString('fr-FR')}`;
+        const updateComment = `Mis à jour: ${changes.join(', ')} - ${new Date().toLocaleString('fr-FR')}`;
+        const newComment = existingComment ?
+            `${existingComment}\n${updateComment}` :
+            updateComment;
+        sheet.getRange(targetRow, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
         sheet.getRange(targetRow, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(
             existingComment + updateComment
         );

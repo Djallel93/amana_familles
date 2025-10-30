@@ -73,7 +73,7 @@ function getAllFamilies(e) {
             .setMimeType(ContentService.MimeType.JSON);
     }
 
-    const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE_CLEANED);
+    const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
     if (!sheet) {
         return jsonResponse({ error: 'Sheet not found' }, 404);
     }
@@ -364,7 +364,7 @@ function getFamiliesSeDeplace(e) {
  * Helper: Find family by ID
  */
 function findFamilyById(id) {
-    const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE_CLEANED);
+    const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
     if (!sheet) return null;
 
     const data = sheet.getDataRange().getValues();
@@ -384,7 +384,7 @@ function findFamilyById(id) {
  * Helper: Get validated families with optional filter
  */
 function getValidatedFamilies(filterFn = null) {
-    const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE_CLEANED);
+    const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
     if (!sheet) return [];
 
     const data = sheet.getDataRange().getValues();

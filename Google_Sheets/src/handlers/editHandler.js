@@ -10,7 +10,7 @@ function handleEdit(e) {
     try {
         const sheet = e.range.getSheet();
 
-        if (sheet.getName() !== CONFIG.SHEETS.FAMILLE_CLEANED) {
+        if (sheet.getName() !== CONFIG.SHEETS.FAMILLE) {
             return;
         }
 
@@ -144,8 +144,9 @@ function processValidatedFamily(sheet, row) {
             logInfo(`Contact synced for family: ${familyId}`);
 
             const existingComment = data[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
-            const criticite = data[OUTPUT_COLUMNS.CRITICITE];
-            const newComment = `${existingComment}\nValidé et traité le ${new Date().toLocaleString('fr-FR')} - Criticité: ${criticite}`;
+            const newComment = existingComment ?
+                `${existingComment}\nValidé et traité le ${new Date().toLocaleString('fr-FR')}` :
+                    `Validé et traité le ${new Date().toLocaleString('fr-FR')}`;
             sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
         } else {
             logError(`Contact sync failed for family: ${familyId}`, contactResult.error);
