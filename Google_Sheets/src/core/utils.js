@@ -63,7 +63,7 @@ function isValidEmail(email) {
 function isValidPhone(phone) {
     if (!phone) return false;
     const cleaned = String(phone).replace(/[\s\.\-\(\)]/g, '');
-    return /^(0[1-9]\d{8}|(\+|00)33[1-9]\d{8})$/.test(cleaned);
+    return /^(0[1-9]\d{8}|(\+|00)33(0)?[1-9]\d{8})$/.test(cleaned);
 }
 
 /**

@@ -10,7 +10,7 @@ function callGeoApi(action, params) {
     const config = getScriptConfig();
     const cache = CacheService.getScriptCache();
 
-    const cacheKey = `geo_Fv5_${action}_${JSON.stringify(params)}`;
+    const cacheKey = `geo_v5_${action}_${JSON.stringify(params)}`;
     const cached = cache.get(cacheKey);
 
     if (cached) {
@@ -137,6 +137,47 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
 }
 
 /**
+ * Validate if quartier ID exists in GEO API
+ * @param {string} quartierId - Quartier ID to validate
+ * @returns {Object} - { isValid: boolean, error?: string }
+ */
+function validateQuartierId(quartierId) {
+    if (!quartierId) {
+        return {
+            isValid: false,
+            error: 'Quartier ID is empty'
+        };
+    }
+
+    try {
+        const quartierResult = getQuartierById(quartierId);
+
+        if (quartierResult.error || !quartierResult.id) {
+            return {
+                isValid: false,
+                error: `Quartier ID "${quartierId}" n'existe pas dans l'API GEO`
+            };
+        }
+
+        return {
+            isValid: true,
+            quartier: {
+                id: quartierResult.id,
+                nom: quartierResult.nom,
+                idSecteur: quartierResult.idSecteur
+            }
+        };
+
+    } catch (e) {
+        logError('Failed to validate quartier ID', e);
+        return {
+            isValid: false,
+            error: `Erreur de validation: ${e.toString()}`
+        };
+    }
+}
+
+/**
  * Get complete location hierarchy from quartier ID
  * This is the key function for on-demand resolution
  * 
@@ -233,8 +274,8 @@ function getLocationHierarchyFromQuartier(quartierId) {
 }
 
 /**
- * Validate address and get quartier ID
- * Returns same structure as before, but without storing ville/secteur
+ * Validate address and get quartier ID with GEO API validation
+ * Returns same structure as before, but checks if quartier exists
  */
 function validateAddressAndGetQuartier(address, postalCode, city) {
     const fullAddress = formatAddressForGeocoding(address, postalCode, city);
@@ -267,14 +308,31 @@ function validateAddressAndGetQuartier(address, postalCode, city) {
         };
     }
 
-    // Return only quartier ID (ville/secteur will be resolved on-demand)
+    const quartierId = locationResult.quartier ? locationResult.quartier.id : null;
+    const quartierName = locationResult.quartier ? locationResult.quartier.nom : null;
+
+    // Step 3: Validate quartier exists in GEO API
+    let quartierInvalid = false;
+    let warning = null;
+
+    if (quartierId) {
+        const validation = validateQuartierId(quartierId);
+        if (!validation.isValid) {
+            quartierInvalid = true;
+            warning = `⚠️ ATTENTION: Quartier ID "${quartierId}" n'existe pas dans l'API GEO. Vérifier l'adresse avant validation.`;
+            logWarning(`Quartier validation failed: ${validation.error}`);
+        }
+    }
+
     return {
         isValid: true,
         validated: true,
         coordinates: geocodeResult.coordinates,
         formattedAddress: geocodeResult.formattedAddress,
-        quartierId: locationResult.quartier ? locationResult.quartier.id : null,
-        quartierName: locationResult.quartier ? locationResult.quartier.nom : null,
+        quartierId: quartierId,
+        quartierName: quartierName,
+        quartierInvalid: quartierInvalid,
+        warning: warning,
         location: locationResult // Full hierarchy for reference
     };
 }
