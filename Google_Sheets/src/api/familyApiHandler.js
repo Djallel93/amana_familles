@@ -1,6 +1,6 @@
 /**
  * @file src/api/familyApiHandler.js
- * @description REST API endpoints for external access with criticite and geo sorting
+ * @description REST API endpoints with on-demand location hierarchy resolution
  */
 
 /**
@@ -33,6 +33,12 @@ function doGet(e) {
             case 'familiesbyquartier':
                 return getFamiliesByQuartier(e);
 
+            case 'familiesbysecteur':
+                return getFamiliesBySecteur(e);
+
+            case 'familiesbyville':
+                return getFamiliesByVille(e);
+
             case 'familiessedeplace':
                 return getFamiliesSeDeplace(e);
 
@@ -43,6 +49,8 @@ function doGet(e) {
                 return jsonResponse({
                     status: 'ok',
                     message: 'Famille API operational',
+                    version: '2.0',
+                    geoApiVersion: CONFIG.GEO_API.VERSION,
                     timestamp: new Date().toISOString()
                 });
 
@@ -58,13 +66,15 @@ function doGet(e) {
 
 /**
  * Get all validated families with optional sorting
+ * Optional: includeHierarchy=true to add ville/secteur info
  */
 function getAllFamilies(e) {
-    const orderBy = e.parameter.orderBy; // 'criticite' or 'distance'
+    const orderBy = e.parameter.orderBy;
     const lat = parseFloat(e.parameter.lat);
     const lng = parseFloat(e.parameter.lng);
+    const includeHierarchy = e.parameter.includeHierarchy === 'true';
 
-    const cacheKey = `api_all_families_${orderBy}_${lat}_${lng}`;
+    const cacheKey = `api_all_families_${orderBy}_${lat}_${lng}_${includeHierarchy}`;
     const cache = CacheService.getScriptCache();
 
     const cached = cache.get(cacheKey);
@@ -84,13 +94,12 @@ function getAllFamilies(e) {
     for (let i = 1; i < data.length; i++) {
         const row = data[i];
         if (row[OUTPUT_COLUMNS.ETAT_DOSSIER] === CONFIG.STATUS.VALIDATED) {
-            families.push(rowToFamilyObject(row));
+            families.push(rowToFamilyObject(row, includeHierarchy));
         }
     }
 
-    // Sort families
     if (orderBy === 'criticite') {
-        families.sort((a, b) => b.criticite - a.criticite); // Descending order
+        families.sort((a, b) => b.criticite - a.criticite);
     } else if (orderBy === 'distance' && !isNaN(lat) && !isNaN(lng)) {
         families = sortFamiliesByDistance(families, lat, lng);
     }
@@ -98,6 +107,7 @@ function getAllFamilies(e) {
     const result = jsonResponse({
         count: families.length,
         orderBy: orderBy || 'none',
+        includeHierarchy: includeHierarchy,
         families: families
     });
 
@@ -111,6 +121,7 @@ function getAllFamilies(e) {
  */
 function getFamiliesByCriticite(e) {
     const criticite = parseInt(e.parameter.criticite);
+    const includeHierarchy = e.parameter.includeHierarchy === 'true';
 
     if (isNaN(criticite) || criticite < CONFIG.CRITICITE.MIN || criticite > CONFIG.CRITICITE.MAX) {
         return jsonResponse({
@@ -119,7 +130,7 @@ function getFamiliesByCriticite(e) {
     }
 
     const cache = CacheService.getScriptCache();
-    const cacheKey = `api_criticite_${criticite}`;
+    const cacheKey = `api_criticite_${criticite}_${includeHierarchy}`;
 
     const cached = cache.get(cacheKey);
     if (cached) {
@@ -128,7 +139,8 @@ function getFamiliesByCriticite(e) {
     }
 
     const families = getValidatedFamilies(
-        row => parseInt(row[OUTPUT_COLUMNS.CRITICITE]) === criticite
+        row => parseInt(row[OUTPUT_COLUMNS.CRITICITE]) === criticite,
+        includeHierarchy
     );
 
     const result = jsonResponse({
@@ -145,23 +157,20 @@ function getFamiliesByCriticite(e) {
  * Sort families by distance from reference point
  */
 function sortFamiliesByDistance(families, refLat, refLng) {
-    const config = getScriptConfig();
-    const geoApiUrl = config.geoApiUrl;
-
-    // Add distance to each family
     families.forEach(family => {
         if (family.adresse) {
             try {
-                // Geocode family address if not already cached
                 const cacheKey = `geocode_${family.adresse}`;
                 const cache = CacheService.getScriptCache();
 
                 let coords = cache.get(cacheKey);
                 if (!coords) {
-                    const geocodeResult = callGeoApi('geocode', {
-                        address: family.adresse,
-                        country: 'France'
-                    });
+                    const parts = family.adresse.split(',');
+                    const address = parts[0] ? parts[0].trim() : '';
+                    const postalCode = parts[1] ? parts[1].trim() : '';
+                    const city = parts[2] ? parts[2].trim() : '';
+
+                    const geocodeResult = geocodeAddress(address, city, postalCode);
 
                     if (geocodeResult && geocodeResult.isValid) {
                         coords = JSON.stringify(geocodeResult.coordinates);
@@ -172,18 +181,17 @@ function sortFamiliesByDistance(families, refLat, refLng) {
                 if (coords) {
                     const coordinates = JSON.parse(coords);
 
-                    // Calculate distance using GEO API
-                    const distanceResult = callGeoApi('calculatedistance', {
-                        lat1: refLat,
-                        lng1: refLng,
-                        lat2: coordinates.latitude,
-                        lng2: coordinates.longitude
-                    });
+                    const distanceResult = calculateDistance(
+                        refLat,
+                        refLng,
+                        coordinates.latitude,
+                        coordinates.longitude
+                    );
 
                     if (distanceResult && !distanceResult.error) {
                         family.distance = distanceResult.distance;
                     } else {
-                        family.distance = 999999; // Put at end if error
+                        family.distance = 999999;
                     }
                 } else {
                     family.distance = 999999;
@@ -197,7 +205,6 @@ function sortFamiliesByDistance(families, refLat, refLng) {
         }
     });
 
-    // Sort by distance ascending
     families.sort((a, b) => a.distance - b.distance);
 
     return families;
@@ -208,12 +215,14 @@ function sortFamiliesByDistance(families, refLat, refLng) {
  */
 function getFamilyById(e) {
     const id = e.parameter.id;
+    const includeHierarchy = e.parameter.includeHierarchy === 'true';
+
     if (!id) {
         return jsonResponse({ error: 'Missing id parameter' }, 400);
     }
 
     const cache = CacheService.getScriptCache();
-    const cacheKey = `api_family_${id}`;
+    const cacheKey = `api_family_${id}_${includeHierarchy}`;
 
     const cached = cache.get(cacheKey);
     if (cached) {
@@ -221,7 +230,7 @@ function getFamilyById(e) {
             .setMimeType(ContentService.MimeType.JSON);
     }
 
-    const family = findFamilyById(id);
+    const family = findFamilyById(id, includeHierarchy);
     if (!family) {
         return jsonResponse({ error: 'Family not found' }, 404);
     }
@@ -237,31 +246,41 @@ function getFamilyById(e) {
  */
 function getFamilyAddressById(e) {
     const id = e.parameter.id;
+    const includeHierarchy = e.parameter.includeHierarchy === 'true';
+
     if (!id) {
         return jsonResponse({ error: 'Missing id parameter' }, 400);
     }
 
-    const family = findFamilyById(id);
+    const family = findFamilyById(id, includeHierarchy);
     if (!family) {
         return jsonResponse({ error: 'Family not found' }, 404);
     }
 
-    return jsonResponse({
+    const response = {
         id: family.id,
         nom: family.nom,
         prenom: family.prenom,
         adresse: family.adresse,
         idQuartier: family.idQuartier,
         criticite: family.criticite
-    });
+    };
+
+    if (includeHierarchy) {
+        response.idVille = family.idVille;
+        response.idSecteur = family.idSecteur;
+    }
+
+    return jsonResponse(response);
 }
 
 /**
  * Get families eligible for Zakat El Fitr
  */
 function getFamiliesForZakatFitr(e) {
+    const includeHierarchy = e.parameter.includeHierarchy === 'true';
     const cache = CacheService.getScriptCache();
-    const cacheKey = 'api_zakat_fitr';
+    const cacheKey = `api_zakat_fitr_${includeHierarchy}`;
 
     const cached = cache.get(cacheKey);
     if (cached) {
@@ -269,7 +288,10 @@ function getFamiliesForZakatFitr(e) {
             .setMimeType(ContentService.MimeType.JSON);
     }
 
-    const families = getValidatedFamilies(row => row[OUTPUT_COLUMNS.ZAKAT_EL_FITR] === true);
+    const families = getValidatedFamilies(
+        row => row[OUTPUT_COLUMNS.ZAKAT_EL_FITR] === true,
+        includeHierarchy
+    );
 
     const result = jsonResponse({
         count: families.length,
@@ -284,8 +306,9 @@ function getFamiliesForZakatFitr(e) {
  * Get families eligible for Sadaqa
  */
 function getFamiliesForSadaka(e) {
+    const includeHierarchy = e.parameter.includeHierarchy === 'true';
     const cache = CacheService.getScriptCache();
-    const cacheKey = 'api_sadaka';
+    const cacheKey = `api_sadaka_${includeHierarchy}`;
 
     const cached = cache.get(cacheKey);
     if (cached) {
@@ -293,7 +316,10 @@ function getFamiliesForSadaka(e) {
             .setMimeType(ContentService.MimeType.JSON);
     }
 
-    const families = getValidatedFamilies(row => row[OUTPUT_COLUMNS.SADAQA] === true);
+    const families = getValidatedFamilies(
+        row => row[OUTPUT_COLUMNS.SADAQA] === true,
+        includeHierarchy
+    );
 
     const result = jsonResponse({
         count: families.length,
@@ -309,12 +335,14 @@ function getFamiliesForSadaka(e) {
  */
 function getFamiliesByQuartier(e) {
     const quartierId = e.parameter.quartierId;
+    const includeHierarchy = e.parameter.includeHierarchy === 'true';
+
     if (!quartierId) {
         return jsonResponse({ error: 'Missing quartierId parameter' }, 400);
     }
 
     const cache = CacheService.getScriptCache();
-    const cacheKey = `api_quartier_${quartierId}`;
+    const cacheKey = `api_quartier_${quartierId}_${includeHierarchy}`;
 
     const cached = cache.get(cacheKey);
     if (cached) {
@@ -323,7 +351,8 @@ function getFamiliesByQuartier(e) {
     }
 
     const families = getValidatedFamilies(
-        row => row[OUTPUT_COLUMNS.ID_QUARTIER] == quartierId
+        row => row[OUTPUT_COLUMNS.ID_QUARTIER] == quartierId,
+        includeHierarchy
     );
 
     const result = jsonResponse({
@@ -337,11 +366,17 @@ function getFamiliesByQuartier(e) {
 }
 
 /**
- * Get families who can travel (se_deplace = true)
+ * Get families by secteur (requires resolving hierarchy)
  */
-function getFamiliesSeDeplace(e) {
+function getFamiliesBySecteur(e) {
+    const secteurId = e.parameter.secteurId;
+
+    if (!secteurId) {
+        return jsonResponse({ error: 'Missing secteurId parameter' }, 400);
+    }
+
     const cache = CacheService.getScriptCache();
-    const cacheKey = 'api_se_deplace_true';
+    const cacheKey = `api_secteur_${secteurId}`;
 
     const cached = cache.get(cacheKey);
     if (cached) {
@@ -349,7 +384,115 @@ function getFamiliesSeDeplace(e) {
             .setMimeType(ContentService.MimeType.JSON);
     }
 
-    const families = getValidatedFamilies(row => row[OUTPUT_COLUMNS.SE_DEPLACE] === true);
+    // Get all validated families
+    const allFamilies = getValidatedFamilies(null, false);
+
+    // Collect unique quartier IDs
+    const quartierIds = [...new Set(allFamilies.map(f => f.idQuartier).filter(id => id))];
+
+    // Batch resolve hierarchies
+    const hierarchies = batchGetLocationHierarchies(quartierIds);
+
+    // Filter families by secteur
+    const filteredFamilies = allFamilies.filter(family => {
+        if (!family.idQuartier) return false;
+        const hierarchy = hierarchies[family.idQuartier];
+        if (!hierarchy) return false;
+        return hierarchy.secteur && hierarchy.secteur.id == secteurId;
+    });
+
+    // Enrich with hierarchy info
+    filteredFamilies.forEach(family => {
+        const hierarchy = hierarchies[family.idQuartier];
+        if (hierarchy) {
+            family.idVille = hierarchy.ville.id;
+            family.idSecteur = hierarchy.secteur.id;
+        }
+    });
+
+    const result = jsonResponse({
+        secteurId: secteurId,
+        count: filteredFamilies.length,
+        families: filteredFamilies
+    });
+
+    cache.put(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
+    return result;
+}
+
+/**
+ * Get families by ville (requires resolving hierarchy)
+ */
+function getFamiliesByVille(e) {
+    const villeId = e.parameter.villeId;
+
+    if (!villeId) {
+        return jsonResponse({ error: 'Missing villeId parameter' }, 400);
+    }
+
+    const cache = CacheService.getScriptCache();
+    const cacheKey = `api_ville_${villeId}`;
+
+    const cached = cache.get(cacheKey);
+    if (cached) {
+        return ContentService.createTextOutput(cached)
+            .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Get all validated families
+    const allFamilies = getValidatedFamilies(null, false);
+
+    // Collect unique quartier IDs
+    const quartierIds = [...new Set(allFamilies.map(f => f.idQuartier).filter(id => id))];
+
+    // Batch resolve hierarchies
+    const hierarchies = batchGetLocationHierarchies(quartierIds);
+
+    // Filter families by ville
+    const filteredFamilies = allFamilies.filter(family => {
+        if (!family.idQuartier) return false;
+        const hierarchy = hierarchies[family.idQuartier];
+        if (!hierarchy) return false;
+        return hierarchy.ville && hierarchy.ville.id == villeId;
+    });
+
+    // Enrich with hierarchy info
+    filteredFamilies.forEach(family => {
+        const hierarchy = hierarchies[family.idQuartier];
+        if (hierarchy) {
+            family.idVille = hierarchy.ville.id;
+            family.idSecteur = hierarchy.secteur.id;
+        }
+    });
+
+    const result = jsonResponse({
+        villeId: villeId,
+        count: filteredFamilies.length,
+        families: filteredFamilies
+    });
+
+    cache.put(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
+    return result;
+}
+
+/**
+ * Get families who can travel (se_deplace = true)
+ */
+function getFamiliesSeDeplace(e) {
+    const includeHierarchy = e.parameter.includeHierarchy === 'true';
+    const cache = CacheService.getScriptCache();
+    const cacheKey = `api_se_deplace_${includeHierarchy}`;
+
+    const cached = cache.get(cacheKey);
+    if (cached) {
+        return ContentService.createTextOutput(cached)
+            .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    const families = getValidatedFamilies(
+        row => row[OUTPUT_COLUMNS.SE_DEPLACE] === true,
+        includeHierarchy
+    );
 
     const result = jsonResponse({
         count: families.length,
@@ -363,7 +506,7 @@ function getFamiliesSeDeplace(e) {
 /**
  * Helper: Find family by ID
  */
-function findFamilyById(id) {
+function findFamilyById(id, includeHierarchy = false) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
     if (!sheet) return null;
 
@@ -373,7 +516,7 @@ function findFamilyById(id) {
         const row = data[i];
         if (row[OUTPUT_COLUMNS.ID] === id &&
             row[OUTPUT_COLUMNS.ETAT_DOSSIER] === CONFIG.STATUS.VALIDATED) {
-            return rowToFamilyObject(row);
+            return rowToFamilyObject(row, includeHierarchy);
         }
     }
 
@@ -383,7 +526,7 @@ function findFamilyById(id) {
 /**
  * Helper: Get validated families with optional filter
  */
-function getValidatedFamilies(filterFn = null) {
+function getValidatedFamilies(filterFn = null, includeHierarchy = false) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
     if (!sheet) return [];
 
@@ -401,17 +544,17 @@ function getValidatedFamilies(filterFn = null) {
             continue;
         }
 
-        families.push(rowToFamilyObject(row));
+        families.push(rowToFamilyObject(row, includeHierarchy));
     }
 
     return families;
 }
 
 /**
- * Helper: Convert row to family object
+ * Helper: Convert row to family object with optional hierarchy resolution
  */
-function rowToFamilyObject(row) {
-    return {
+function rowToFamilyObject(row, includeHierarchy = false) {
+    const family = {
         id: row[OUTPUT_COLUMNS.ID],
         nom: row[OUTPUT_COLUMNS.NOM],
         prenom: row[OUTPUT_COLUMNS.PRENOM],
@@ -420,7 +563,7 @@ function rowToFamilyObject(row) {
         nombreAdulte: row[OUTPUT_COLUMNS.NOMBRE_ADULTE] || 0,
         nombreEnfant: row[OUTPUT_COLUMNS.NOMBRE_ENFANT] || 0,
         adresse: row[OUTPUT_COLUMNS.ADRESSE],
-        idQuartier: row[OUTPUT_COLUMNS.ID_QUARTIER],
+        idQuartier: row[OUTPUT_COLUMNS.ID_QUARTIER] || null,
         seDeplace: row[OUTPUT_COLUMNS.SE_DEPLACE] || false,
         email: row[OUTPUT_COLUMNS.EMAIL],
         telephone: row[OUTPUT_COLUMNS.TELEPHONE],
@@ -430,6 +573,20 @@ function rowToFamilyObject(row) {
         specificites: row[OUTPUT_COLUMNS.SPECIFICITES],
         criticite: parseInt(row[OUTPUT_COLUMNS.CRITICITE]) || 0
     };
+
+    // Optionally resolve hierarchy
+    if (includeHierarchy && family.idQuartier) {
+        const hierarchy = getLocationHierarchyFromQuartier(family.idQuartier);
+        if (!hierarchy.error) {
+            family.idVille = hierarchy.ville.id;
+            family.idSecteur = hierarchy.secteur.id;
+        } else {
+            family.idVille = null;
+            family.idSecteur = null;
+        }
+    }
+
+    return family;
 }
 
 /**

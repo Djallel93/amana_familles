@@ -1,13 +1,10 @@
 /**
- * @file src/services/familyUpdateService.js
- * @description Core family update functionality
+ * @file src/services/familyUpdateService.js (REFACTORED)
+ * @description Core family update functionality with quartier validation
  */
 
 /**
  * Update family by ID with partial data
- * @param {string} familyId - Family ID to update
- * @param {Object} updateData - Data to update (only non-empty fields)
- * @returns {Object} - Success status and details
  */
 function updateFamilyById(familyId, updateData) {
     try {
@@ -34,6 +31,7 @@ function updateFamilyById(familyId, updateData) {
         const existingData = data[targetRow - 1];
         const changes = [];
         let needsAddressValidation = false;
+        let quartierWarning = null;
 
         // Update name fields
         if (updateData.lastName) {
@@ -114,6 +112,18 @@ function updateFamilyById(familyId, updateData) {
                 sheet.getRange(targetRow, OUTPUT_COLUMNS.ADRESSE + 1).setValue(fullAddress);
                 sheet.getRange(targetRow, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue(addressValidation.quartierId || '');
                 changes.push('adresse');
+
+                // NEW: Check if quartier is invalid
+                if (addressValidation.quartierInvalid) {
+                    quartierWarning = addressValidation.warning;
+
+                    // If family is currently validated, change status to in-progress
+                    const currentStatus = existingData[OUTPUT_COLUMNS.ETAT_DOSSIER];
+                    if (currentStatus === CONFIG.STATUS.VALIDATED) {
+                        sheet.getRange(targetRow, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(CONFIG.STATUS.IN_PROGRESS);
+                        changes.push('statut (changé à En cours)');
+                    }
+                }
             }
         }
 
@@ -148,14 +158,17 @@ function updateFamilyById(familyId, updateData) {
 
         // Add comment
         const existingComment = existingData[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
-        const updateComment = `Mis à jour: ${changes.join(', ')} - ${new Date().toLocaleString('fr-FR')}`;
+        let updateComment = `Mis à jour: ${changes.join(', ')} - ${new Date().toLocaleString('fr-FR')}`;
+
+        if (quartierWarning) {
+            updateComment += `\n⚠️ ${quartierWarning}`;
+        }
+
         const newComment = existingComment ?
             `${existingComment}\n${updateComment}` :
             updateComment;
+
         sheet.getRange(targetRow, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
-        sheet.getRange(targetRow, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(
-            existingComment + updateComment
-        );
 
         // Sync with Google Contacts
         const contactData = {
@@ -180,7 +193,8 @@ function updateFamilyById(familyId, updateData) {
         return {
             success: true,
             familyId: familyId,
-            updatedFields: changes
+            updatedFields: changes,
+            quartierWarning: quartierWarning
         };
 
     } catch (error) {
@@ -227,7 +241,8 @@ function processManualUpdate(familyId, updateData) {
             return {
                 success: true,
                 familyId: result.familyId,
-                updatedFields: result.updatedFields
+                updatedFields: result.updatedFields,
+                quartierWarning: result.quartierWarning
             };
         } else {
             return {

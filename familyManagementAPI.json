@@ -1,1146 +1,397 @@
 {
+	"openapi": "3.0.0",
 	"info": {
-		"_postman_id": "f2f2f632-e35f-4ff3-8350-b2af00c14bde",
-		"name": "Family Delivery Management API",
-		"description": "API pour la gestion des familles bénéficiaires de livraisons.\n\nCette API permet d'accéder aux données des familles validées, avec filtrage par quartier, \néligibilité (Zakat, Sadaqa), et capacité de déplacement.\n\n**Base URL:** https://script.google.com/macros/s/{DEPLOYMENT_ID}/exec\n\n**Authentication:** Aucune (API publique)\n\n**Rate Limits:** Soumis aux quotas Google Apps Script\n\n**Support:** AMANA Organization\n\n\nContact Support:\n Name: Support AMANA\n Email: support@amana.org",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-		"_exporter_id": "15533722",
-		"_collection_link": "https://amana0.postman.co/workspace/Familles~e832afe6-4440-449a-af53-746be37f4430/collection/15533722-f2f2f632-e35f-4ff3-8350-b2af00c14bde?action=share&source=collection_link&creator=15533722"
+		"title": "Family Management API",
+		"description": "API de gestion des familles avec hiérarchie géographique à 3 niveaux (Ville > Secteur > Quartier)\n\n## 🔐 Authentification\n\nAucune authentification requise actuellement. L'API est accessible publiquement via l'URL de déploiement Google Apps Script.\n\n## 🌍 Intégration GEO API v5.0\n\nCette API s'appuie sur la GEO API v5.0 pour la résolution de localisation hiérarchique.\n\n## 📊 Hiérarchie Géographique\n\n- **Ville**: Niveau supérieur (ex: Nantes)\n- **Secteur**: Niveau intermédiaire (ex: Secteur Nord)\n- **Quartier**: Niveau inférieur (ex: Centre Ville)\n\n## 📈 Criticité\n\nLes familles sont évaluées sur une échelle de 0 à 5:\n- 0: Non évalué\n- 1-2: Faible/Modérée\n- 3: Moyenne\n- 4-5: Haute/Urgente",
+		"version": "2.0.0",
+		"contact": {
+			"name": "API Support",
+			"email": "support@example.com"
+		}
 	},
-	"item": [
+	"servers": [
 		{
-			"name": "ping",
-			"item": [
-				{
-					"name": "Vérifier que l'API fonctionne",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}?action=ping",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"query": [
-								{
-									"key": "action",
-									"value": "ping"
-								}
-							]
-						},
-						"description": "Endpoint simple pour vérifier que l'API est opérationnelle"
-					},
-					"response": [
-						{
-							"name": "API opérationnelle",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/ping?action=ping",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"ping"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "ping"
-										}
-									]
-								}
-							},
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"status\": \"ok\",\n  \"message\": \"Famille API operational\",\n  \"timestamp\": \"2025-01-15T10:30:00.000Z\"\n}"
-						}
-					]
+			"url": "https://script.google.com/macros/s/{DEPLOYMENT_ID}/exec",
+			"description": "Production server",
+			"variables": {
+				"DEPLOYMENT_ID": {
+					"default": "YOUR_DEPLOYMENT_ID",
+					"description": "Google Apps Script deployment ID"
 				}
-			]
-		},
-		{
-			"name": "allfamilies",
-			"item": [
-				{
-					"name": "Récupérer toutes les familles validées",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}?action=allfamilies",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"query": [
-								{
-									"key": "action",
-									"value": "allfamilies"
-								}
-							]
-						},
-						"description": "Retourne la liste complète de toutes les familles avec statut \"Validé\""
-					},
-					"response": [
-						{
-							"name": "Liste des familles",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/allfamilies?action=allfamilies",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"allfamilies"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "allfamilies"
-										}
-									]
-								}
-							},
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"count\": 25,\n  \"families\": [\n    {\n      \"id\": \"FAM_1698765432_123\",\n      \"nom\": \"Dupont\",\n      \"prenom\": \"Jean\",\n      \"zakatElFitr\": true,\n      \"sadaqa\": false,\n      \"nombreAdulte\": 2,\n      \"nombreEnfant\": 3,\n      \"adresse\": \"1 Rue de la Paix, 44000 Nantes\",\n      \"idQuartier\": 42,\n      \"seDeplace\": false,\n      \"email\": \"jean.dupont@example.com\",\n      \"telephone\": \"0612345678\",\n      \"telephoneBis\": \"0623456789\",\n      \"circonstances\": \"Famille en difficulté financière temporaire\",\n      \"ressentit\": \"Très reconnaissants de l'aide\",\n      \"specificites\": \"Allergie au gluten pour un enfant\"\n    },\n    {\n      \"id\": \"FAM_1698765432_123\",\n      \"nom\": \"Dupont\",\n      \"prenom\": \"Jean\",\n      \"zakatElFitr\": true,\n      \"sadaqa\": false,\n      \"nombreAdulte\": 2,\n      \"nombreEnfant\": 3,\n      \"adresse\": \"1 Rue de la Paix, 44000 Nantes\",\n      \"idQuartier\": 42,\n      \"seDeplace\": false,\n      \"email\": \"jean.dupont@example.com\",\n      \"telephone\": \"0612345678\",\n      \"telephoneBis\": \"0623456789\",\n      \"circonstances\": \"Famille en difficulté financière temporaire\",\n      \"ressentit\": \"Très reconnaissants de l'aide\",\n      \"specificites\": \"Allergie au gluten pour un enfant\"\n    }\n  ]\n}"
-						},
-						{
-							"name": "Ressource non trouvée",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/allfamilies?action=allfamilies",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"allfamilies"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "allfamilies"
-										}
-									]
-								}
-							},
-							"status": "Not Found",
-							"code": 404,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"error\": \"Missing id parameter\"\n}"
-						},
-						{
-							"name": "Erreur serveur interne",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/allfamilies?action=allfamilies",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"allfamilies"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "allfamilies"
-										}
-									]
-								}
-							},
-							"status": "Internal Server Error",
-							"code": 500,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"error\": \"Missing id parameter\"\n}"
-						}
-					]
-				}
-			]
-		},
-		{
-			"name": "familybyid",
-			"item": [
-				{
-					"name": "Récupérer une famille par son ID",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}?action=familybyid&id=FAM_1698765432_123",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"query": [
-								{
-									"key": "action",
-									"value": "familybyid"
-								},
-								{
-									"key": "id",
-									"value": "FAM_1698765432_123",
-									"description": "ID unique de la famille (format FAM_TIMESTAMP_RANDOM)"
-								}
-							]
-						},
-						"description": "Retourne les détails complets d'une famille spécifique"
-					},
-					"response": [
-						{
-							"name": "Détails de la famille",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/familybyid?action=familybyid&id=FAM_1698765432_123",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"familybyid"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "familybyid"
-										},
-										{
-											"key": "id",
-											"value": "FAM_1698765432_123",
-											"description": "ID unique de la famille (format FAM_TIMESTAMP_RANDOM)"
-										}
-									]
-								}
-							},
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"id\": \"FAM_1698765432_123\",\n  \"nom\": \"Dupont\",\n  \"prenom\": \"Jean\",\n  \"zakatElFitr\": true,\n  \"sadaqa\": false,\n  \"nombreAdulte\": 2,\n  \"nombreEnfant\": 3,\n  \"adresse\": \"1 Rue de la Paix, 44000 Nantes\",\n  \"idQuartier\": 42,\n  \"seDeplace\": false,\n  \"email\": \"jean.dupont@example.com\",\n  \"telephone\": \"0612345678\",\n  \"telephoneBis\": \"0623456789\",\n  \"circonstances\": \"Famille en difficulté financière temporaire\",\n  \"ressentit\": \"Très reconnaissants de l'aide\",\n  \"specificites\": \"Allergie au gluten pour un enfant\"\n}"
-						},
-						{
-							"name": "Requête invalide (paramètres manquants ou incorrects)",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/familybyid?action=familybyid&id=FAM_1698765432_123",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"familybyid"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "familybyid"
-										},
-										{
-											"key": "id",
-											"value": "FAM_1698765432_123",
-											"description": "ID unique de la famille (format FAM_TIMESTAMP_RANDOM)"
-										}
-									]
-								}
-							},
-							"status": "Bad Request",
-							"code": 400,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"error\": \"Missing id parameter\"\n}"
-						},
-						{
-							"name": "Famille non trouvée",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/familybyid?action=familybyid&id=FAM_1698765432_123",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"familybyid"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "familybyid"
-										},
-										{
-											"key": "id",
-											"value": "FAM_1698765432_123",
-											"description": "ID unique de la famille (format FAM_TIMESTAMP_RANDOM)"
-										}
-									]
-								}
-							},
-							"status": "Not Found",
-							"code": 404,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"error\": \"Missing id parameter\"\n}"
-						},
-						{
-							"name": "Erreur serveur interne",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/familybyid?action=familybyid&id=FAM_1698765432_123",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"familybyid"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "familybyid"
-										},
-										{
-											"key": "id",
-											"value": "FAM_1698765432_123",
-											"description": "ID unique de la famille (format FAM_TIMESTAMP_RANDOM)"
-										}
-									]
-								}
-							},
-							"status": "Internal Server Error",
-							"code": 500,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"error\": \"Missing id parameter\"\n}"
-						}
-					]
-				}
-			]
-		},
-		{
-			"name": "familyaddressbyid",
-			"item": [
-				{
-					"name": "Récupérer uniquement l'adresse d'une famille",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}?action=familyaddressbyid&id=FAM_1698765432_123",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"query": [
-								{
-									"key": "action",
-									"value": "familyaddressbyid"
-								},
-								{
-									"key": "id",
-									"value": "FAM_1698765432_123",
-									"description": "ID unique de la famille"
-								}
-							]
-						},
-						"description": "Retourne les informations d'adresse d'une famille (sans données sensibles)"
-					},
-					"response": [
-						{
-							"name": "Adresse de la famille",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/familyaddressbyid?action=familyaddressbyid&id=FAM_1698765432_123",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"familyaddressbyid"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "familyaddressbyid"
-										},
-										{
-											"key": "id",
-											"value": "FAM_1698765432_123",
-											"description": "ID unique de la famille"
-										}
-									]
-								}
-							},
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"id\": \"FAM_1698765432_123\",\n  \"nom\": \"Dupont\",\n  \"prenom\": \"Jean\",\n  \"adresse\": \"1 Rue de la Paix, 44000 Nantes\",\n  \"idQuartier\": 42\n}"
-						},
-						{
-							"name": "Requête invalide (paramètres manquants ou incorrects)",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/familyaddressbyid?action=familyaddressbyid&id=FAM_1698765432_123",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"familyaddressbyid"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "familyaddressbyid"
-										},
-										{
-											"key": "id",
-											"value": "FAM_1698765432_123",
-											"description": "ID unique de la famille"
-										}
-									]
-								}
-							},
-							"status": "Bad Request",
-							"code": 400,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"error\": \"Missing id parameter\"\n}"
-						},
-						{
-							"name": "Famille non trouvée",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/familyaddressbyid?action=familyaddressbyid&id=FAM_1698765432_123",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"familyaddressbyid"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "familyaddressbyid"
-										},
-										{
-											"key": "id",
-											"value": "FAM_1698765432_123",
-											"description": "ID unique de la famille"
-										}
-									]
-								}
-							},
-							"status": "Not Found",
-							"code": 404,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"error\": \"Missing id parameter\"\n}"
-						},
-						{
-							"name": "Erreur serveur interne",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/familyaddressbyid?action=familyaddressbyid&id=FAM_1698765432_123",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"familyaddressbyid"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "familyaddressbyid"
-										},
-										{
-											"key": "id",
-											"value": "FAM_1698765432_123",
-											"description": "ID unique de la famille"
-										}
-									]
-								}
-							},
-							"status": "Internal Server Error",
-							"code": 500,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"error\": \"Missing id parameter\"\n}"
-						}
-					]
-				}
-			]
-		},
-		{
-			"name": "familieszakatfitr",
-			"item": [
-				{
-					"name": "Familles éligibles pour Zakat El Fitr",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}?action=familieszakatfitr",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"query": [
-								{
-									"key": "action",
-									"value": "familieszakatfitr"
-								}
-							]
-						},
-						"description": "Retourne toutes les familles marquées comme éligibles pour Zakat El Fitr"
-					},
-					"response": [
-						{
-							"name": "Liste des familles éligibles",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/familieszakatfitr?action=familieszakatfitr",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"familieszakatfitr"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "familieszakatfitr"
-										}
-									]
-								}
-							},
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"count\": 25,\n  \"families\": [\n    {\n      \"id\": \"FAM_1698765432_123\",\n      \"nom\": \"Dupont\",\n      \"prenom\": \"Jean\",\n      \"zakatElFitr\": true,\n      \"sadaqa\": false,\n      \"nombreAdulte\": 2,\n      \"nombreEnfant\": 3,\n      \"adresse\": \"1 Rue de la Paix, 44000 Nantes\",\n      \"idQuartier\": 42,\n      \"seDeplace\": false,\n      \"email\": \"jean.dupont@example.com\",\n      \"telephone\": \"0612345678\",\n      \"telephoneBis\": \"0623456789\",\n      \"circonstances\": \"Famille en difficulté financière temporaire\",\n      \"ressentit\": \"Très reconnaissants de l'aide\",\n      \"specificites\": \"Allergie au gluten pour un enfant\"\n    },\n    {\n      \"id\": \"FAM_1698765432_123\",\n      \"nom\": \"Dupont\",\n      \"prenom\": \"Jean\",\n      \"zakatElFitr\": true,\n      \"sadaqa\": false,\n      \"nombreAdulte\": 2,\n      \"nombreEnfant\": 3,\n      \"adresse\": \"1 Rue de la Paix, 44000 Nantes\",\n      \"idQuartier\": 42,\n      \"seDeplace\": false,\n      \"email\": \"jean.dupont@example.com\",\n      \"telephone\": \"0612345678\",\n      \"telephoneBis\": \"0623456789\",\n      \"circonstances\": \"Famille en difficulté financière temporaire\",\n      \"ressentit\": \"Très reconnaissants de l'aide\",\n      \"specificites\": \"Allergie au gluten pour un enfant\"\n    }\n  ]\n}"
-						},
-						{
-							"name": "Erreur serveur interne",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/familieszakatfitr?action=familieszakatfitr",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"familieszakatfitr"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "familieszakatfitr"
-										}
-									]
-								}
-							},
-							"status": "Internal Server Error",
-							"code": 500,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"error\": \"Missing id parameter\"\n}"
-						}
-					]
-				}
-			]
-		},
-		{
-			"name": "familiessadaka",
-			"item": [
-				{
-					"name": "Familles éligibles pour Sadaqa",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}?action=familiessadaka",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"query": [
-								{
-									"key": "action",
-									"value": "familiessadaka"
-								}
-							]
-						},
-						"description": "Retourne toutes les familles marquées comme éligibles pour Sadaqa"
-					},
-					"response": [
-						{
-							"name": "Liste des familles éligibles",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/familiessadaka?action=familiessadaka",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"familiessadaka"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "familiessadaka"
-										}
-									]
-								}
-							},
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"count\": 25,\n  \"families\": [\n    {\n      \"id\": \"FAM_1698765432_123\",\n      \"nom\": \"Dupont\",\n      \"prenom\": \"Jean\",\n      \"zakatElFitr\": true,\n      \"sadaqa\": false,\n      \"nombreAdulte\": 2,\n      \"nombreEnfant\": 3,\n      \"adresse\": \"1 Rue de la Paix, 44000 Nantes\",\n      \"idQuartier\": 42,\n      \"seDeplace\": false,\n      \"email\": \"jean.dupont@example.com\",\n      \"telephone\": \"0612345678\",\n      \"telephoneBis\": \"0623456789\",\n      \"circonstances\": \"Famille en difficulté financière temporaire\",\n      \"ressentit\": \"Très reconnaissants de l'aide\",\n      \"specificites\": \"Allergie au gluten pour un enfant\"\n    },\n    {\n      \"id\": \"FAM_1698765432_123\",\n      \"nom\": \"Dupont\",\n      \"prenom\": \"Jean\",\n      \"zakatElFitr\": true,\n      \"sadaqa\": false,\n      \"nombreAdulte\": 2,\n      \"nombreEnfant\": 3,\n      \"adresse\": \"1 Rue de la Paix, 44000 Nantes\",\n      \"idQuartier\": 42,\n      \"seDeplace\": false,\n      \"email\": \"jean.dupont@example.com\",\n      \"telephone\": \"0612345678\",\n      \"telephoneBis\": \"0623456789\",\n      \"circonstances\": \"Famille en difficulté financière temporaire\",\n      \"ressentit\": \"Très reconnaissants de l'aide\",\n      \"specificites\": \"Allergie au gluten pour un enfant\"\n    }\n  ]\n}"
-						},
-						{
-							"name": "Erreur serveur interne",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/familiessadaka?action=familiessadaka",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"familiessadaka"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "familiessadaka"
-										}
-									]
-								}
-							},
-							"status": "Internal Server Error",
-							"code": 500,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"error\": \"Missing id parameter\"\n}"
-						}
-					]
-				}
-			]
-		},
-		{
-			"name": "familiesbyquartier",
-			"item": [
-				{
-					"name": "Familles d'un quartier spécifique",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}?action=familiesbyquartier&quartierId=42",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"query": [
-								{
-									"key": "action",
-									"value": "familiesbyquartier"
-								},
-								{
-									"key": "quartierId",
-									"value": "42",
-									"description": "ID du quartier (provenant de l'API GEO)"
-								}
-							]
-						},
-						"description": "Retourne toutes les familles d'un quartier donné"
-					},
-					"response": [
-						{
-							"name": "Liste des familles du quartier",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/familiesbyquartier?action=familiesbyquartier&quartierId=42",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"familiesbyquartier"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "familiesbyquartier"
-										},
-										{
-											"key": "quartierId",
-											"value": "42",
-											"description": "ID du quartier (provenant de l'API GEO)"
-										}
-									]
-								}
-							},
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"quartierId\": 42,\n  \"count\": 10,\n  \"families\": [\n    {\n      \"id\": \"FAM_1698765432_123\",\n      \"nom\": \"Dupont\",\n      \"prenom\": \"Jean\",\n      \"zakatElFitr\": true,\n      \"sadaqa\": false,\n      \"nombreAdulte\": 2,\n      \"nombreEnfant\": 3,\n      \"adresse\": \"1 Rue de la Paix, 44000 Nantes\",\n      \"idQuartier\": 42,\n      \"seDeplace\": false,\n      \"email\": \"jean.dupont@example.com\",\n      \"telephone\": \"0612345678\",\n      \"telephoneBis\": \"0623456789\",\n      \"circonstances\": \"Famille en difficulté financière temporaire\",\n      \"ressentit\": \"Très reconnaissants de l'aide\",\n      \"specificites\": \"Allergie au gluten pour un enfant\"\n    },\n    {\n      \"id\": \"FAM_1698765432_123\",\n      \"nom\": \"Dupont\",\n      \"prenom\": \"Jean\",\n      \"zakatElFitr\": true,\n      \"sadaqa\": false,\n      \"nombreAdulte\": 2,\n      \"nombreEnfant\": 3,\n      \"adresse\": \"1 Rue de la Paix, 44000 Nantes\",\n      \"idQuartier\": 42,\n      \"seDeplace\": false,\n      \"email\": \"jean.dupont@example.com\",\n      \"telephone\": \"0612345678\",\n      \"telephoneBis\": \"0623456789\",\n      \"circonstances\": \"Famille en difficulté financière temporaire\",\n      \"ressentit\": \"Très reconnaissants de l'aide\",\n      \"specificites\": \"Allergie au gluten pour un enfant\"\n    }\n  ]\n}"
-						},
-						{
-							"name": "Paramètre quartierId manquant",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/familiesbyquartier?action=familiesbyquartier&quartierId=42",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"familiesbyquartier"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "familiesbyquartier"
-										},
-										{
-											"key": "quartierId",
-											"value": "42",
-											"description": "ID du quartier (provenant de l'API GEO)"
-										}
-									]
-								}
-							},
-							"status": "Bad Request",
-							"code": 400,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"error\": \"Missing id parameter\"\n}"
-						},
-						{
-							"name": "Erreur serveur interne",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/familiesbyquartier?action=familiesbyquartier&quartierId=42",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"familiesbyquartier"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "familiesbyquartier"
-										},
-										{
-											"key": "quartierId",
-											"value": "42",
-											"description": "ID du quartier (provenant de l'API GEO)"
-										}
-									]
-								}
-							},
-							"status": "Internal Server Error",
-							"code": 500,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"error\": \"Missing id parameter\"\n}"
-						}
-					]
-				}
-			]
-		},
-		{
-			"name": "familiessedeplace",
-			"item": [
-				{
-					"name": "Familles qui peuvent se déplacer",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}?action=familiessedeplace",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"query": [
-								{
-									"key": "action",
-									"value": "familiessedeplace"
-								}
-							]
-						},
-						"description": "Retourne toutes les familles avec se_deplace = true"
-					},
-					"response": [
-						{
-							"name": "Liste des familles pouvant se déplacer",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/familiessedeplace?action=familiessedeplace",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"familiessedeplace"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "familiessedeplace"
-										}
-									]
-								}
-							},
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"count\": 25,\n  \"families\": [\n    {\n      \"id\": \"FAM_1698765432_123\",\n      \"nom\": \"Dupont\",\n      \"prenom\": \"Jean\",\n      \"zakatElFitr\": true,\n      \"sadaqa\": false,\n      \"nombreAdulte\": 2,\n      \"nombreEnfant\": 3,\n      \"adresse\": \"1 Rue de la Paix, 44000 Nantes\",\n      \"idQuartier\": 42,\n      \"seDeplace\": false,\n      \"email\": \"jean.dupont@example.com\",\n      \"telephone\": \"0612345678\",\n      \"telephoneBis\": \"0623456789\",\n      \"circonstances\": \"Famille en difficulté financière temporaire\",\n      \"ressentit\": \"Très reconnaissants de l'aide\",\n      \"specificites\": \"Allergie au gluten pour un enfant\"\n    },\n    {\n      \"id\": \"FAM_1698765432_123\",\n      \"nom\": \"Dupont\",\n      \"prenom\": \"Jean\",\n      \"zakatElFitr\": true,\n      \"sadaqa\": false,\n      \"nombreAdulte\": 2,\n      \"nombreEnfant\": 3,\n      \"adresse\": \"1 Rue de la Paix, 44000 Nantes\",\n      \"idQuartier\": 42,\n      \"seDeplace\": false,\n      \"email\": \"jean.dupont@example.com\",\n      \"telephone\": \"0612345678\",\n      \"telephoneBis\": \"0623456789\",\n      \"circonstances\": \"Famille en difficulté financière temporaire\",\n      \"ressentit\": \"Très reconnaissants de l'aide\",\n      \"specificites\": \"Allergie au gluten pour un enfant\"\n    }\n  ]\n}"
-						},
-						{
-							"name": "Erreur serveur interne",
-							"originalRequest": {
-								"method": "GET",
-								"header": [
-									{
-										"key": "Accept",
-										"value": "application/json"
-									}
-								],
-								"url": {
-									"raw": "{{baseUrl}}/familiessedeplace?action=familiessedeplace",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"familiessedeplace"
-									],
-									"query": [
-										{
-											"key": "action",
-											"value": "familiessedeplace"
-										}
-									]
-								}
-							},
-							"status": "Internal Server Error",
-							"code": 500,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-							"cookie": [],
-							"body": "{\n  \"error\": \"Missing id parameter\"\n}"
-						}
-					]
-				}
-			]
+			}
 		}
 	],
-	"variable": [
+	"tags": [
 		{
-			"key": "deploymentId",
-			"value": "YOUR_DEPLOYMENT_ID"
+			"name": "Familles",
+			"description": "Opérations sur les familles validées"
 		},
 		{
-			"key": "baseUrl",
-			"value": "https://script.google.com/macros/s/{{deploymentId}}/exec"
+			"name": "Filtres Géographiques",
+			"description": "Filtrage par localisation (Ville, Secteur, Quartier)"
+		},
+		{
+			"name": "Filtres Spécifiques",
+			"description": "Filtres par criticité, aide, mobilité"
+		},
+		{
+			"name": "Utilitaires",
+			"description": "Endpoints de test et maintenance"
 		}
-	]
+	],
+	"paths": {
+		"/": {
+			"get": {
+				"summary": "Endpoint principal",
+				"description": "Point d'entrée de l'API - utilisez le paramètre 'action' pour spécifier l'opération",
+				"parameters": [
+					{
+						"name": "action",
+						"in": "query",
+						"required": true,
+						"description": "Action à effectuer",
+						"schema": {
+							"type": "string",
+							"enum": [
+								"ping",
+								"allfamilies",
+								"familybyid",
+								"familyaddressbyid",
+								"familieszakatfitr",
+								"familiessadaka",
+								"familiesbyquartier",
+								"familiesbysecteur",
+								"familiesbyville",
+								"familiessedeplace",
+								"familiesbycriticite"
+							]
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Succès"
+					},
+					"400": {
+						"description": "Requête invalide",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	},
+	"components": {
+		"schemas": {
+			"Family": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Identifiant unique de la famille",
+						"example": "12345"
+					},
+					"nom": {
+						"type": "string",
+						"description": "Nom de famille",
+						"example": "Dupont"
+					},
+					"prenom": {
+						"type": "string",
+						"description": "Prénom de la personne de contact",
+						"example": "Jean"
+					},
+					"zakatElFitr": {
+						"type": "boolean",
+						"description": "Éligible à la Zakat El Fitr",
+						"example": true
+					},
+					"sadaqa": {
+						"type": "boolean",
+						"description": "Éligible à la Sadaqa",
+						"example": true
+					},
+					"nombreAdulte": {
+						"type": "integer",
+						"description": "Nombre d'adultes dans le foyer",
+						"example": 2,
+						"minimum": 0
+					},
+					"nombreEnfant": {
+						"type": "integer",
+						"description": "Nombre d'enfants dans le foyer",
+						"example": 3,
+						"minimum": 0
+					},
+					"adresse": {
+						"type": "string",
+						"description": "Adresse complète formatée",
+						"example": "10 rue de la Paix, 44000, Nantes"
+					},
+					"idVille": {
+						"type": "string",
+						"nullable": true,
+						"description": "Identifiant de la ville (GEO API v5.0)",
+						"example": "1"
+					},
+					"idSecteur": {
+						"type": "string",
+						"nullable": true,
+						"description": "Identifiant du secteur (GEO API v5.0)",
+						"example": "SEC_1"
+					},
+					"idQuartier": {
+						"type": "string",
+						"nullable": true,
+						"description": "Identifiant du quartier (GEO API v5.0)",
+						"example": "3"
+					},
+					"seDeplace": {
+						"type": "boolean",
+						"description": "La famille peut se déplacer",
+						"example": false
+					},
+					"email": {
+						"type": "string",
+						"format": "email",
+						"nullable": true,
+						"description": "Email de contact",
+						"example": "jean.dupont@example.com"
+					},
+					"telephone": {
+						"type": "string",
+						"description": "Téléphone principal (format: +33 (0) X XX XX XX XX)",
+						"example": "+33 (0) 6 12 34 56 78"
+					},
+					"telephoneBis": {
+						"type": "string",
+						"nullable": true,
+						"description": "Téléphone secondaire",
+						"example": "+33 (0) 6 98 76 54 32"
+					},
+					"circonstances": {
+						"type": "string",
+						"nullable": true,
+						"description": "Description de la situation actuelle"
+					},
+					"ressentit": {
+						"type": "string",
+						"nullable": true,
+						"description": "Notes ou observations"
+					},
+					"specificites": {
+						"type": "string",
+						"nullable": true,
+						"description": "Besoins particuliers, allergies, etc."
+					},
+					"criticite": {
+						"type": "integer",
+						"description": "Niveau de criticité (0=non évalué, 5=urgente)",
+						"minimum": 0,
+						"maximum": 5,
+						"example": 3
+					},
+					"distance": {
+						"type": "number",
+						"nullable": true,
+						"description": "Distance en km depuis le point de référence (si orderBy=distance)",
+						"example": 5.2
+					}
+				},
+				"required": [
+					"id",
+					"nom",
+					"prenom",
+					"nombreAdulte",
+					"nombreEnfant",
+					"telephone",
+					"criticite"
+				]
+			},
+			"FamilyAddress": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"example": "12345"
+					},
+					"nom": {
+						"type": "string",
+						"example": "Dupont"
+					},
+					"prenom": {
+						"type": "string",
+						"example": "Jean"
+					},
+					"adresse": {
+						"type": "string",
+						"example": "10 rue de la Paix, 44000, Nantes"
+					},
+					"idVille": {
+						"type": "string",
+						"nullable": true,
+						"example": "1"
+					},
+					"idSecteur": {
+						"type": "string",
+						"nullable": true,
+						"example": "SEC_1"
+					},
+					"idQuartier": {
+						"type": "string",
+						"nullable": true,
+						"example": "3"
+					},
+					"criticite": {
+						"type": "integer",
+						"example": 3
+					}
+				}
+			},
+			"FamilyListResponse": {
+				"type": "object",
+				"properties": {
+					"count": {
+						"type": "integer",
+						"description": "Nombre de familles retournées",
+						"example": 150
+					},
+					"orderBy": {
+						"type": "string",
+						"description": "Méthode de tri appliquée",
+						"enum": [
+							"none",
+							"criticite",
+							"distance"
+						],
+						"example": "criticite"
+					},
+					"families": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/Family"
+						}
+					}
+				}
+			},
+			"FilteredFamilyListResponse": {
+				"type": "object",
+				"properties": {
+					"villeId": {
+						"type": "string",
+						"description": "ID de la ville filtrée (si applicable)"
+					},
+					"secteurId": {
+						"type": "string",
+						"description": "ID du secteur filtré (si applicable)"
+					},
+					"quartierId": {
+						"type": "string",
+						"description": "ID du quartier filtré (si applicable)"
+					},
+					"criticite": {
+						"type": "integer",
+						"description": "Niveau de criticité filtré (si applicable)"
+					},
+					"count": {
+						"type": "integer",
+						"description": "Nombre de familles retournées"
+					},
+					"families": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/Family"
+						}
+					}
+				}
+			},
+			"PingResponse": {
+				"type": "object",
+				"properties": {
+					"status": {
+						"type": "string",
+						"example": "ok"
+					},
+					"message": {
+						"type": "string",
+						"example": "Famille API operational"
+					},
+					"version": {
+						"type": "string",
+						"example": "2.0"
+					},
+					"geoApiVersion": {
+						"type": "string",
+						"example": "5.0"
+					},
+					"timestamp": {
+						"type": "string",
+						"format": "date-time",
+						"example": "2025-11-04T10:30:00.000Z"
+					}
+				}
+			},
+			"Error": {
+				"type": "object",
+				"properties": {
+					"error": {
+						"type": "string",
+						"description": "Message d'erreur",
+						"example": "Missing action parameter"
+					}
+				}
+			}
+		},
+		"parameters": {
+			"ActionParam": {
+				"name": "action",
+				"in": "query",
+				"required": true,
+				"description": "Action à effectuer",
+				"schema": {
+					"type": "string"
+				}
+			},
+			"OrderByParam": {
+				"name": "orderBy",
+				"in": "query",
+				"required": false,
+				"description": "Méthode de tri",
+				"schema": {
+					"type": "string",
+					"enum": [
+						"criticite",
+						"distance"
+					]
+				}
+			},
+			"LatParam": {
+				"name": "lat",
+				"in": "query",
+				"required": false,
+				"description": "Latitude du point de référence (requis si orderBy=distance)",
+				"schema": {
+					"type": "number",
+					"format": "double",
+					"example": 47.2173
+				}
+			},
+			"LngParam": {
+				"name": "lng",
+				"in": "query",
+				"required": false,
+				"description": "Longitude du point de référence (requis si orderBy=distance)",
+				"schema": {
+					"type": "number",
+					"format": "double",
+					"example": -1.5536
+				}
+			}
+		}
+	}
 }

@@ -1,5 +1,5 @@
 /**
- * @file src/core/config.js (REFACTORED)
+ * @file src/core/config.js (Updated for GEO API v5.0 - NO SCHEMA CHANGES)
  * @description 🎯 Configuration centrale avec génération d'ID auto-incrémentée
  */
 
@@ -58,9 +58,10 @@ const CONFIG = {
         FORMS_API_BASE_URL: 'https://forms.googleapis.com/v1'
     },
 
-    // 🌍 Configuration API géographique
+    // 🌍 Configuration API géographique v5.0
     GEO_API: {
-        MAX_DISTANCE: 50 // km
+        VERSION: '5.0',
+        MAX_DISTANCE: 50 // km (used for legacy compatibility)
     },
 
     // 🚫 Phrases de refus de consentement
@@ -90,7 +91,7 @@ const BULK_COLUMNS = {
     RESSENTIT: 11,
     SPECIFICITES: 12,
     CRITICITE: 13,
-    COMMENTAIRE: 14 // ⚠️ Removed STATUT
+    COMMENTAIRE: 14
 };
 
 // 🗂️ Indices de colonnes pour Bulk Update (0-based)
@@ -110,7 +111,7 @@ const BULK_UPDATE_COLUMNS = {
     RESSENTIT: 12,
     SPECIFICITES: 13,
     CRITICITE: 14,
-    COMMENTAIRE: 15 // ⚠️ Removed STATUT
+    COMMENTAIRE: 15
 };
 
 // 🌐 Mappage multilingue des colonnes
@@ -195,6 +196,7 @@ const COLUMN_MAP = {
 };
 
 // 🗂️ Indices de colonnes pour la feuille de sortie (0-based)
+// ✅ NO CHANGES - Schema remains identical
 const OUTPUT_COLUMNS = {
     ID: 0,
     NOM: 1,
@@ -204,7 +206,7 @@ const OUTPUT_COLUMNS = {
     NOMBRE_ADULTE: 5,
     NOMBRE_ENFANT: 6,
     ADRESSE: 7,
-    ID_QUARTIER: 8,
+    ID_QUARTIER: 8,        // UNCHANGED - Still in position 8
     SE_DEPLACE: 9,
     EMAIL: 10,
     TELEPHONE: 11,
@@ -244,9 +246,8 @@ function getScriptConfig() {
         gestionFamillesFolderId: getProperty('GESTION_FAMILLES_FOLDER_ID'),
         spreadsheetId: getProperty('SPREADSHEET_ID'),
         geoApiUrl: getProperty('GEO_API_URL'),
-        referenceLatitude: parseFloat(getProperty('REFERENCE_LATITUDE')) || null,
-        referenceLongitude: parseFloat(getProperty('REFERENCE_LONGITUDE')) || null,
-        adminEmail: getProperty('ADMIN_EMAIL') // ✨ NEW: Email de l'administrateur
+        geoApiKey: getProperty('GEO_API_KEY'), // NEW: API Key required for v5.0
+        adminEmail: getProperty('ADMIN_EMAIL')
     };
 }
 
@@ -257,17 +258,15 @@ function generateFamilyId() {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
     if (!sheet) {
         logError('❌ Impossible de trouver la feuille Famille pour générer l\'ID');
-        return Date.now(); // Fallback: timestamp
+        return Date.now();
     }
 
     const data = sheet.getDataRange().getValues();
     let maxId = 0;
 
-    // 🔍 Parcourir toutes les lignes pour trouver le dernier ID
     for (let i = 1; i < data.length; i++) {
         const id = data[i][OUTPUT_COLUMNS.ID];
         if (id) {
-            // Convertir en nombre (gère les formats string et number)
             const num = parseInt(id);
             if (!isNaN(num) && num > maxId) {
                 maxId = num;
@@ -275,7 +274,6 @@ function generateFamilyId() {
         }
     }
 
-    // ➕ Incrémenter et retourner le nouvel ID (numérique)
     const newId = maxId + 1;
     logInfo(`🆔 Nouvel ID généré: ${newId} (précédent max: ${maxId})`);
     return newId;

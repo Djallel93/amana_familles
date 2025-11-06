@@ -1,6 +1,6 @@
 /**
- * @file src/ui/helpers.js
- * @description 🛠️ Fonctions utilitaires UI avec insertion dans la dernière ligne vide
+ * @file src/ui/helpers.js (UPDATED for GEO API v5.0)
+ * @description 🛠️ Fonctions utilitaires UI avec support hiérarchie 3 niveaux
  */
 
 /**
@@ -10,7 +10,6 @@ function processManualEntry(formData) {
     try {
         logInfo('📝 Traitement d\'une entrée manuelle', formData);
 
-        // ⚠️ Valider la criticité
         const criticite = parseInt(formData.criticite);
         if (isNaN(criticite) || criticite < CONFIG.CRITICITE.MIN || criticite > CONFIG.CRITICITE.MAX) {
             return {
@@ -19,7 +18,6 @@ function processManualEntry(formData) {
             };
         }
 
-        // ✅ Valider les champs requis
         const fieldValidation = validateRequiredFields(formData);
         if (!fieldValidation.isValid) {
             return {
@@ -28,7 +26,6 @@ function processManualEntry(formData) {
             };
         }
 
-        // 🏠 Valider l'adresse
         const addressValidation = validateAddressAndGetQuartier(
             formData.address,
             formData.postalCode,
@@ -42,7 +39,6 @@ function processManualEntry(formData) {
             };
         }
 
-        // 🔍 Vérifier les doublons
         const duplicate = findDuplicateFamily(
             formData.phone,
             formData.lastName,
@@ -59,19 +55,20 @@ function processManualEntry(formData) {
             };
         }
 
-        // 🆔 Générer un nouvel ID auto-incrémenté
         const familyId = generateFamilyId();
 
-        // 💾 Écrire dans la feuille Famille
         writeToFamilySheet(formData, {
             status: CONFIG.STATUS.VALIDATED,
             familyId: familyId,
+            villeId: addressValidation.villeId,
+            secteurId: addressValidation.secteurId,
             quartierId: addressValidation.quartierId,
+            villeName: addressValidation.villeName,
+            secteurName: addressValidation.secteurName,
             quartierName: addressValidation.quartierName,
             criticite: criticite
         });
 
-        // 📇 Synchroniser avec Google Contacts
         const contactData = {
             id: familyId,
             nom: formData.lastName,
@@ -84,10 +81,9 @@ function processManualEntry(formData) {
 
         syncFamilyContact(contactData);
 
-        // 📧 Notifier l'administrateur
         notifyAdmin(
             '✅ Nouvelle famille ajoutée manuellement',
-            `ID: ${familyId}\nNom: ${formData.lastName} ${formData.firstName}\nTéléphone: ${normalizePhone(formData.phone)}\nAdresse: ${formData.address}, ${formData.postalCode} ${formData.city}\nQuartier: ${addressValidation.quartierName || 'Non assigné'}\nCriticité: ${criticite}`
+            `ID: ${familyId}\nNom: ${formData.lastName} ${formData.firstName}\nTéléphone: ${normalizePhone(formData.phone)}\nAdresse: ${formData.address}, ${formData.postalCode} ${formData.city}\nVille: ${addressValidation.villeName || 'Non assignée'}\nSecteur: ${addressValidation.secteurName || 'Non assigné'}\nQuartier: ${addressValidation.quartierName || 'Non assigné'}\nCriticité: ${criticite}`
         );
 
         logInfo('✅ Entrée manuelle traitée avec succès', { familyId, criticite });
@@ -95,7 +91,11 @@ function processManualEntry(formData) {
         return {
             success: true,
             familyId: familyId,
+            villeId: addressValidation.villeId,
+            secteurId: addressValidation.secteurId,
             quartierId: addressValidation.quartierId,
+            villeName: addressValidation.villeName,
+            secteurName: addressValidation.secteurName,
             quartierName: addressValidation.quartierName,
             criticite: criticite
         };
@@ -181,7 +181,9 @@ function calculateStatistics() {
             rejected: 0,
             totalAdults: 0,
             totalChildren: 0,
-            byCriticite: {}
+            byCriticite: {},
+            byVille: {},
+            bySecteur: {}
         };
     }
 
@@ -193,20 +195,17 @@ function calculateStatistics() {
         rejected: 0,
         totalAdults: 0,
         totalChildren: 0,
-        byCriticite: {
-            0: 0,
-            1: 0,
-            2: 0,
-            3: 0,
-            4: 0,
-            5: 0
-        }
+        byCriticite: { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+        byVille: {},
+        bySecteur: {}
     };
 
     for (let i = 1; i < data.length; i++) {
         const row = data[i];
         const status = row[OUTPUT_COLUMNS.ETAT_DOSSIER];
         const criticite = parseInt(row[OUTPUT_COLUMNS.CRITICITE]) || 0;
+        const villeId = row[OUTPUT_COLUMNS.ID_VILLE];
+        const secteurId = row[OUTPUT_COLUMNS.ID_SECTEUR];
 
         if (status === CONFIG.STATUS.VALIDATED) stats.validated++;
         if (status === CONFIG.STATUS.IN_PROGRESS) stats.inProgress++;
@@ -217,6 +216,14 @@ function calculateStatistics() {
 
         if (criticite >= 0 && criticite <= 5) {
             stats.byCriticite[criticite]++;
+        }
+
+        if (villeId) {
+            stats.byVille[villeId] = (stats.byVille[villeId] || 0) + 1;
+        }
+
+        if (secteurId) {
+            stats.bySecteur[secteurId] = (stats.bySecteur[secteurId] || 0) + 1;
         }
     }
 
@@ -233,6 +240,7 @@ function clearAllCaches() {
 
 /**
  * 💾 Écrire des données dans la feuille Famille (DERNIÈRE LIGNE VIDE)
+ * UPDATED: Now includes Ville and Secteur IDs
  */
 function writeToFamilySheet(formData, options = {}) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -244,7 +252,11 @@ function writeToFamilySheet(formData, options = {}) {
         status = CONFIG.STATUS.IN_PROGRESS,
         comment = '',
         familyId = generateFamilyId(),
+        villeId = null,
+        secteurId = null,
         quartierId = null,
+        villeName = '',
+        secteurName = '',
         quartierName = '',
         identityIds = [],
         cafIds = [],
@@ -252,12 +264,11 @@ function writeToFamilySheet(formData, options = {}) {
         criticite = 0
     } = options;
 
-    // 📞 Normaliser les téléphones au format standardisé
     const normalizedPhone = normalizePhone(formData.phone);
     const normalizedPhoneBis = formData.phoneBis ? normalizePhone(formData.phoneBis) : '';
 
-    // 🔨 Construire la ligne de données
-    const row = Array(21).fill('');
+    // UPDATED: Array now has 23 elements (added villeId and secteurId)
+    const row = Array(23).fill('');
     row[OUTPUT_COLUMNS.ID] = familyId;
     row[OUTPUT_COLUMNS.NOM] = formData.lastName || '';
     row[OUTPUT_COLUMNS.PRENOM] = formData.firstName || '';
@@ -266,6 +277,8 @@ function writeToFamilySheet(formData, options = {}) {
     row[OUTPUT_COLUMNS.NOMBRE_ADULTE] = parseInt(formData.nombreAdulte) || 0;
     row[OUTPUT_COLUMNS.NOMBRE_ENFANT] = parseInt(formData.nombreEnfant) || 0;
     row[OUTPUT_COLUMNS.ADRESSE] = `${formData.address}, ${formData.postalCode} ${formData.city}`;
+    row[OUTPUT_COLUMNS.ID_VILLE] = villeId || '';           // NEW
+    row[OUTPUT_COLUMNS.ID_SECTEUR] = secteurId || '';       // NEW
     row[OUTPUT_COLUMNS.ID_QUARTIER] = quartierId || '';
     row[OUTPUT_COLUMNS.SE_DEPLACE] = false;
     row[OUTPUT_COLUMNS.EMAIL] = formData.email || '';
@@ -280,11 +293,9 @@ function writeToFamilySheet(formData, options = {}) {
     row[OUTPUT_COLUMNS.ETAT_DOSSIER] = status;
     row[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] = comment;
 
-    // 🎯 NOUVEAU: Insérer dans la dernière ligne vide au lieu d'append
     const lastEmptyRow = getLastEmptyRow(sheet);
     sheet.getRange(lastEmptyRow, 1, 1, row.length).setValues([row]);
 
-    // 🗑️ Effacer le cache de doublons
     const cache = CacheService.getScriptCache();
     const cacheKey = `dup_${normalizedPhone.replace(/[\s\(\)]/g, '')}_${formData.lastName.toLowerCase().trim()}`;
     cache.remove(cacheKey);
@@ -296,6 +307,7 @@ function writeToFamilySheet(formData, options = {}) {
 
 /**
  * 🔄 Mettre à jour une famille existante
+ * UPDATED: Now updates Ville and Secteur IDs
  */
 function updateExistingFamily(duplicate, formData, addressValidation, docValidation) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -305,7 +317,6 @@ function updateExistingFamily(duplicate, formData, addressValidation, docValidat
     const existingData = duplicate.data;
     const changes = [];
 
-    // 📞 Mettre à jour le téléphone
     const newPhone = normalizePhone(formData.phone);
     const oldPhone = normalizePhone(String(existingData[OUTPUT_COLUMNS.TELEPHONE]));
     if (newPhone !== oldPhone) {
@@ -313,16 +324,16 @@ function updateExistingFamily(duplicate, formData, addressValidation, docValidat
         changes.push('téléphone');
     }
 
-    // 🏠 Mettre à jour l'adresse
     const newAddress = `${formData.address}, ${formData.postalCode} ${formData.city}`;
     const oldAddress = existingData[OUTPUT_COLUMNS.ADRESSE] || '';
     if (newAddress !== oldAddress) {
         sheet.getRange(row, OUTPUT_COLUMNS.ADRESSE + 1).setValue(newAddress);
+        sheet.getRange(row, OUTPUT_COLUMNS.ID_VILLE + 1).setValue(addressValidation.villeId || '');
+        sheet.getRange(row, OUTPUT_COLUMNS.ID_SECTEUR + 1).setValue(addressValidation.secteurId || '');
         sheet.getRange(row, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue(addressValidation.quartierId || '');
         changes.push('adresse');
     }
 
-    // 📄 Mettre à jour les documents
     if (docValidation.identityIds.length > 0) {
         sheet.getRange(row, OUTPUT_COLUMNS.IDENTITE + 1).setValue(formatDocumentLinks(docValidation.identityIds));
         changes.push('documents d\'identité');
@@ -333,7 +344,6 @@ function updateExistingFamily(duplicate, formData, addressValidation, docValidat
         changes.push('documents CAF');
     }
 
-    // ✉️ Mettre à jour l'email
     if (formData.email) {
         const newEmail = formData.email.toLowerCase().trim();
         const oldEmail = (existingData[OUTPUT_COLUMNS.EMAIL] || '').toLowerCase().trim();
@@ -343,14 +353,12 @@ function updateExistingFamily(duplicate, formData, addressValidation, docValidat
         }
     }
 
-    // 📝 Ajouter un commentaire
     const comment = `Mis à jour: ${changes.join(', ')} - ${new Date().toLocaleString('fr-FR')}`;
     const existingComment = existingData[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
     sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(
         existingComment + '\n' + comment
     );
 
-    // 🔄 Mettre à jour le statut
     sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(CONFIG.STATUS.IN_PROGRESS);
 
     logInfo(`🔄 Famille mise à jour`, { id: duplicate.id, changes });

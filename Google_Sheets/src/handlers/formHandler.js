@@ -1,13 +1,10 @@
 /**
- * @file src/handlers/formHandler.js
- * @description 📋 Gestionnaire unifié pour toutes les soumissions de formulaire (INSERT et UPDATE)
+ * @file src/handlers/formHandler.js (REFACTORED)
+ * @description Unified form submission handler with quartier validation
  */
 
 /**
- * 📝 Gestionnaire unifié de soumission de formulaire
- * Route automatiquement vers INSERT ou UPDATE selon le contenu du formulaire
- * 
- * @param {Object} e - Objet événement de soumission
+ * Unified form submission handler
  */
 function onFormSubmit(e) {
     try {
@@ -15,31 +12,30 @@ function onFormSubmit(e) {
         const sheetName = sheet.getName();
         const row = e.range.getRow();
 
-        logInfo(`📋 Traitement de la feuille: ${sheetName}, ligne: ${row}`);
+        logInfo(`📋 Processing sheet: ${sheetName}, row: ${row}`);
 
-        // 🚫 Ignorer la feuille Famille (feuille de sortie uniquement)
+        // Ignore output sheet
         if (sheetName === CONFIG.SHEETS.FAMILLE) {
-            logInfo('⏭️ Feuille Famille ignorée - sortie uniquement');
+            logInfo('⏭️ Famille sheet ignored - output only');
             return;
         }
 
-        // 📊 Parser les données du formulaire
+        // Parse form data
         const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
         const values = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
         const formData = parseFormResponse(headers, values);
 
-        // 🚫 NOUVEAU: Vérifier le refus de consentement
+        // Check consent refusal
         if (isConsentRefused(formData)) {
-            logInfo('🚫 Soumission ignorée: l\'utilisateur a refusé le consentement');
-            return; // Ne rien faire, ne pas notifier, ne pas logger
+            logInfo('🚫 Submission ignored: user refused consent');
+            return;
         }
 
-        // 🔍 Détection automatique du type de formulaire
+        // Detect form type
         const formType = detectFormType(formData, sheetName);
+        logInfo(`🎯 Form type detected: ${formType}`);
 
-        logInfo(`🎯 Type de formulaire détecté: ${formType}`);
-
-        // 🔀 Router vers le gestionnaire approprié
+        // Route to appropriate handler
         if (formType === 'UPDATE') {
             processUpdate(formData, sheet, row);
         } else {
@@ -47,65 +43,49 @@ function onFormSubmit(e) {
         }
 
     } catch (error) {
-        logError('❌ Échec du traitement de la soumission', error);
-        notifyAdmin('❌ Erreur de traitement', `Erreur: ${error.toString()}\nFeuille: ${e.range.getSheet().getName()}\nLigne: ${e.range.getRow()}`);
+        logError('❌ Form submission processing failed', error);
+        notifyAdmin('❌ Form Processing Error', `Error: ${error.toString()}\nSheet: ${e.range.getSheet().getName()}\nRow: ${e.range.getRow()}`);
     }
 }
 
 /**
- * 🔍 Détecter s'il s'agit d'un formulaire INSERT ou UPDATE
- * 
- * @param {Object} formData - Données du formulaire parsées
- * @param {string} sheetName - Nom de la feuille
- * @returns {string} - 'INSERT' ou 'UPDATE'
+ * Detect if form is INSERT or UPDATE
  */
 function detectFormType(formData, sheetName) {
-    // 🔍 Vérification 1: Le formulaire contient-il un ID de famille?
+    // Check for family ID
     const hasFamilyId = !!(formData.familyId || formData.id);
 
     if (hasFamilyId) {
-        logInfo('🆔 ID famille détecté dans les données - formulaire UPDATE');
+        logInfo('🆔 Family ID detected - UPDATE form');
         return 'UPDATE';
     }
 
-    // 🔍 Vérification 2: Le nom de la feuille contient des mots-clés de mise à jour?
+    // Check sheet name for update keywords
     const updateKeywords = [
-        'update',
-        'mise à jour',
-        'mise a jour',
-        'maj',
-        'modification',
-        'تحديث',
-        'actualisation',
-        'modifier'
+        'update', 'mise à jour', 'mise a jour', 'maj', 'modification',
+        'تحديث', 'actualisation', 'modifier'
     ];
 
     const lowerName = sheetName.toLowerCase();
     const isUpdateSheet = updateKeywords.some(keyword => lowerName.includes(keyword));
 
     if (isUpdateSheet) {
-        logInfo('🔤 Mot-clé de mise à jour détecté dans le nom de la feuille - formulaire UPDATE');
+        logInfo('🔤 Update keyword detected in sheet name - UPDATE form');
         return 'UPDATE';
     }
 
-    // ➕ Par défaut: formulaire INSERT
-    logInfo('➕ Aucun indicateur de mise à jour trouvé - formulaire INSERT');
+    logInfo('➕ No update indicator found - INSERT form');
     return 'INSERT';
 }
 
 /**
- * ➕ Traiter une soumission INSERT (nouvelle famille)
- * 
- * @param {Object} formData - Données du formulaire parsées
- * @param {Sheet} sheet - Feuille source
- * @param {number} row - Numéro de ligne source
- * @param {string} sheetName - Nom de la feuille
+ * Process INSERT submission (new family)
  */
 function processInsert(formData, sheet, row, sheetName) {
     try {
-        logInfo('➕ Traitement d\'une soumission INSERT');
+        logInfo('➕ Processing INSERT submission');
 
-        // ✅ Valider les champs requis
+        // Validate required fields
         const fieldValidation = validateRequiredFields(formData);
         if (!fieldValidation.isValid) {
             writeToFamilySheet(formData, {
@@ -113,12 +93,12 @@ function processInsert(formData, sheet, row, sheetName) {
                 comment: `Champs requis manquants: ${fieldValidation.errors.join(', ')}`,
                 criticite: 0
             });
-            notifyAdmin('⚠️ Soumission rejetée', `Raison: ${fieldValidation.errors.join(', ')}\nNom: ${formData.lastName} ${formData.firstName}`);
+            notifyAdmin('⚠️ Submission Rejected', `Reason: ${fieldValidation.errors.join(', ')}\nName: ${formData.lastName} ${formData.firstName}`);
             return;
         }
 
-        // 🏠 Valider l'adresse
-        logInfo('🏠 Validation de l\'adresse');
+        // Validate address
+        logInfo('🏠 Validating address');
         const addressValidation = validateAddressAndGetQuartier(
             formData.address,
             formData.postalCode,
@@ -131,14 +111,27 @@ function processInsert(formData, sheet, row, sheetName) {
                 comment: `Adresse invalide: ${addressValidation.error}`,
                 criticite: 0
             });
-            notifyAdmin('⚠️ Soumission rejetée', `Adresse invalide\nFamille: ${formData.lastName} ${formData.firstName}\nAdresse: ${formData.address}`);
+            notifyAdmin('⚠️ Submission Rejected', `Invalid address\nFamily: ${formData.lastName} ${formData.firstName}\nAddress: ${formData.address}`);
             return;
         }
 
-        logInfo('✅ Adresse validée avec succès');
+        logInfo('✅ Address validated successfully');
 
-        // 📄 Valider les documents
-        logInfo('📄 Validation des documents');
+        // NEW: Check if quartier is invalid in GEO API
+        let status = CONFIG.STATUS.IN_PROGRESS;
+        let comment = '';
+
+        if (addressValidation.quartierInvalid) {
+            status = CONFIG.STATUS.IN_PROGRESS; // Keep as in-progress
+            comment = `⚠️ ATTENTION: ${addressValidation.warning}\n` +
+                `Quartier ID "${addressValidation.quartierId}" n'existe pas dans l'API GEO.\n` +
+                `Vérifier l'adresse avant validation.`;
+
+            logWarning(`Quartier invalid for new family: ${addressValidation.quartierId}`);
+        }
+
+        // Validate documents
+        logInfo('📄 Validating documents');
         const docValidation = validateDocuments(
             formData.identityDoc,
             formData.cafDoc || formData.cafDocOptional,
@@ -152,13 +145,13 @@ function processInsert(formData, sheet, row, sheetName) {
                 quartierId: addressValidation.quartierId,
                 criticite: 0
             });
-            notifyAdmin('⚠️ Soumission rejetée', `Documents invalides\nFamille: ${formData.lastName} ${formData.firstName}\nErreurs: ${docValidation.errors.join(', ')}`);
+            notifyAdmin('⚠️ Submission Rejected', `Invalid documents\nFamily: ${formData.lastName} ${formData.firstName}\nErrors: ${docValidation.errors.join(', ')}`);
             return;
         }
-        logInfo('✅ Documents validés avec succès');
+        logInfo('✅ Documents validated successfully');
 
-        logInfo('🔍 Vérification des doublons');
-        // 🔍 Vérifier les doublons
+        // Check for duplicates
+        logInfo('🔍 Checking for duplicates');
         const duplicate = findDuplicateFamily(
             formData.phone,
             formData.lastName,
@@ -167,11 +160,12 @@ function processInsert(formData, sheet, row, sheetName) {
 
         if (duplicate.exists) {
             updateExistingFamily(duplicate, formData, addressValidation, docValidation);
-            notifyAdmin('🔄 Famille mise à jour', `ID: ${duplicate.id}\nNom: ${formData.lastName} ${formData.firstName}\nTéléphone: ${normalizePhone(formData.phone)}`);
+            notifyAdmin('🔄 Family Updated', `ID: ${duplicate.id}\nName: ${formData.lastName} ${formData.firstName}\nPhone: ${normalizePhone(formData.phone)}`);
         } else {
             const familyId = generateFamilyId();
             writeToFamilySheet(formData, {
-                status: CONFIG.STATUS.IN_PROGRESS,
+                status: status,
+                comment: comment,
                 familyId: familyId,
                 quartierId: addressValidation.quartierId,
                 quartierName: addressValidation.quartierName,
@@ -180,84 +174,80 @@ function processInsert(formData, sheet, row, sheetName) {
                 resourceIds: docValidation.resourceIds,
                 criticite: 0
             });
-            notifyAdmin('✅ Nouvelle soumission', `ID: ${familyId}\nNom: ${formData.lastName} ${formData.firstName}\nTéléphone: ${normalizePhone(formData.phone)}\nAdresse: ${formData.address}, ${formData.postalCode} ${formData.city}\nQuartier: ${addressValidation.quartierName || 'Non assigné'}`);
+
+            const notificationMsg = `ID: ${familyId}\nName: ${formData.lastName} ${formData.firstName}\n` +
+                `Phone: ${normalizePhone(formData.phone)}\n` +
+                `Address: ${formData.address}, ${formData.postalCode} ${formData.city}\n` +
+                `Quartier: ${addressValidation.quartierName || 'Non assigné'}` +
+                (addressValidation.quartierInvalid ? `\n\n⚠️ WARNING: Quartier ID invalid in GEO API` : '');
+
+            notifyAdmin('✅ New Submission', notificationMsg);
         }
 
-        logInfo('✅ Soumission INSERT traitée avec succès');
+        logInfo('✅ INSERT submission processed successfully');
 
     } catch (error) {
-        logError('❌ Échec du traitement INSERT', error);
-        notifyAdmin('❌ Erreur INSERT', `Erreur: ${error.toString()}\nFamille: ${formData.lastName} ${formData.firstName}`);
+        logError('❌ INSERT processing failed', error);
+        notifyAdmin('❌ INSERT Error', `Error: ${error.toString()}\nFamily: ${formData.lastName} ${formData.firstName}`);
         throw error;
     }
 }
 
 /**
- * ✏️ Traiter une soumission UPDATE (famille existante)
- * 
- * @param {Object} formData - Données du formulaire parsées
- * @param {Sheet} sheet - Feuille source
- * @param {number} row - Numéro de ligne source
+ * Process UPDATE submission (existing family)
  */
 function processUpdate(formData, sheet, row) {
     try {
-        logInfo('✏️ Traitement d\'une soumission UPDATE');
+        logInfo('✏️ Processing UPDATE submission');
 
-        // 🆔 Extraire l'ID de famille
         const familyId = formData.familyId || formData.id;
 
         if (!familyId) {
-            logError('❌ Formulaire de mise à jour sans ID famille', { row });
-            notifyAdmin('❌ Update échouée', `ID famille manquant dans le formulaire\nLigne: ${row}`);
+            logError('❌ Update form without family ID', { row });
+            notifyAdmin('❌ Update Failed', `Missing family ID in form\nRow: ${row}`);
             return;
         }
 
-        // 🔨 Construire les données de mise à jour (uniquement les champs non vides)
         const updateData = buildUpdateData(formData);
 
         if (Object.keys(updateData).length === 0) {
-            logError('❌ Formulaire de mise à jour sans données', { familyId });
-            notifyAdmin('❌ Update échouée', `Aucune donnée à mettre à jour pour ${familyId}`);
+            logError('❌ Update form without data', { familyId });
+            notifyAdmin('❌ Update Failed', `No data to update for ${familyId}`);
             return;
         }
 
-        // ✅ Valider les données de mise à jour
         const validation = validateUpdateData(updateData);
         if (!validation.isValid) {
-            logError('❌ Validation de la mise à jour échouée', { familyId, error: validation.error });
-            notifyAdmin('❌ Update échouée', `${familyId}: ${validation.error}`);
+            logError('❌ Update validation failed', { familyId, error: validation.error });
+            notifyAdmin('❌ Update Failed', `${familyId}: ${validation.error}`);
             return;
         }
 
-        // 🔄 Effectuer la mise à jour
         const result = updateFamilyById(familyId, updateData);
 
         if (result.success) {
-            logInfo('✅ Formulaire de mise à jour traité avec succès', {
+            logInfo('✅ Update form processed successfully', {
                 familyId,
                 updatedFields: result.updatedFields
             });
             notifyAdmin(
-                '✅ Famille mise à jour via formulaire',
-                `ID: ${familyId}\nChamps mis à jour: ${result.updatedFields.join(', ')}`
+                '✅ Family Updated via Form',
+                `ID: ${familyId}\nUpdated fields: ${result.updatedFields.join(', ')}`
             );
         } else {
-            logError('❌ Échec du traitement de la mise à jour', { familyId, error: result.error });
-            notifyAdmin('❌ Update échouée', `ID: ${familyId}\nErreur: ${result.error}`);
+            logError('❌ Update processing failed', { familyId, error: result.error });
+            notifyAdmin('❌ Update Failed', `ID: ${familyId}\nError: ${result.error}`);
         }
 
     } catch (error) {
-        logError('❌ Échec du traitement UPDATE', error);
-        notifyAdmin('❌ Erreur UPDATE', `Erreur: ${error.toString()}`);
+        logError('❌ UPDATE processing failed', error);
+        notifyAdmin('❌ UPDATE Error', `Error: ${error.toString()}`);
         throw error;
     }
 }
 
 /**
- * 🔨 Construire l'objet de données de mise à jour depuis les données du formulaire
- * 
- * @param {Object} formData - Données brutes du formulaire
- * @returns {Object} - Données de mise à jour nettoyées
+ * Build update data object from form data
  */
 function buildUpdateData(formData) {
     const updateData = {};
@@ -282,12 +272,10 @@ function buildUpdateData(formData) {
     Object.keys(fieldMapping).forEach(key => {
         const value = formData[key];
 
-        // ⏭️ Ignorer les valeurs vides
         if (value === undefined || value === null || value === '') {
             return;
         }
 
-        // 🔢 Parser les nombres
         if (key === 'nombreAdulte' || key === 'nombreEnfant' || key === 'criticite') {
             const parsed = parseInt(value);
             if (!isNaN(parsed)) {
@@ -302,37 +290,22 @@ function buildUpdateData(formData) {
 }
 
 /**
- * ✅ Valider les données de mise à jour
- * 
- * @param {Object} updateData - Données de mise à jour à valider
- * @returns {Object} - {isValid: boolean, error: string}
+ * Validate update data
  */
 function validateUpdateData(updateData) {
-    // ✉️ Valider l'email si fourni
     if (updateData.email && !isValidEmail(updateData.email)) {
-        return {
-            isValid: false,
-            error: 'Email invalide'
-        };
+        return { isValid: false, error: 'Email invalide' };
     }
 
-    // 📞 Valider le téléphone si fourni
     if (updateData.phone && !isValidPhone(updateData.phone)) {
-        return {
-            isValid: false,
-            error: 'Téléphone invalide'
-        };
+        return { isValid: false, error: 'Téléphone invalide' };
     }
 
-    // ⚠️ Valider la criticité si fournie
     if (updateData.criticite !== undefined) {
         if (isNaN(updateData.criticite) ||
             updateData.criticite < CONFIG.CRITICITE.MIN ||
             updateData.criticite > CONFIG.CRITICITE.MAX) {
-            return {
-                isValid: false,
-                error: 'Criticité invalide (doit être entre 0 et 5)'
-            };
+            return { isValid: false, error: 'Criticité invalide (doit être entre 0 et 5)' };
         }
     }
 

@@ -1,10 +1,10 @@
 /**
- * @file src/services/bulkUpdateService.js
- * @description ✏️ Gérer les mises à jour en masse depuis une feuille de calcul
+ * @file src/services/bulkUpdateService.js (REFACTORED)
+ * @description Handle bulk updates with quartier validation
  */
 
 /**
- * 📊 Traiter les mises à jour en masse avec limite de batch
+ * Process bulk updates with batch limit
  */
 function processBulkUpdate(batchSize = 10) {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BULK_UPDATE_SHEET_NAME);
@@ -12,7 +12,7 @@ function processBulkUpdate(batchSize = 10) {
     if (!sheet) {
         return {
             success: false,
-            message: '❌ Feuille "Bulk Update" introuvable. Créez-la d\'abord via le menu.'
+            message: '❌ "Bulk Update" sheet not found. Create it first via menu.'
         };
     }
 
@@ -21,14 +21,13 @@ function processBulkUpdate(batchSize = 10) {
     if (lastRow <= 1) {
         return {
             success: false,
-            message: '⚠️ Aucune donnée à traiter. Collez vos mises à jour dans la feuille "Bulk Update".'
+            message: '⚠️ No data to process. Paste your updates in "Bulk Update" sheet.'
         };
     }
 
-    // 📊 Récupérer toutes les données (sans colonne STATUT)
     const data = sheet.getRange(2, 1, lastRow - 1, 16).getValues();
 
-    // 🔍 Trouver les lignes en attente
+    // Find pending rows
     const pendingRows = [];
     data.forEach((row, index) => {
         const comment = row[BULK_UPDATE_COLUMNS.COMMENTAIRE];
@@ -40,13 +39,12 @@ function processBulkUpdate(batchSize = 10) {
     if (pendingRows.length === 0) {
         return {
             success: true,
-            message: '✅ Toutes les lignes ont déjà été traitées.',
+            message: '✅ All rows already processed.',
             processed: 0,
             remaining: 0
         };
     }
 
-    // 🎯 Limiter au batch size
     const rowsToProcess = pendingRows.slice(0, batchSize);
     const results = {
         success: true,
@@ -58,26 +56,25 @@ function processBulkUpdate(batchSize = 10) {
         errors: []
     };
 
-    logInfo(`✏️ Traitement de ${rowsToProcess.length} mises à jour (batch: ${batchSize})`);
+    logInfo(`✏️ Processing ${rowsToProcess.length} updates (batch: ${batchSize})`);
 
-    // 🔄 Traiter chaque ligne
     rowsToProcess.forEach(item => {
         const { row, index } = item;
         const rowNumber = index;
 
         try {
-            // 🔄 Marquer comme en cours
             sheet.getRange(rowNumber, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue('⚙️ En cours...');
             SpreadsheetApp.flush();
 
-            // 🔨 Traiter la mise à jour
             const result = processBulkUpdateRow(row, sheet, rowNumber);
 
             if (result.success) {
                 results.succeeded++;
-                sheet.getRange(rowNumber, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue(
-                    `✅ Mis à jour: ${result.updatedFields.join(', ')}`
-                );
+                let comment = `✅ Mis à jour: ${result.updatedFields.join(', ')}`;
+                if (result.quartierWarning) {
+                    comment += `\n${result.quartierWarning}`;
+                }
+                sheet.getRange(rowNumber, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue(comment);
             } else {
                 results.failed++;
                 sheet.getRange(rowNumber, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue(
@@ -89,22 +86,21 @@ function processBulkUpdate(batchSize = 10) {
             results.processed++;
 
         } catch (error) {
-            logError(`❌ Erreur ligne ${rowNumber}`, error);
+            logError(`❌ Error row ${rowNumber}`, error);
             results.failed++;
             sheet.getRange(rowNumber, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue(
-                `❌ Erreur système: ${error.toString()}`
+                `❌ System error: ${error.toString()}`
             );
             results.errors.push({ row: rowNumber, error: error.toString() });
         }
     });
 
-    logInfo('✅ Mise à jour en masse terminée', results);
+    logInfo('✅ Bulk update completed', results);
 
-    // 📧 Notifier l'administrateur
     if (results.succeeded > 0 || results.failed > 0) {
         notifyAdmin(
-            '✏️ Mise à jour en masse terminée',
-            `Traitées: ${results.processed}\nRéussies: ${results.succeeded}\nÉchecs: ${results.failed}\nRestantes: ${results.remaining}`
+            '✏️ Bulk Update Completed',
+            `Processed: ${results.processed}\nSucceeded: ${results.succeeded}\nFailed: ${results.failed}\nRemaining: ${results.remaining}`
         );
     }
 
@@ -112,12 +108,11 @@ function processBulkUpdate(batchSize = 10) {
 }
 
 /**
- * 🔨 Traiter une seule ligne de mise à jour en masse
+ * Process single bulk update row
  */
 function processBulkUpdateRow(row, sheet, rowNumber) {
     const familyId = row[BULK_UPDATE_COLUMNS.ID];
 
-    // ✅ Valider que l'ID est fourni
     if (!familyId) {
         return {
             success: false,
@@ -125,7 +120,7 @@ function processBulkUpdateRow(row, sheet, rowNumber) {
         };
     }
 
-    // 🔨 Construire les données de mise à jour (uniquement les champs non vides)
+    // Build update data (only non-empty fields)
     const updateData = {};
     const updatedFields = [];
 
@@ -186,21 +181,21 @@ function processBulkUpdateRow(row, sheet, rowNumber) {
         updatedFields.push('criticite');
     }
 
-    // ⚠️ Vérifier qu'au moins un champ est à mettre à jour
     if (updatedFields.length === 0) {
         return {
             success: false,
-            error: 'Au moins un champ doit être renseigné pour la mise à jour'
+            error: 'Au moins un champ doit être renseigné'
         };
     }
 
-    // 🔄 Mettre à jour la famille
+    // Update family
     const result = updateFamilyById(familyId, updateData);
 
     if (result.success) {
         return {
             success: true,
-            updatedFields: updatedFields
+            updatedFields: updatedFields,
+            quartierWarning: result.quartierWarning
         };
     } else {
         return {
@@ -211,7 +206,7 @@ function processBulkUpdateRow(row, sheet, rowNumber) {
 }
 
 /**
- * 🗑️ Effacer toutes les données de la feuille Bulk Update (garder les en-têtes)
+ * Clear all data from Bulk Update sheet (keep headers)
  */
 function clearBulkUpdateSheet() {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BULK_UPDATE_SHEET_NAME);
@@ -219,7 +214,7 @@ function clearBulkUpdateSheet() {
     if (!sheet) {
         return {
             success: false,
-            message: '❌ Feuille "Bulk Update" introuvable'
+            message: '❌ "Bulk Update" sheet not found'
         };
     }
 
@@ -227,21 +222,21 @@ function clearBulkUpdateSheet() {
 
     if (lastRow > 1) {
         sheet.deleteRows(2, lastRow - 1);
-        logInfo('🗑️ Feuille Bulk Update effacée');
+        logInfo('🗑️ Bulk Update sheet cleared');
         return {
             success: true,
-            message: `✅ ${lastRow - 1} lignes supprimées`
+            message: `✅ ${lastRow - 1} rows deleted`
         };
     }
 
     return {
         success: true,
-        message: '✅ La feuille est déjà vide'
+        message: '✅ Sheet already empty'
     };
 }
 
 /**
- * 📊 Obtenir les statistiques de mise à jour en masse
+ * Get bulk update statistics
  */
 function getBulkUpdateStatistics() {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BULK_UPDATE_SHEET_NAME);
@@ -294,7 +289,7 @@ function getBulkUpdateStatistics() {
 }
 
 /**
- * 🔄 Réinitialiser le statut "En cours" en "En attente"
+ * Reset "Processing" status to "Pending"
  */
 function resetUpdateProcessingStatus() {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BULK_UPDATE_SHEET_NAME);
@@ -309,13 +304,40 @@ function resetUpdateProcessingStatus() {
     data.forEach((row, index) => {
         if (row[0] && row[0].includes('En cours')) {
             sheet.getRange(index + 2, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue(
-                'En attente (réinitialisé après timeout)'
+                'En attente (reset after timeout)'
             );
             resetCount++;
         }
     });
 
     if (resetCount > 0) {
-        logInfo(`🔄 ${resetCount} lignes "En cours" réinitialisées dans Bulk Update`);
+        logInfo(`🔄 ${resetCount} "Processing" rows reset in Bulk Update`);
     }
+}
+
+/**
+ * Get or create Bulk Update sheet with proper headers
+ */
+function getOrCreateBulkUpdateSheet() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName(BULK_UPDATE_SHEET_NAME);
+
+    if (!sheet) {
+        sheet = ss.insertSheet(BULK_UPDATE_SHEET_NAME);
+
+        const headers = [
+            'id', 'nom', 'prenom', 'nombre_adulte', 'nombre_enfant',
+            'adresse', 'code_postal', 'ville', 'telephone', 'telephone_bis',
+            'email', 'circonstances', 'ressentit', 'specificites',
+            'criticite', 'commentaire'
+        ];
+
+        sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+        sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+        sheet.setFrozenRows(1);
+
+        logInfo('📄 Bulk Update sheet created');
+    }
+
+    return sheet;
 }

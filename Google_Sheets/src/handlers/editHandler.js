@@ -1,6 +1,6 @@
 /**
- * @file src/handlers/editHandler.js
- * @description Handle onEdit triggers for status changes with criticite validation
+ * @file src/handlers/editHandler.js (REFACTORED)
+ * @description Handle onEdit triggers with quartier validation before status change
  */
 
 /**
@@ -17,23 +17,22 @@ function handleEdit(e) {
         const row = e.range.getRow();
         const col = e.range.getColumn();
 
-        if (row === 1) return;
+        if (row === 1) return; // Header row
 
         // Check if status column was edited
         if (col === OUTPUT_COLUMNS.ETAT_DOSSIER + 1) {
             const newStatus = e.value;
 
-            // Validate criticite before allowing status change to "Validé"
+            // Validate before allowing status change to "Validé"
             if (newStatus === CONFIG.STATUS.VALIDATED) {
                 const criticite = sheet.getRange(row, OUTPUT_COLUMNS.CRITICITE + 1).getValue();
+                const quartierId = sheet.getRange(row, OUTPUT_COLUMNS.ID_QUARTIER + 1).getValue();
 
                 // Check if criticite is 0 or empty
                 if (!criticite || criticite === 0) {
-                    // Rollback status change
                     const oldStatus = e.oldValue || CONFIG.STATUS.IN_PROGRESS;
                     sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatus);
 
-                    // Show warning dialog
                     SpreadsheetApp.getUi().alert(
                         '⚠️ Criticité non définie',
                         'Vous devez définir une criticité (1-5) avant de valider le dossier.\n\n' +
@@ -59,6 +58,51 @@ function handleEdit(e) {
                     );
 
                     logInfo(`Validation blocked for row ${row}: invalid criticite ${criticite}`);
+                    return;
+                }
+
+                // NEW: Validate quartier ID exists in GEO API
+                if (!quartierId) {
+                    const oldStatus = e.oldValue || CONFIG.STATUS.IN_PROGRESS;
+                    sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatus);
+
+                    SpreadsheetApp.getUi().alert(
+                        '⚠️ Quartier manquant',
+                        'Le dossier ne peut pas être validé sans un ID Quartier valide.\n\n' +
+                        'Le statut a été rétabli à: ' + oldStatus,
+                        SpreadsheetApp.getUi().ButtonSet.OK
+                    );
+
+                    const existingComment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
+                    const newComment = existingComment +
+                        `\n⚠️ Tentative de validation échouée: Quartier ID manquant - ${new Date().toLocaleString('fr-FR')}`;
+                    sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
+
+                    logInfo(`Validation blocked for row ${row}: quartier ID missing`);
+                    return;
+                }
+
+                // Validate quartier exists in GEO API
+                const quartierValidation = validateQuartierId(quartierId);
+
+                if (!quartierValidation.isValid) {
+                    const oldStatus = e.oldValue || CONFIG.STATUS.IN_PROGRESS;
+                    sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatus);
+
+                    SpreadsheetApp.getUi().alert(
+                        '⚠️ Quartier invalide',
+                        `Le Quartier ID "${quartierId}" n'existe pas dans l'API GEO.\n\n` +
+                        'Veuillez vérifier l\'adresse et régénérer le quartier.\n\n' +
+                        'Le statut a été rétabli à: ' + oldStatus,
+                        SpreadsheetApp.getUi().ButtonSet.OK
+                    );
+
+                    const existingComment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
+                    const newComment = existingComment +
+                        `\n⚠️ Tentative de validation échouée: ${quartierValidation.error} - ${new Date().toLocaleString('fr-FR')}`;
+                    sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
+
+                    logInfo(`Validation blocked for row ${row}: ${quartierValidation.error}`);
                     return;
                 }
 
@@ -109,10 +153,9 @@ function processValidatedFamily(sheet, row) {
 
         const identityIds = extractFileIds(identityUrls);
         const cafIds = extractFileIds(cafUrls);
-        const resourceIds = [];
 
-        if (identityIds.length > 0 || cafIds.length > 0 || resourceIds.length > 0) {
-            const organized = organizeDocuments(familyId, identityIds, cafIds, resourceIds);
+        if (identityIds.length > 0 || cafIds.length > 0) {
+            const organized = organizeDocuments(familyId, identityIds, cafIds, []);
 
             if (organized.identity.length > 0) {
                 sheet.getRange(row, OUTPUT_COLUMNS.IDENTITE + 1).setValue(
@@ -145,8 +188,8 @@ function processValidatedFamily(sheet, row) {
 
             const existingComment = data[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
             const newComment = existingComment ?
-                `${existingComment}\nValidé et traité le ${new Date().toLocaleString('fr-FR')}` :
-                    `Validé et traité le ${new Date().toLocaleString('fr-FR')}`;
+                `${existingComment}\n✅ Validé et traité le ${new Date().toLocaleString('fr-FR')}` :
+                `✅ Validé et traité le ${new Date().toLocaleString('fr-FR')}`;
             sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
         } else {
             logError(`Contact sync failed for family: ${familyId}`, contactResult.error);
@@ -157,7 +200,7 @@ function processValidatedFamily(sheet, row) {
 
         const comment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
         sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(
-            comment + `\nErreur de traitement: ${error.toString()}`
+            comment + `\n❌ Erreur de traitement: ${error.toString()}`
         );
     }
 }
