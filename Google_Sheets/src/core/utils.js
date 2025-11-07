@@ -1,11 +1,11 @@
 /**
- * @file src/core/utils.js (REFACTORED)
- * @description 🛠️ Fonctions utilitaires réutilisables avec gestion des téléphones améliorée
+ * @file src/core/utils.js (FIXED - Phone Normalization)
+ * @description 🛠️ Fonctions utilitaires réutilisables avec gestion des téléphones corrigée
  */
 
 /**
  * 📞 Normaliser et formater un numéro de téléphone français
- * Format de sortie: +33 (0) X XX XX XX XX
+ * Format de sortie: +33 X XX XX XX XX (sans le 0 initial)
  * 
  * @param {string|number} phone - Numéro de téléphone brut
  * @returns {string} - Numéro formaté ou chaîne vide
@@ -13,28 +13,85 @@
 function normalizePhone(phone) {
     if (!phone) return '';
 
-    // 🔄 Convertir en chaîne et nettoyer
-    let cleaned = String(phone).replace(/[\s\.\-\(\)]/g, '');
+    // 🔄 Convertir en chaîne et nettoyer TOUS les caractères non-numériques (sauf le +)
+    let cleaned = String(phone)
+        .replace(/[\s\.\-\(\)]/g, '') // Remove spaces, dots, dashes, parentheses
+        .trim();
+
+    // 🚫 Si déjà au format +33 (X) pattern, nettoyer complètement
+    if (cleaned.includes('+33')) {
+        // Extraire uniquement les chiffres après +33
+        const digitsOnly = cleaned.replace(/\D/g, '');
+
+        // Si on a 33 au début (code pays), on le garde et on prend les 9 chiffres suivants
+        if (digitsOnly.startsWith('33')) {
+            const localNumber = digitsOnly.substring(2); // Remove '33'
+
+            // Valider qu'on a exactement 9 chiffres
+            if (localNumber.length === 9) {
+                // Format: +33 X XX XX XX XX
+                return `+33 ${localNumber[0]} ${localNumber.substring(1, 3)} ${localNumber.substring(3, 5)} ${localNumber.substring(5, 7)} ${localNumber.substring(7, 9)}`;
+            }
+        }
+    }
+
+    // 🔄 Nettoyer complètement (ne garder que les chiffres)
+    const digitsOnly = cleaned.replace(/\D/g, '');
 
     // 🇫🇷 Gérer les formats français
-    if (cleaned.startsWith('00')) {
-        cleaned = '+' + cleaned.substring(2);
-    }
-
-    if (cleaned.startsWith('+33')) {
-        // Format international déjà présent
-        const digits = cleaned.substring(3);
-        if (digits.length === 9) {
-            return `+33 (0) ${digits[0]} ${digits.substring(1, 3)} ${digits.substring(3, 5)} ${digits.substring(5, 7)} ${digits.substring(7, 9)}`;
+    if (digitsOnly.startsWith('0033')) {
+        // Format 0033... -> convertir en +33
+        const localNumber = digitsOnly.substring(4);
+        if (localNumber.length === 9) {
+            return `+33 ${localNumber[0]} ${localNumber.substring(1, 3)} ${localNumber.substring(3, 5)} ${localNumber.substring(5, 7)} ${localNumber.substring(7, 9)}`;
         }
-    } else if (cleaned.startsWith('0') && cleaned.length === 10) {
+    } else if (digitsOnly.startsWith('33')) {
+        // Format 33... -> ajouter +
+        const localNumber = digitsOnly.substring(2);
+        if (localNumber.length === 9) {
+            return `+33 ${localNumber[0]} ${localNumber.substring(1, 3)} ${localNumber.substring(3, 5)} ${localNumber.substring(5, 7)} ${localNumber.substring(7, 9)}`;
+        }
+    } else if (digitsOnly.startsWith('0') && digitsOnly.length === 10) {
         // Format national français (0X XX XX XX XX)
-        return `+33 (0) ${cleaned[1]} ${cleaned.substring(2, 4)} ${cleaned.substring(4, 6)} ${cleaned.substring(6, 8)} ${cleaned.substring(8, 10)}`;
+        const localNumber = digitsOnly.substring(1); // Remove leading 0
+        return `+33 ${localNumber[0]} ${localNumber.substring(1, 3)} ${localNumber.substring(3, 5)} ${localNumber.substring(5, 7)} ${localNumber.substring(7, 9)}`;
+    } else if (digitsOnly.length === 9 && !digitsOnly.startsWith('0')) {
+        // Already in format without leading 0 (e.g., from +33 parsing)
+        return `+33 ${digitsOnly[0]} ${digitsOnly.substring(1, 3)} ${digitsOnly.substring(3, 5)} ${digitsOnly.substring(5, 7)} ${digitsOnly.substring(7, 9)}`;
     }
 
-    // ⚠️ Si le format n'est pas reconnu, retourner le numéro nettoyé
-    logWarning(`⚠️ Format de téléphone non standard: ${phone}`);
-    return cleaned;
+    // ⚠️ Si le format n'est pas reconnu, retourner le numéro nettoyé sans formatage
+    logWarning(`⚠️ Format de téléphone non standard: ${phone} -> ${digitsOnly}`);
+    return digitsOnly;
+}
+
+/**
+ * 📞 Valider un numéro de téléphone français
+ * Accepte: 0XXXXXXXXX (10 digits) ou +33XXXXXXXXX (9 digits après +33) ou 33XXXXXXXXX
+ */
+function isValidPhone(phone) {
+    if (!phone) return false;
+
+    // Nettoyer le numéro
+    const cleaned = String(phone).replace(/[\s\.\-\(\)]/g, '');
+    const digitsOnly = cleaned.replace(/\D/g, '');
+
+    // Vérifier les formats valides
+    if (digitsOnly.startsWith('0') && digitsOnly.length === 10) {
+        // Format national: 0XXXXXXXXX
+        return /^0[1-9]\d{8}$/.test(digitsOnly);
+    } else if (digitsOnly.startsWith('33') && digitsOnly.length === 11) {
+        // Format international sans +: 33XXXXXXXXX
+        return /^33[1-9]\d{8}$/.test(digitsOnly);
+    } else if (digitsOnly.startsWith('0033') && digitsOnly.length === 13) {
+        // Format international avec 00: 0033XXXXXXXXX
+        return /^0033[1-9]\d{8}$/.test(digitsOnly);
+    } else if (cleaned.startsWith('+33') && digitsOnly.length === 11) {
+        // Format international avec +: +33XXXXXXXXX
+        return /^33[1-9]\d{8}$/.test(digitsOnly);
+    }
+
+    return false;
 }
 
 /**
@@ -55,15 +112,6 @@ function isValidEmail(email) {
     if (!email) return false;
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return re.test(email);
-}
-
-/**
- * 📞 Valider un numéro de téléphone français
- */
-function isValidPhone(phone) {
-    if (!phone) return false;
-    const cleaned = String(phone).replace(/[\s\.\-\(\)]/g, '');
-    return /^(0[1-9]\d{8}|(\+|00)33(0)?[1-9]\d{8})$/.test(cleaned);
 }
 
 /**
@@ -215,13 +263,11 @@ function findDuplicateFamily(phone, lastName, email = null) {
                 return JSON.parse(cached);
             } catch (e) {
                 logWarning('⚠️ Erreur parsing cache, ignoré', e);
-                // Continue sans cache
             }
         }
 
         const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
 
-        // 🛡️ Protection: retourner un objet par défaut si la feuille n'existe pas
         if (!sheet) {
             logWarning('⚠️ Feuille Famille introuvable pour vérification doublons');
             return { exists: false };
@@ -232,7 +278,6 @@ function findDuplicateFamily(phone, lastName, email = null) {
         for (let i = 1; i < data.length; i++) {
             const row = data[i];
 
-            // 🛡️ Vérifier que la ligne a des données
             if (!row || row.length === 0) continue;
 
             const rowPhone = normalizePhone(String(row[OUTPUT_COLUMNS.TELEPHONE] || '')).replace(/[\s\(\)]/g, '');
@@ -270,7 +315,6 @@ function findDuplicateFamily(phone, lastName, email = null) {
 
     } catch (error) {
         logError('❌ Erreur dans findDuplicateFamily', error);
-        // 🛡️ Toujours retourner un objet valide en cas d'erreur
         return { exists: false };
     }
 }
@@ -373,15 +417,14 @@ function buildUrlWithParams(baseUrl, action, params) {
 function getLastEmptyRow(sheet) {
     const data = sheet.getDataRange().getValues();
 
-    // 🔍 Parcourir depuis la fin pour trouver la première ligne vide
     for (let i = data.length - 1; i >= 0; i--) {
         const rowIsEmpty = data[i].every(cell => cell === '' || cell === null);
         if (!rowIsEmpty) {
-            return i + 2; // Retourner la ligne suivante (1-based + 1)
+            return i + 2;
         }
     }
 
-    return 1; // Si tout est vide, retourner la première ligne
+    return 1;
 }
 
 /**
@@ -390,7 +433,6 @@ function getLastEmptyRow(sheet) {
 function isConsentRefused(formData) {
     const consent = formData.personalDataProtection || '';
 
-    // 🔍 Vérifier si la réponse correspond à une phrase de refus
     const isRefused = CONFIG.REFUSAL_PHRASES.some(phrase =>
         consent.toLowerCase().includes(phrase.toLowerCase())
     );
