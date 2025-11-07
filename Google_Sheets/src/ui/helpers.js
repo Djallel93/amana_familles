@@ -1,10 +1,10 @@
 /**
- * @file src/ui/helpers.js (UPDATED for GEO API v5.0)
- * @description 🛠️ Fonctions utilitaires UI avec support hiérarchie 3 niveaux
+ * @file src/ui/helpers.js (UPDATED - Consistent behavior)
+ * @description UI helper functions with manual entry setting "En cours" status
  */
 
 /**
- * 📝 Traiter une entrée manuelle de famille (appelée depuis l'UI)
+ * Process manual entry (creates family with "En cours" status)
  */
 function processManualEntry(formData) {
     try {
@@ -57,47 +57,42 @@ function processManualEntry(formData) {
 
         const familyId = generateFamilyId();
 
+        // CHANGED: Always set status to "En cours" (consistent with bulk operations)
+        let status = CONFIG.STATUS.IN_PROGRESS;
+        let comment = `Créé manuellement le ${new Date().toLocaleString('fr-FR')}`;
+
+        // Add warning if quartier is invalid
+        if (addressValidation.quartierInvalid) {
+            comment += `\n⚠️ ${addressValidation.warning}`;
+        }
+
         writeToFamilySheet(formData, {
-            status: CONFIG.STATUS.VALIDATED,
+            status: status,
+            comment: comment,
             familyId: familyId,
-            villeId: addressValidation.villeId,
-            secteurId: addressValidation.secteurId,
             quartierId: addressValidation.quartierId,
-            villeName: addressValidation.villeName,
-            secteurName: addressValidation.secteurName,
             quartierName: addressValidation.quartierName,
             criticite: criticite
         });
 
-        const contactData = {
-            id: familyId,
-            nom: formData.lastName,
-            prenom: formData.firstName,
-            email: formData.email,
-            telephone: formData.phone,
-            phoneBis: formData.phoneBis,
-            adresse: `${formData.address}, ${formData.postalCode} ${formData.city}`
-        };
-
-        syncFamilyContact(contactData);
+        // CHANGED: NO contact sync - contact will be created when status changes to "Validé"
+        // This ensures quartier validation happens before contact creation
 
         notifyAdmin(
             '✅ Nouvelle famille ajoutée manuellement',
-            `ID: ${familyId}\nNom: ${formData.lastName} ${formData.firstName}\nTéléphone: ${normalizePhone(formData.phone)}\nAdresse: ${formData.address}, ${formData.postalCode} ${formData.city}\nVille: ${addressValidation.villeName || 'Non assignée'}\nSecteur: ${addressValidation.secteurName || 'Non assigné'}\nQuartier: ${addressValidation.quartierName || 'Non assigné'}\nCriticité: ${criticite}`
+            `ID: ${familyId}\nNom: ${formData.lastName} ${formData.firstName}\nTéléphone: ${normalizePhone(formData.phone)}\nAdresse: ${formData.address}, ${formData.postalCode} ${formData.city}\nQuartier: ${addressValidation.quartierName || 'Non assigné'}\nCriticité: ${criticite}\n\n⚠️ Statut: En cours (nécessite validation manuelle)`
         );
 
-        logInfo('✅ Entrée manuelle traitée avec succès', { familyId, criticite });
+        logInfo('✅ Entrée manuelle traitée avec succès', { familyId, criticite, status });
 
         return {
             success: true,
             familyId: familyId,
-            villeId: addressValidation.villeId,
-            secteurId: addressValidation.secteurId,
             quartierId: addressValidation.quartierId,
-            villeName: addressValidation.villeName,
-            secteurName: addressValidation.secteurName,
             quartierName: addressValidation.quartierName,
-            criticite: criticite
+            criticite: criticite,
+            status: status,
+            message: `Famille créée avec succès. Changez le statut à "Validé" pour créer le contact Google.`
         };
 
     } catch (error) {
@@ -111,7 +106,7 @@ function processManualEntry(formData) {
 }
 
 /**
- * 🔄 Mettre à jour une entrée manuelle si un formulaire est soumis plus tard
+ * Update manual entry if form is submitted later with documents
  */
 function updateManualEntryWithFormData(manualFamilyId, formData, docValidation) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -162,14 +157,14 @@ function updateManualEntryWithFormData(manualFamilyId, formData, docValidation) 
 }
 
 /**
- * 📄 Inclure le contenu d'un fichier (pour <?!= include('file') ?> dans HTML)
+ * Include file content (for <?!= include('file') ?> in HTML)
  */
 function include(filename) {
     return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
 /**
- * 📊 Calculer les statistiques de la feuille Famille
+ * Calculate statistics from Famille sheet
  */
 function calculateStatistics() {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -182,8 +177,7 @@ function calculateStatistics() {
             totalAdults: 0,
             totalChildren: 0,
             byCriticite: {},
-            byVille: {},
-            bySecteur: {}
+            byQuartier: {}
         };
     }
 
@@ -196,16 +190,14 @@ function calculateStatistics() {
         totalAdults: 0,
         totalChildren: 0,
         byCriticite: { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
-        byVille: {},
-        bySecteur: {}
+        byQuartier: {}
     };
 
     for (let i = 1; i < data.length; i++) {
         const row = data[i];
         const status = row[OUTPUT_COLUMNS.ETAT_DOSSIER];
         const criticite = parseInt(row[OUTPUT_COLUMNS.CRITICITE]) || 0;
-        const villeId = row[OUTPUT_COLUMNS.ID_VILLE];
-        const secteurId = row[OUTPUT_COLUMNS.ID_SECTEUR];
+        const quartierId = row[OUTPUT_COLUMNS.ID_QUARTIER];
 
         if (status === CONFIG.STATUS.VALIDATED) stats.validated++;
         if (status === CONFIG.STATUS.IN_PROGRESS) stats.inProgress++;
@@ -218,12 +210,8 @@ function calculateStatistics() {
             stats.byCriticite[criticite]++;
         }
 
-        if (villeId) {
-            stats.byVille[villeId] = (stats.byVille[villeId] || 0) + 1;
-        }
-
-        if (secteurId) {
-            stats.bySecteur[secteurId] = (stats.bySecteur[secteurId] || 0) + 1;
+        if (quartierId) {
+            stats.byQuartier[quartierId] = (stats.byQuartier[quartierId] || 0) + 1;
         }
     }
 
@@ -231,7 +219,7 @@ function calculateStatistics() {
 }
 
 /**
- * 🗑️ Effacer tous les caches
+ * Clear all caches
  */
 function clearAllCaches() {
     CacheService.getScriptCache().removeAll([]);
@@ -239,8 +227,7 @@ function clearAllCaches() {
 }
 
 /**
- * 💾 Écrire des données dans la feuille Famille (DERNIÈRE LIGNE VIDE)
- * UPDATED: Now includes Ville and Secteur IDs
+ * Write data to Famille sheet (LAST EMPTY ROW)
  */
 function writeToFamilySheet(formData, options = {}) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -252,11 +239,7 @@ function writeToFamilySheet(formData, options = {}) {
         status = CONFIG.STATUS.IN_PROGRESS,
         comment = '',
         familyId = generateFamilyId(),
-        villeId = null,
-        secteurId = null,
         quartierId = null,
-        villeName = '',
-        secteurName = '',
         quartierName = '',
         identityIds = [],
         cafIds = [],
@@ -267,8 +250,7 @@ function writeToFamilySheet(formData, options = {}) {
     const normalizedPhone = normalizePhone(formData.phone);
     const normalizedPhoneBis = formData.phoneBis ? normalizePhone(formData.phoneBis) : '';
 
-    // UPDATED: Array now has 23 elements (added villeId and secteurId)
-    const row = Array(23).fill('');
+    const row = Array(21).fill('');
     row[OUTPUT_COLUMNS.ID] = familyId;
     row[OUTPUT_COLUMNS.NOM] = formData.lastName || '';
     row[OUTPUT_COLUMNS.PRENOM] = formData.firstName || '';
@@ -277,8 +259,6 @@ function writeToFamilySheet(formData, options = {}) {
     row[OUTPUT_COLUMNS.NOMBRE_ADULTE] = parseInt(formData.nombreAdulte) || 0;
     row[OUTPUT_COLUMNS.NOMBRE_ENFANT] = parseInt(formData.nombreEnfant) || 0;
     row[OUTPUT_COLUMNS.ADRESSE] = `${formData.address}, ${formData.postalCode} ${formData.city}`;
-    row[OUTPUT_COLUMNS.ID_VILLE] = villeId || '';           // NEW
-    row[OUTPUT_COLUMNS.ID_SECTEUR] = secteurId || '';       // NEW
     row[OUTPUT_COLUMNS.ID_QUARTIER] = quartierId || '';
     row[OUTPUT_COLUMNS.SE_DEPLACE] = false;
     row[OUTPUT_COLUMNS.EMAIL] = formData.email || '';
@@ -306,8 +286,7 @@ function writeToFamilySheet(formData, options = {}) {
 }
 
 /**
- * 🔄 Mettre à jour une famille existante
- * UPDATED: Now updates Ville and Secteur IDs
+ * Update existing family
  */
 function updateExistingFamily(duplicate, formData, addressValidation, docValidation) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -328,8 +307,6 @@ function updateExistingFamily(duplicate, formData, addressValidation, docValidat
     const oldAddress = existingData[OUTPUT_COLUMNS.ADRESSE] || '';
     if (newAddress !== oldAddress) {
         sheet.getRange(row, OUTPUT_COLUMNS.ADRESSE + 1).setValue(newAddress);
-        sheet.getRange(row, OUTPUT_COLUMNS.ID_VILLE + 1).setValue(addressValidation.villeId || '');
-        sheet.getRange(row, OUTPUT_COLUMNS.ID_SECTEUR + 1).setValue(addressValidation.secteurId || '');
         sheet.getRange(row, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue(addressValidation.quartierId || '');
         changes.push('adresse');
     }
@@ -365,7 +342,7 @@ function updateExistingFamily(duplicate, formData, addressValidation, docValidat
 }
 
 /**
- * 📋 Obtenir toutes les familles avec leurs IDs (pour dropdown UI)
+ * Get all family IDs (for dropdown UI)
  */
 function getAllFamilyIds() {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);

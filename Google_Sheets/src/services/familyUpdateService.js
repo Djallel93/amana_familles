@@ -1,6 +1,6 @@
 /**
- * @file src/services/familyUpdateService.js (REFACTORED)
- * @description Core family update functionality with quartier validation
+ * @file src/services/familyUpdateService.js (ENHANCED)
+ * @description Core family update functionality with force status option
  */
 
 /**
@@ -32,6 +32,10 @@ function updateFamilyById(familyId, updateData) {
         const changes = [];
         let needsAddressValidation = false;
         let quartierWarning = null;
+
+        // CHANGED: Check if we should force status to "En cours" (for bulk updates)
+        const forceInProgress = updateData.forceInProgress === true;
+        delete updateData.forceInProgress; // Remove this flag from updateData
 
         // Update name fields
         if (updateData.lastName) {
@@ -113,16 +117,9 @@ function updateFamilyById(familyId, updateData) {
                 sheet.getRange(targetRow, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue(addressValidation.quartierId || '');
                 changes.push('adresse');
 
-                // NEW: Check if quartier is invalid
+                // Check if quartier is invalid
                 if (addressValidation.quartierInvalid) {
                     quartierWarning = addressValidation.warning;
-
-                    // If family is currently validated, change status to in-progress
-                    const currentStatus = existingData[OUTPUT_COLUMNS.ETAT_DOSSIER];
-                    if (currentStatus === CONFIG.STATUS.VALIDATED) {
-                        sheet.getRange(targetRow, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(CONFIG.STATUS.IN_PROGRESS);
-                        changes.push('statut (changé à En cours)');
-                    }
                 }
             }
         }
@@ -156,9 +153,22 @@ function updateFamilyById(familyId, updateData) {
             changes.push('criticite');
         }
 
+        // CHANGED: Force status to "En cours" if requested (bulk updates) or if quartier is invalid
+        const currentStatus = existingData[OUTPUT_COLUMNS.ETAT_DOSSIER];
+        if (forceInProgress || (quartierWarning && currentStatus === CONFIG.STATUS.VALIDATED)) {
+            sheet.getRange(targetRow, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(CONFIG.STATUS.IN_PROGRESS);
+            if (!changes.includes('statut')) {
+                changes.push('statut (changé à En cours)');
+            }
+        }
+
         // Add comment
         const existingComment = existingData[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
         let updateComment = `Mis à jour: ${changes.join(', ')} - ${new Date().toLocaleString('fr-FR')}`;
+
+        if (forceInProgress) {
+            updateComment += `\n📝 Statut changé à "En cours" après mise à jour en masse`;
+        }
 
         if (quartierWarning) {
             updateComment += `\n⚠️ ${quartierWarning}`;
@@ -170,25 +180,29 @@ function updateFamilyById(familyId, updateData) {
 
         sheet.getRange(targetRow, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
 
-        // Sync with Google Contacts
-        const contactData = {
-            id: familyId,
-            nom: updateData.lastName || existingData[OUTPUT_COLUMNS.NOM],
-            prenom: updateData.firstName || existingData[OUTPUT_COLUMNS.PRENOM],
-            email: updateData.email || existingData[OUTPUT_COLUMNS.EMAIL],
-            telephone: updateData.phone ? normalizePhone(updateData.phone) : existingData[OUTPUT_COLUMNS.TELEPHONE],
-            phoneBis: updateData.phoneBis ? normalizePhone(updateData.phoneBis) : existingData[OUTPUT_COLUMNS.TELEPHONE_BIS],
-            adresse: updateData.address || existingData[OUTPUT_COLUMNS.ADRESSE]
-        };
+        // Sync with Google Contacts ONLY if status is "Validé"
+        const finalStatus = sheet.getRange(targetRow, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).getValue();
+        if (finalStatus === CONFIG.STATUS.VALIDATED) {
+            const contactData = {
+                id: familyId,
+                nom: updateData.lastName || existingData[OUTPUT_COLUMNS.NOM],
+                prenom: updateData.firstName || existingData[OUTPUT_COLUMNS.PRENOM],
+                email: updateData.email || existingData[OUTPUT_COLUMNS.EMAIL],
+                telephone: updateData.phone ? normalizePhone(updateData.phone) : existingData[OUTPUT_COLUMNS.TELEPHONE],
+                phoneBis: updateData.phoneBis ? normalizePhone(updateData.phoneBis) : existingData[OUTPUT_COLUMNS.TELEPHONE_BIS],
+                adresse: updateData.address || existingData[OUTPUT_COLUMNS.ADRESSE],
+                idQuartier: existingData[OUTPUT_COLUMNS.ID_QUARTIER]
+            };
 
-        syncFamilyContact(contactData);
+            syncFamilyContact(contactData);
+        }
 
         // Clear relevant caches
         const cache = CacheService.getScriptCache();
         cache.remove(`api_family_${familyId}`);
         cache.remove(`folder_${familyId}`);
 
-        logInfo('Family updated successfully', { familyId, changes });
+        logInfo('Family updated successfully', { familyId, changes, forceInProgress });
 
         return {
             success: true,
@@ -233,7 +247,7 @@ function processManualUpdate(familyId, updateData) {
             };
         }
 
-        // Perform update
+        // Perform update (no force status for manual updates)
         const result = updateFamilyById(familyId, updateData);
 
         if (result.success) {

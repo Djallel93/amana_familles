@@ -1,6 +1,6 @@
 /**
- * @file src/handlers/editHandler.js (REFACTORED)
- * @description Handle onEdit triggers with quartier validation before status change
+ * @file src/handlers/editHandler.js (ENHANCED)
+ * @description Handle onEdit triggers with quartier validation and archive contact deletion
  */
 
 /**
@@ -22,6 +22,13 @@ function handleEdit(e) {
         // Check if status column was edited
         if (col === OUTPUT_COLUMNS.ETAT_DOSSIER + 1) {
             const newStatus = e.value;
+            const oldStatus = e.oldValue;
+
+            // Handle status change to "Archivé" - delete contact
+            if (newStatus === CONFIG.STATUS.ARCHIVED) {
+                handleArchiveStatus(sheet, row);
+                return;
+            }
 
             // Validate before allowing status change to "Validé"
             if (newStatus === CONFIG.STATUS.VALIDATED) {
@@ -30,14 +37,14 @@ function handleEdit(e) {
 
                 // Check if criticite is 0 or empty
                 if (!criticite || criticite === 0) {
-                    const oldStatus = e.oldValue || CONFIG.STATUS.IN_PROGRESS;
-                    sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatus);
+                    const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
+                    sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatusValue);
 
                     SpreadsheetApp.getUi().alert(
                         '⚠️ Criticité non définie',
                         'Vous devez définir une criticité (1-5) avant de valider le dossier.\n\n' +
                         'La criticité permet de prioriser les familles lors des livraisons.\n\n' +
-                        'Le statut a été rétabli à: ' + oldStatus,
+                        'Le statut a été rétabli à: ' + oldStatusValue,
                         SpreadsheetApp.getUi().ButtonSet.OK
                     );
 
@@ -47,13 +54,13 @@ function handleEdit(e) {
 
                 // Validate criticite range
                 if (criticite < CONFIG.CRITICITE.MIN || criticite > CONFIG.CRITICITE.MAX) {
-                    const oldStatus = e.oldValue || CONFIG.STATUS.IN_PROGRESS;
-                    sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatus);
+                    const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
+                    sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatusValue);
 
                     SpreadsheetApp.getUi().alert(
                         '⚠️ Criticité invalide',
                         `La criticité doit être entre ${CONFIG.CRITICITE.MIN} et ${CONFIG.CRITICITE.MAX}.\n\n` +
-                        'Le statut a été rétabli à: ' + oldStatus,
+                        'Le statut a été rétabli à: ' + oldStatusValue,
                         SpreadsheetApp.getUi().ButtonSet.OK
                     );
 
@@ -61,15 +68,15 @@ function handleEdit(e) {
                     return;
                 }
 
-                // NEW: Validate quartier ID exists in GEO API
+                // Validate quartier ID exists in GEO API
                 if (!quartierId) {
-                    const oldStatus = e.oldValue || CONFIG.STATUS.IN_PROGRESS;
-                    sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatus);
+                    const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
+                    sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatusValue);
 
                     SpreadsheetApp.getUi().alert(
                         '⚠️ Quartier manquant',
                         'Le dossier ne peut pas être validé sans un ID Quartier valide.\n\n' +
-                        'Le statut a été rétabli à: ' + oldStatus,
+                        'Le statut a été rétabli à: ' + oldStatusValue,
                         SpreadsheetApp.getUi().ButtonSet.OK
                     );
 
@@ -86,14 +93,14 @@ function handleEdit(e) {
                 const quartierValidation = validateQuartierId(quartierId);
 
                 if (!quartierValidation.isValid) {
-                    const oldStatus = e.oldValue || CONFIG.STATUS.IN_PROGRESS;
-                    sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatus);
+                    const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
+                    sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatusValue);
 
                     SpreadsheetApp.getUi().alert(
                         '⚠️ Quartier invalide',
                         `Le Quartier ID "${quartierId}" n'existe pas dans l'API GEO.\n\n` +
                         'Veuillez vérifier l\'adresse et régénérer le quartier.\n\n' +
-                        'Le statut a été rétabli à: ' + oldStatus,
+                        'Le statut a été rétabli à: ' + oldStatusValue,
                         SpreadsheetApp.getUi().ButtonSet.OK
                     );
 
@@ -139,6 +146,51 @@ function handleEdit(e) {
 }
 
 /**
+ * Handle archive status - delete contact
+ */
+function handleArchiveStatus(sheet, row) {
+    try {
+        const data = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
+        const familyId = data[OUTPUT_COLUMNS.ID];
+
+        logInfo(`Processing archive for family ${familyId} at row ${row}`);
+
+        // Delete contact from Google Contacts
+        const deleteResult = deleteContactForArchivedFamily(familyId);
+
+        // Add comment about archiving and contact deletion
+        const existingComment = data[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
+        let newComment = existingComment ?
+            `${existingComment}\n🗄️ Archivé le ${new Date().toLocaleString('fr-FR')}` :
+            `🗄️ Archivé le ${new Date().toLocaleString('fr-FR')}`;
+
+        if (deleteResult.success) {
+            newComment += `\n📞 Contact Google supprimé`;
+            logInfo(`Contact deleted successfully for archived family: ${familyId}`);
+        } else {
+            newComment += `\n⚠️ Échec suppression contact: ${deleteResult.error}`;
+            logError(`Failed to delete contact for family: ${familyId}`, deleteResult.error);
+        }
+
+        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
+
+        // Notify admin
+        notifyAdmin(
+            '🗄️ Famille archivée',
+            `ID: ${familyId}\nNom: ${data[OUTPUT_COLUMNS.NOM]} ${data[OUTPUT_COLUMNS.PRENOM]}\nContact supprimé: ${deleteResult.success ? 'Oui' : 'Non'}`
+        );
+
+    } catch (error) {
+        logError('Failed to process archive status', error);
+
+        const comment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
+        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(
+            comment + `\n❌ Erreur archivage: ${error.toString()}`
+        );
+    }
+}
+
+/**
  * Process family when status changes to "Validé"
  */
 function processValidatedFamily(sheet, row) {
@@ -178,7 +230,8 @@ function processValidatedFamily(sheet, row) {
             email: data[OUTPUT_COLUMNS.EMAIL],
             telephone: data[OUTPUT_COLUMNS.TELEPHONE],
             phoneBis: data[OUTPUT_COLUMNS.TELEPHONE_BIS],
-            adresse: data[OUTPUT_COLUMNS.ADRESSE]
+            adresse: data[OUTPUT_COLUMNS.ADRESSE],
+            idQuartier: data[OUTPUT_COLUMNS.ID_QUARTIER]
         };
 
         const contactResult = syncFamilyContact(familyData);
