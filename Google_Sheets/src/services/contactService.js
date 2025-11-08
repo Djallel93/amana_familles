@@ -1,5 +1,5 @@
 /**
- * @file src/services/contactService.js (FIXED)
+ * @file src/services/contactService.js (FIXED - Delete Contact Bug)
  * @description Manage Google Contacts synchronization with groups and archiving
  */
 
@@ -29,6 +29,7 @@ function syncFamilyContact(familyData) {
 
 /**
  * Delete contact when family is archived
+ * CORRECT: deleteContact takes the resource name as a direct string parameter
  */
 function deleteContactForArchivedFamily(familyId) {
     try {
@@ -39,7 +40,9 @@ function deleteContactForArchivedFamily(familyId) {
             return { success: true, message: 'No contact to delete' };
         }
 
-        People.People.deleteContact({ resourceName: contact.resourceName });
+        // CORRECT: Pass resource name directly as a string
+        People.People.deleteContact(contact.resourceName);
+
         logInfo(`Contact deleted for archived family: ${familyId}`);
 
         return { success: true, message: 'Contact deleted successfully' };

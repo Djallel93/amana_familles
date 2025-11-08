@@ -1,5 +1,5 @@
 /**
- * @file src/services/contactDebugHelpers.js
+ * @file src/services/contactDebugHelpers.js (FIXED)
  * @description Helper functions to debug contact issues
  */
 
@@ -108,6 +108,7 @@ function debugFindContactByFamilyId(familyId) {
 
 /**
  * Delete a contact by family ID with detailed logging
+ * FIXED: Use correct deletion method
  * @param {string|number} familyId - The family ID
  */
 function debugDeleteContactByFamilyId(familyId) {
@@ -126,10 +127,8 @@ function debugDeleteContactByFamilyId(familyId) {
         console.log(`  Name: ${contact.names ? contact.names[0].displayName : 'No name'}`);
         console.log(`  Resource: ${contact.resourceName}`);
 
-        // Delete
-        People.People.deleteContact({
-            resourceName: contact.resourceName
-        });
+        // FIXED: Delete using correct method
+        People.People.remove(contact.resourceName);
 
         console.log('✓ Contact deleted successfully');
 
