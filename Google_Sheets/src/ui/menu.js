@@ -1,6 +1,6 @@
 /**
- * @file src/ui/menu.js (UPDATED)
- * @description Updated menu with insert/update functionality
+ * @file src/ui/menu.js (UPDATED with Debug)
+ * @description Updated menu with insert/update functionality and debug tools
  */
 
 /**
@@ -26,6 +26,12 @@ function onOpen() {
         .addSeparator()
         .addSubMenu(ui.createMenu('🛠️ Configuration')
             .addItem('📍 Configurer Point de Référence', 'setupDistanceSortingProperties'))
+        .addSeparator()
+        .addSubMenu(ui.createMenu('🔍 Debug Contacts')
+            .addItem('📋 Lister tous les contacts', 'debugListAllContacts')
+            .addItem('🔎 Chercher un contact par ID', 'showDebugFindContactDialog')
+            .addItem('🗑️ Supprimer un contact par ID', 'showDebugDeleteContactDialog')
+            .addItem('🧪 Tester création contact', 'showDebugTestContactDialog'))
         .addSeparator()
         .addItem('🔄 Rafraîchir Cache', 'clearAllCaches')
         .addItem('📊 Statistiques Générales', 'showStatistics')
@@ -69,6 +75,80 @@ function showBulkImportDialog() {
  */
 function showBulkUpdateDialog() {
     showDialog('views/dialogs/bulkUpdate', 'Mise à Jour en Masse', 600, 750);
+}
+
+// ============================================
+// DEBUG MENU FUNCTIONS
+// ============================================
+
+/**
+ * Show dialog to search for a contact by family ID
+ */
+function showDebugFindContactDialog() {
+    const ui = SpreadsheetApp.getUi();
+    const response = ui.prompt(
+        '🔎 Chercher un contact',
+        'Entrez l\'ID de la famille:',
+        ui.ButtonSet.OK_CANCEL
+    );
+
+    if (response.getSelectedButton() === ui.Button.OK) {
+        const familyId = response.getResponseText().trim();
+        if (familyId) {
+            debugFindContactByFamilyId(familyId);
+            ui.alert('✓ Recherche terminée', 'Consultez les logs (Ctrl+Entrée ou Cmd+Entrée)', ui.ButtonSet.OK);
+        }
+    }
+}
+
+/**
+ * Show dialog to delete a contact by family ID
+ */
+function showDebugDeleteContactDialog() {
+    const ui = SpreadsheetApp.getUi();
+    const response = ui.prompt(
+        '🗑️ Supprimer un contact',
+        'Entrez l\'ID de la famille:',
+        ui.ButtonSet.OK_CANCEL
+    );
+
+    if (response.getSelectedButton() === ui.Button.OK) {
+        const familyId = response.getResponseText().trim();
+        if (familyId) {
+            const confirmResponse = ui.alert(
+                '⚠️ Confirmation',
+                `Êtes-vous sûr de vouloir supprimer le contact pour la famille ${familyId} ?`,
+                ui.ButtonSet.YES_NO
+            );
+
+            if (confirmResponse === ui.Button.YES) {
+                debugDeleteContactByFamilyId(familyId);
+                ui.alert('✓ Terminé', 'Consultez les logs pour voir le résultat', ui.ButtonSet.OK);
+            }
+        }
+    }
+}
+
+/**
+ * Show dialog to test contact creation for a family
+ */
+function showDebugTestContactDialog() {
+    const ui = SpreadsheetApp.getUi();
+    const response = ui.prompt(
+        '🧪 Tester création de contact',
+        'Entrez l\'ID de la famille:',
+        ui.ButtonSet.OK_CANCEL
+    );
+
+    if (response.getSelectedButton() === ui.Button.OK) {
+        const familyId = parseInt(response.getResponseText().trim());
+        if (!isNaN(familyId)) {
+            debugTestContactCreation(familyId);
+            ui.alert('✓ Test terminé', 'Consultez les logs (Ctrl+Entrée ou Cmd+Entrée)', ui.ButtonSet.OK);
+        } else {
+            ui.alert('❌ Erreur', 'ID invalide. Doit être un nombre.', ui.ButtonSet.OK);
+        }
+    }
 }
 
 // ============================================

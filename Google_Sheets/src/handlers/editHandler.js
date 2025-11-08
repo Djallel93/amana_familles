@@ -1,5 +1,5 @@
 /**
- * @file src/handlers/editHandler.js (ENHANCED)
+ * @file src/handlers/editHandler.js (FIXED)
  * @description Handle onEdit triggers with quartier validation and archive contact deletion
  */
 
@@ -192,6 +192,7 @@ function handleArchiveStatus(sheet, row) {
 
 /**
  * Process family when status changes to "Validé"
+ * FIXED: Normalize phone numbers before passing to contact service
  */
 function processValidatedFamily(sheet, row) {
     try {
@@ -223,16 +224,26 @@ function processValidatedFamily(sheet, row) {
             logInfo(`Documents organized for family: ${familyId}`);
         }
 
+        // FIXED: Read phone numbers as strings and normalize them
+        const rawPhone = String(data[OUTPUT_COLUMNS.TELEPHONE] || '');
+        const rawPhoneBis = String(data[OUTPUT_COLUMNS.TELEPHONE_BIS] || '');
+
         const familyData = {
             id: familyId,
             nom: data[OUTPUT_COLUMNS.NOM],
             prenom: data[OUTPUT_COLUMNS.PRENOM],
             email: data[OUTPUT_COLUMNS.EMAIL],
-            telephone: data[OUTPUT_COLUMNS.TELEPHONE],
-            phoneBis: data[OUTPUT_COLUMNS.TELEPHONE_BIS],
+            telephone: rawPhone,  // Will be normalized in contactService
+            phoneBis: rawPhoneBis,  // Will be normalized in contactService
             adresse: data[OUTPUT_COLUMNS.ADRESSE],
             idQuartier: data[OUTPUT_COLUMNS.ID_QUARTIER]
         };
+
+        logInfo(`Family data prepared for contact sync`, {
+            id: familyId,
+            rawPhone: rawPhone,
+            rawPhoneBis: rawPhoneBis
+        });
 
         const contactResult = syncFamilyContact(familyData);
 
@@ -246,6 +257,13 @@ function processValidatedFamily(sheet, row) {
             sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
         } else {
             logError(`Contact sync failed for family: ${familyId}`, contactResult.error);
+
+            // Add error comment to sheet
+            const existingComment = data[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
+            const newComment = existingComment ?
+                `${existingComment}\n⚠️ Erreur création contact: ${contactResult.error}` :
+                `⚠️ Erreur création contact: ${contactResult.error}`;
+            sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
         }
 
     } catch (error) {

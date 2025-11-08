@@ -1,5 +1,5 @@
 /**
- * @file src/services/contactService.js (ENHANCED)
+ * @file src/services/contactService.js (FIXED)
  * @description Manage Google Contacts synchronization with groups and archiving
  */
 
@@ -51,27 +51,43 @@ function deleteContactForArchivedFamily(familyId) {
 
 /**
  * Find contact by family ID stored in notes
+ * FIXED: Only use list method (search API not available)
  */
 function findContactByFamilyId(familyId) {
-    const contacts = People.People.searchContacts({
-        query: familyId,
-        readMask: 'names,emailAddresses,phoneNumbers,addresses,biographies,memberships'
-    });
+    try {
+        // Convert familyId to string for comparison
+        const searchId = String(familyId);
 
-    if (contacts.results && contacts.results.length > 0) {
-        for (const result of contacts.results) {
-            const contact = result.person;
-            if (contact.biographies) {
-                for (const bio of contact.biographies) {
-                    if (bio.value && bio.value.includes(familyId)) {
-                        return contact;
+        logInfo(`Searching for contact with family ID: ${searchId}`);
+
+        // List all connections and search manually
+        const response = People.People.Connections.list('people/me', {
+            pageSize: 2000,
+            personFields: 'names,emailAddresses,phoneNumbers,addresses,biographies,memberships'
+        });
+
+        if (response.connections && response.connections.length > 0) {
+            logInfo(`Scanning ${response.connections.length} total contacts...`);
+
+            for (const contact of response.connections) {
+                if (contact.biographies) {
+                    for (const bio of contact.biographies) {
+                        if (bio.value && bio.value.includes(`Family ID: ${searchId}`)) {
+                            logInfo(`Found match in connections list for family ${searchId}`);
+                            return contact;
+                        }
                     }
                 }
             }
         }
-    }
 
-    return null;
+        logInfo(`No contact found for family ID: ${searchId}`);
+        return null;
+
+    } catch (e) {
+        logError(`Error finding contact for family ${familyId}`, e);
+        return null;
+    }
 }
 
 /**
@@ -176,6 +192,7 @@ function parseAddress(fullAddress) {
 
 /**
  * Create new contact with groups and structured address
+ * FIXED: Always normalize phone numbers before sending to API
  */
 function createContact(familyData) {
     const { id, nom, prenom, email, telephone, phoneBis, adresse, idQuartier } = familyData;
@@ -192,17 +209,28 @@ function createContact(familyData) {
         }]
     };
 
+    // FIXED: Normalize phone numbers before adding to contact
     if (telephone) {
-        contactResource.phoneNumbers = [{
-            value: telephone,
-            type: 'mobile'
-        }];
+        const normalizedPhone = normalizePhone(telephone);
 
-        if (phoneBis) {
-            contactResource.phoneNumbers.push({
-                value: phoneBis,
-                type: 'home'
-            });
+        if (!normalizedPhone) {
+            logWarning(`Invalid phone number for family ${id}: ${telephone}`);
+        } else {
+            contactResource.phoneNumbers = [{
+                value: normalizedPhone,
+                type: 'mobile'
+            }];
+
+            // Add secondary phone if provided
+            if (phoneBis) {
+                const normalizedPhoneBis = normalizePhone(phoneBis);
+                if (normalizedPhoneBis) {
+                    contactResource.phoneNumbers.push({
+                        value: normalizedPhoneBis,
+                        type: 'home'
+                    });
+                }
+            }
         }
     }
 
@@ -257,12 +285,20 @@ function createContact(familyData) {
         contactResource.memberships = memberships;
     }
 
+    // Log the contact resource before creating
+    logInfo(`Creating contact for family ${id}`, {
+        name: `${prenom} ${nom}`,
+        phone: contactResource.phoneNumbers ? contactResource.phoneNumbers[0].value : 'none',
+        email: email || 'none'
+    });
+
     People.People.createContact(contactResource);
     logInfo(`Contact created with groups for family: ${id}`);
 }
 
 /**
  * Update existing contact with groups and structured address
+ * FIXED: Always normalize phone numbers before sending to API
  */
 function updateContact(contact, familyData) {
     const { id, nom, prenom, email, telephone, phoneBis, adresse, idQuartier } = familyData;
@@ -278,17 +314,28 @@ function updateContact(contact, familyData) {
         biographies: contact.biographies
     };
 
+    // FIXED: Normalize phone numbers before adding to contact
     if (telephone) {
-        updateResource.phoneNumbers = [{
-            value: telephone,
-            type: 'mobile'
-        }];
+        const normalizedPhone = normalizePhone(telephone);
 
-        if (phoneBis) {
-            updateResource.phoneNumbers.push({
-                value: phoneBis,
-                type: 'home'
-            });
+        if (!normalizedPhone) {
+            logWarning(`Invalid phone number for family ${id}: ${telephone}`);
+        } else {
+            updateResource.phoneNumbers = [{
+                value: normalizedPhone,
+                type: 'mobile'
+            }];
+
+            // Add secondary phone if provided
+            if (phoneBis) {
+                const normalizedPhoneBis = normalizePhone(phoneBis);
+                if (normalizedPhoneBis) {
+                    updateResource.phoneNumbers.push({
+                        value: normalizedPhoneBis,
+                        type: 'home'
+                    });
+                }
+            }
         }
     }
 
@@ -310,6 +357,13 @@ function updateContact(contact, familyData) {
             type: 'home'
         }];
     }
+
+    // Log the update resource before updating
+    logInfo(`Updating contact for family ${id}`, {
+        name: `${prenom} ${nom}`,
+        phone: updateResource.phoneNumbers ? updateResource.phoneNumbers[0].value : 'none',
+        email: email || 'none'
+    });
 
     // Update contact basic info
     People.People.updateContact(updateResource, {
