@@ -1,6 +1,6 @@
 /**
- * @file src/handlers/formHandler.js (REFACTORED)
- * @description Unified form submission handler with quartier validation
+ * @file src/handlers/formHandler.js (UPDATED)
+ * @description Unified form submission handler supporting multilingual forms and Google Form
  */
 
 /**
@@ -20,7 +20,13 @@ function onFormSubmit(e) {
             return;
         }
 
-        // Parse form data
+        // Check if this is the Google Form sheet
+        if (sheetName === CONFIG.SHEETS.GOOGLE_FORM) {
+            processGoogleFormSubmission(sheet, row);
+            return;
+        }
+
+        // Otherwise, process as multilingual form (FR/AR/EN/UPDATE)
         const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
         const values = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
         const formData = parseFormResponse(headers, values);
@@ -37,9 +43,9 @@ function onFormSubmit(e) {
 
         // Route to appropriate handler
         if (formType === 'UPDATE') {
-            processUpdate(formData, sheet, row);
+            processUpdate(formData);
         } else {
-            processInsert(formData, sheet, row, sheetName);
+            processInsert(formData);
         }
 
     } catch (error) {
@@ -49,10 +55,156 @@ function onFormSubmit(e) {
 }
 
 /**
+ * Process Google Form submission (insert-only, no documents)
+ */
+function processGoogleFormSubmission(sheet, row) {
+    try {
+        logInfo('📱 Processing Google Form submission');
+
+        const values = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
+        const formData = parseGoogleFormData(values);
+
+        // Add status column for tracking
+        const statusColumn = sheet.getLastColumn() + 1;
+        sheet.getRange(row, statusColumn).setValue('⚙️ En cours...');
+
+        // Validate required fields
+        const fieldValidation = validateRequiredFields(formData);
+        if (!fieldValidation.isValid) {
+            const errorMessage = `Champs requis manquants: ${fieldValidation.errors.join(', ')}`;
+            sheet.getRange(row, statusColumn).setValue(`❌ ${errorMessage}`);
+
+            writeToFamilySheet(formData, {
+                status: CONFIG.STATUS.REJECTED,
+                comment: errorMessage,
+                criticite: 0
+            });
+
+            notifyAdmin(
+                '⚠️ Google Form Rejected',
+                `Reason: ${fieldValidation.errors.join(', ')}\nName: ${formData.lastName} ${formData.firstName}`
+            );
+            return;
+        }
+
+        // Validate address
+        logInfo('🏠 Validating address');
+        const addressValidation = validateAddressAndGetQuartier(
+            formData.address,
+            formData.postalCode,
+            formData.city
+        );
+
+        if (!addressValidation.isValid) {
+            const errorMessage = `Adresse invalide: ${addressValidation.error}`;
+            sheet.getRange(row, statusColumn).setValue(`❌ ${errorMessage}`);
+
+            writeToFamilySheet(formData, {
+                status: CONFIG.STATUS.REJECTED,
+                comment: errorMessage,
+                criticite: 0
+            });
+
+            notifyAdmin(
+                '⚠️ Google Form Rejected',
+                `Invalid address\nFamily: ${formData.lastName} ${formData.firstName}\nAddress: ${formData.address}`
+            );
+            return;
+        }
+
+        logInfo('✅ Address validated successfully');
+
+        let status = CONFIG.STATUS.IN_PROGRESS;
+        let comment = `Soumis via Google Form le ${new Date().toLocaleString('fr-FR')}`;
+
+        if (addressValidation.quartierInvalid) {
+            comment += `\n⚠️ ${addressValidation.warning}`;
+            logWarning(`Quartier invalid for Google Form: ${addressValidation.quartierId}`);
+        }
+
+        // Check duplicates
+        logInfo('🔍 Checking for duplicates');
+        const duplicate = findDuplicateFamily(
+            formData.phone,
+            formData.lastName,
+            formData.email
+        );
+
+        if (duplicate.exists) {
+            updateExistingFamily(duplicate, formData, addressValidation, { identityIds: [], cafIds: [], resourceIds: [] });
+            sheet.getRange(row, statusColumn).setValue(`✅ Mis à jour: ${duplicate.id}`);
+
+            notifyAdmin(
+                '🔄 Family Updated (Google Form)',
+                `ID: ${duplicate.id}\nName: ${formData.lastName} ${formData.firstName}\nPhone: ${normalizePhone(formData.phone)}`
+            );
+        } else {
+            const familyId = generateFamilyId();
+
+            writeToFamilySheet(formData, {
+                status: status,
+                comment: comment,
+                familyId: familyId,
+                quartierId: addressValidation.quartierId,
+                quartierName: addressValidation.quartierName,
+                identityIds: [],
+                cafIds: [],
+                resourceIds: [],
+                criticite: formData.criticite
+            });
+
+            sheet.getRange(row, statusColumn).setValue(`✅ Créé: ${familyId}`);
+
+            const notificationMsg = `ID: ${familyId}\nName: ${formData.lastName} ${formData.firstName}\n` +
+                `Phone: ${normalizePhone(formData.phone)}\n` +
+                `Address: ${formData.address}, ${formData.postalCode} ${formData.city}\n` +
+                `Quartier: ${addressValidation.quartierName || 'Non assigné'}\n` +
+                `Criticité: ${formData.criticite}` +
+                (addressValidation.quartierInvalid ? `\n\n⚠️ WARNING: Quartier ID invalid` : '');
+
+            notifyAdmin('✅ New Submission (Google Form)', notificationMsg);
+        }
+
+        logInfo('✅ Google Form processed successfully');
+
+    } catch (error) {
+        logError('❌ Google Form processing failed', error);
+
+        const statusColumn = sheet.getLastColumn();
+        sheet.getRange(row, statusColumn).setValue(`❌ Erreur: ${error.toString()}`);
+
+        notifyAdmin('❌ Google Form Error', `Error: ${error.toString()}`);
+    }
+}
+
+/**
+ * Parse Google Form submission data
+ */
+function parseGoogleFormData(values) {
+    return {
+        timestamp: values[GOOGLE_FORM_COLUMNS.TIMESTAMP] || new Date(),
+        dateSaisie: values[GOOGLE_FORM_COLUMNS.DATE_SAISIE] || '',
+        lastName: values[GOOGLE_FORM_COLUMNS.NOM] || '',
+        firstName: values[GOOGLE_FORM_COLUMNS.PRENOM] || '',
+        phone: String(values[GOOGLE_FORM_COLUMNS.TELEPHONE] || ''),
+        phoneBis: values[GOOGLE_FORM_COLUMNS.TELEPHONE_BIS] ? String(values[GOOGLE_FORM_COLUMNS.TELEPHONE_BIS]) : '',
+        email: values[GOOGLE_FORM_COLUMNS.EMAIL] || '',
+        address: values[GOOGLE_FORM_COLUMNS.ADRESSE] || '',
+        postalCode: String(values[GOOGLE_FORM_COLUMNS.CODE_POSTAL] || ''),
+        city: values[GOOGLE_FORM_COLUMNS.VILLE] || '',
+        nombreAdulte: parseInt(values[GOOGLE_FORM_COLUMNS.NOMBRE_ADULTE]) || 0,
+        nombreEnfant: parseInt(values[GOOGLE_FORM_COLUMNS.NOMBRE_ENFANT]) || 0,
+        criticite: parseInt(values[GOOGLE_FORM_COLUMNS.CRITICITE]) || 0,
+        circonstances: values[GOOGLE_FORM_COLUMNS.CIRCONSTANCES] || '',
+        ressentit: values[GOOGLE_FORM_COLUMNS.RESSENTIT] || '',
+        specificites: values[GOOGLE_FORM_COLUMNS.SPECIFICITES] || ''
+    };
+}
+
+/**
  * Detect if form is INSERT or UPDATE
  */
 function detectFormType(formData, sheetName) {
-    // Check for family ID
     const hasFamilyId = !!(formData.familyId || formData.id);
 
     if (hasFamilyId) {
@@ -60,7 +212,6 @@ function detectFormType(formData, sheetName) {
         return 'UPDATE';
     }
 
-    // Check sheet name for update keywords
     const updateKeywords = [
         'update', 'mise à jour', 'mise a jour', 'maj', 'modification',
         'تحديث', 'actualisation', 'modifier'
@@ -81,11 +232,10 @@ function detectFormType(formData, sheetName) {
 /**
  * Process INSERT submission (new family)
  */
-function processInsert(formData, sheet, row, sheetName) {
+function processInsert(formData) {
     try {
         logInfo('➕ Processing INSERT submission');
 
-        // Validate required fields
         const fieldValidation = validateRequiredFields(formData);
         if (!fieldValidation.isValid) {
             writeToFamilySheet(formData, {
@@ -97,7 +247,6 @@ function processInsert(formData, sheet, row, sheetName) {
             return;
         }
 
-        // Validate address
         logInfo('🏠 Validating address');
         const addressValidation = validateAddressAndGetQuartier(
             formData.address,
@@ -117,12 +266,11 @@ function processInsert(formData, sheet, row, sheetName) {
 
         logInfo('✅ Address validated successfully');
 
-        // NEW: Check if quartier is invalid in GEO API
         let status = CONFIG.STATUS.IN_PROGRESS;
         let comment = '';
 
         if (addressValidation.quartierInvalid) {
-            status = CONFIG.STATUS.IN_PROGRESS; // Keep as in-progress
+            status = CONFIG.STATUS.IN_PROGRESS;
             comment = `⚠️ ATTENTION: ${addressValidation.warning}\n` +
                 `Quartier ID "${addressValidation.quartierId}" n'existe pas dans l'API GEO.\n` +
                 `Vérifier l'adresse avant validation.`;
@@ -130,7 +278,6 @@ function processInsert(formData, sheet, row, sheetName) {
             logWarning(`Quartier invalid for new family: ${addressValidation.quartierId}`);
         }
 
-        // Validate documents
         logInfo('📄 Validating documents');
         const docValidation = validateDocuments(
             formData.identityDoc,
@@ -150,7 +297,6 @@ function processInsert(formData, sheet, row, sheetName) {
         }
         logInfo('✅ Documents validated successfully');
 
-        // Check for duplicates
         logInfo('🔍 Checking for duplicates');
         const duplicate = findDuplicateFamily(
             formData.phone,
@@ -196,15 +342,15 @@ function processInsert(formData, sheet, row, sheetName) {
 /**
  * Process UPDATE submission (existing family)
  */
-function processUpdate(formData, sheet, row) {
+function processUpdate(formData) {
     try {
         logInfo('✏️ Processing UPDATE submission');
 
         const familyId = formData.familyId || formData.id;
 
         if (!familyId) {
-            logError('❌ Update form without family ID', { row });
-            notifyAdmin('❌ Update Failed', `Missing family ID in form\nRow: ${row}`);
+            logError('❌ Update form without family ID');
+            notifyAdmin('❌ Update Failed', 'Missing family ID in form');
             return;
         }
 

@@ -1,24 +1,25 @@
 /**
- * @file src/core/config.js (Updated for GEO API v5.0 - NO SCHEMA CHANGES)
- * @description 🎯 Configuration centrale avec génération d'ID auto-incrémentée
+ * @file src/core/config.js (UPDATED)
+ * @description Configuration with Google Form sheet mapping
  */
 
 const CONFIG = {
     // 📋 Noms des feuilles
     SHEETS: {
-        FAMILLE: 'Famille',
+        GOOGLE_FORM: 'Famille - Admin',
         FORM_FR: 'Familles – FR',
         FORM_AR: 'Familles – AR',
         FORM_EN: 'Familles – EN',
+        FAMILLE: 'Famille',
         FORM_UPDATE: 'Mise à Jour Famille'
     },
 
     // ⏱️ Configuration du cache (en secondes)
     CACHE: {
-        SHORT: 300,      // 5 minutes
-        MEDIUM: 1800,    // 30 minutes
-        LONG: 3600,      // 1 heure
-        VERY_LONG: 21600 // 6 heures
+        SHORT: 300,
+        MEDIUM: 1800,
+        LONG: 3600,
+        VERY_LONG: 21600
     },
 
     // 📊 Valeurs de statut
@@ -61,7 +62,7 @@ const CONFIG = {
     // 🌍 Configuration API géographique v5.0
     GEO_API: {
         VERSION: '5.0',
-        MAX_DISTANCE: 50 // km (used for legacy compatibility)
+        MAX_DISTANCE: 50
     },
 
     // 🚫 Phrases de refus de consentement
@@ -112,6 +113,26 @@ const BULK_UPDATE_COLUMNS = {
     SPECIFICITES: 13,
     CRITICITE: 14,
     COMMENTAIRE: 15
+};
+
+// 🗂️ NEW: Indices de colonnes pour Google Form (0-based)
+const GOOGLE_FORM_COLUMNS = {
+    TIMESTAMP: 0,
+    DATE_SAISIE: 1,
+    NOM: 2,
+    PRENOM: 3,
+    TELEPHONE: 4,
+    TELEPHONE_BIS: 5,
+    EMAIL: 6,
+    ADRESSE: 7,
+    CODE_POSTAL: 8,
+    VILLE: 9,
+    NOMBRE_ADULTE: 10,
+    NOMBRE_ENFANT: 11,
+    CRITICITE: 12,
+    CIRCONSTANCES: 13,
+    RESSENTIT: 14,
+    SPECIFICITES: 15
 };
 
 // 🌐 Mappage multilingue des colonnes
@@ -196,7 +217,6 @@ const COLUMN_MAP = {
 };
 
 // 🗂️ Indices de colonnes pour la feuille de sortie (0-based)
-// ✅ NO CHANGES - Schema remains identical
 const OUTPUT_COLUMNS = {
     ID: 0,
     NOM: 1,
@@ -206,7 +226,7 @@ const OUTPUT_COLUMNS = {
     NOMBRE_ADULTE: 5,
     NOMBRE_ENFANT: 6,
     ADRESSE: 7,
-    ID_QUARTIER: 8,        // UNCHANGED - Still in position 8
+    ID_QUARTIER: 8,
     SE_DEPLACE: 9,
     EMAIL: 10,
     TELEPHONE: 11,
@@ -246,7 +266,7 @@ function getScriptConfig() {
         gestionFamillesFolderId: getProperty('GESTION_FAMILLES_FOLDER_ID'),
         spreadsheetId: getProperty('SPREADSHEET_ID'),
         geoApiUrl: getProperty('GEO_API_URL'),
-        geoApiKey: getProperty('GEO_API_KEY'), // NEW: API Key required for v5.0
+        geoApiKey: getProperty('GEO_API_KEY'),
         adminEmail: getProperty('ADMIN_EMAIL')
     };
 }
