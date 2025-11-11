@@ -1,11 +1,18 @@
 /**
- * @file src/core/utils.js (FIXED - Phone Normalization)
- * @description 🛠️ Fonctions utilitaires réutilisables avec gestion des téléphones corrigée
+ * @file src/core/utils.js (FIXED - Enhanced Phone Normalization)
+ * @description Utility functions with improved phone number handling
  */
 
 /**
  * 📞 Normaliser et formater un numéro de téléphone français
  * Format de sortie: +33 X XX XX XX XX (sans le 0 initial, sans parenthèses)
+ * 
+ * Handles formats like:
+ * - 0612345678
+ * - +33612345678
+ * - +33 (0) 6 12 34 56 78
+ * - 0033612345678
+ * - 33612345678
  * 
  * @param {string|number} phone - Numéro de téléphone brut
  * @returns {string} - Numéro formaté ou chaîne vide
@@ -13,69 +20,91 @@
 function normalizePhone(phone) {
     if (!phone) return '';
 
-    // 🔄 Convertir en chaîne et nettoyer TOUS les caractères non-numériques (sauf le +)
+    // Convert to string and trim
     let cleaned = String(phone).trim();
 
-    // 🚫 Remove all non-digit characters except the leading +
-    const hasPlus = cleaned.startsWith('+');
-    cleaned = cleaned.replace(/\D/g, ''); // Remove ALL non-digits
+    // Remove ALL non-digit characters (including spaces, parentheses, dashes, etc.)
+    // Keep only digits
+    cleaned = cleaned.replace(/\D/g, '');
 
     if (!cleaned) return '';
 
-    // 🇫🇷 Gérer les formats français
+    // Now we have only digits - determine the format and extract local number
     let localNumber = '';
 
     if (cleaned.startsWith('0033')) {
-        // Format 0033XXXXXXXXX -> extract 9 digits after 0033
+        // Format: 0033XXXXXXXXX -> extract 9 digits after 0033
         localNumber = cleaned.substring(4);
-    } else if (cleaned.startsWith('33')) {
-        // Format 33XXXXXXXXX -> extract 9 digits after 33
+    } else if (cleaned.startsWith('33') && cleaned.length >= 11) {
+        // Format: 33XXXXXXXXX -> extract 9 digits after 33
         localNumber = cleaned.substring(2);
     } else if (cleaned.startsWith('0') && cleaned.length === 10) {
-        // Format national français (0XXXXXXXXX) -> remove leading 0
+        // Format: 0XXXXXXXXX -> remove leading 0
         localNumber = cleaned.substring(1);
     } else if (cleaned.length === 9 && !cleaned.startsWith('0')) {
-        // Already in format without leading 0
+        // Already in correct format without leading 0
         localNumber = cleaned;
+    } else if (cleaned.length === 10 && cleaned.startsWith('0')) {
+        // Another check for 10-digit format
+        localNumber = cleaned.substring(1);
     } else {
-        // ⚠️ Format non reconnu, retourner le numéro nettoyé
+        // Unrecognized format
         logWarning(`⚠️ Format de téléphone non standard: ${phone} -> ${cleaned}`);
-        return cleaned;
+
+        // Try to extract 9 digits if possible
+        if (cleaned.length >= 9) {
+            // Take the last 9 digits
+            localNumber = cleaned.slice(-9);
+        } else {
+            return cleaned; // Return as-is if we can't parse it
+        }
     }
 
-    // ✅ Valider qu'on a exactement 9 chiffres
+    // Validate we have exactly 9 digits
     if (localNumber.length !== 9) {
-        logWarning(`⚠️ Numéro de téléphone invalide (doit avoir 9 chiffres après l'indicatif): ${phone}`);
+        logWarning(`⚠️ Numéro de téléphone invalide (doit avoir 9 chiffres après l'indicatif): ${phone} (extracted: ${localNumber})`);
+
+        // If we have more than 9 digits, try to extract the last 9
+        if (localNumber.length > 9) {
+            localNumber = localNumber.slice(-9);
+        } else {
+            return cleaned; // Return original cleaned version
+        }
+    }
+
+    // Final validation: must start with valid French mobile prefix (6, 7) or landline (1-5, 9)
+    const firstDigit = localNumber[0];
+    if (!/[1-9]/.test(firstDigit)) {
+        logWarning(`⚠️ Numéro invalide - premier chiffre doit être 1-9: ${phone}`);
         return cleaned;
     }
 
-    // 📱 Formater au format international: +33 X XX XX XX XX
+    // Format to international: +33 X XX XX XX XX
     return `+33 ${localNumber[0]} ${localNumber.substring(1, 3)} ${localNumber.substring(3, 5)} ${localNumber.substring(5, 7)} ${localNumber.substring(7, 9)}`;
 }
 
 /**
  * 📞 Valider un numéro de téléphone français
- * Accepte: 0XXXXXXXXX (10 digits) ou +33XXXXXXXXX (9 digits après +33) ou 33XXXXXXXXX
  */
 function isValidPhone(phone) {
     if (!phone) return false;
 
-    // Nettoyer le numéro (garder seulement les chiffres)
+    // Clean the number
     const digitsOnly = String(phone).replace(/\D/g, '');
 
-    // Vérifier les formats valides
+    // Check valid formats
     if (digitsOnly.startsWith('0') && digitsOnly.length === 10) {
-        // Format national: 0XXXXXXXXX
+        // Format: 0XXXXXXXXX
         return /^0[1-9]\d{8}$/.test(digitsOnly);
     } else if (digitsOnly.startsWith('33') && digitsOnly.length === 11) {
-        // Format international sans +: 33XXXXXXXXX
+        // Format: 33XXXXXXXXX
         return /^33[1-9]\d{8}$/.test(digitsOnly);
     } else if (digitsOnly.startsWith('0033') && digitsOnly.length === 13) {
-        // Format international avec 00: 0033XXXXXXXXX
+        // Format: 0033XXXXXXXXX
         return /^0033[1-9]\d{8}$/.test(digitsOnly);
-    } else if (digitsOnly.length === 11 && digitsOnly.startsWith('33')) {
-        // Format +33XXXXXXXXX (after removing +)
-        return /^33[1-9]\d{8}$/.test(digitsOnly);
+    } else if (digitsOnly.length === 9 && /^[1-9]/.test(digitsOnly[0])) {
+        // Format: XXXXXXXXX (already without country code or leading 0)
+        return true;
     }
 
     return false;

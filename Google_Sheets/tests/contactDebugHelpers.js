@@ -1,18 +1,16 @@
 /**
- * @file src/services/contactDebugHelpers.js (FIXED)
+ * @file tests/contactDebugHelpers.js (FIXED - Correct Delete Method)
  * @description Helper functions to debug contact issues
  */
 
 /**
  * List all contacts with their biographies (for debugging)
- * Run this from Script Editor to see what contacts exist
  */
 function debugListAllContacts() {
     try {
         console.log('Attempting to list contacts...');
         console.log('==========================================');
 
-        // Use the correct method: People.People.Connections.list
         const response = People.People.Connections.list('people/me', {
             pageSize: 100,
             personFields: 'names,biographies'
@@ -47,7 +45,6 @@ function debugListAllContacts() {
 
 /**
  * Search for a specific family ID in contacts
- * @param {string|number} familyId - The family ID to search for
  */
 function debugFindContactByFamilyId(familyId) {
     try {
@@ -55,7 +52,6 @@ function debugFindContactByFamilyId(familyId) {
         console.log(`Searching for family ID: ${searchId}`);
         console.log('==========================================');
 
-        // Only use list method (search API not available)
         console.log('Scanning all connections...');
         const response = People.People.Connections.list('people/me', {
             pageSize: 2000,
@@ -108,8 +104,7 @@ function debugFindContactByFamilyId(familyId) {
 
 /**
  * Delete a contact by family ID with detailed logging
- * FIXED: Use correct deletion method
- * @param {string|number} familyId - The family ID
+ * FIXED: Use correct deleteContact method
  */
 function debugDeleteContactByFamilyId(familyId) {
     try {
@@ -127,8 +122,8 @@ function debugDeleteContactByFamilyId(familyId) {
         console.log(`  Name: ${contact.names ? contact.names[0].displayName : 'No name'}`);
         console.log(`  Resource: ${contact.resourceName}`);
 
-        // FIXED: Delete using correct method
-        People.People.remove(contact.resourceName);
+        // FIXED: Use deleteContact method
+        People.People.deleteContact(contact.resourceName);
 
         console.log('✓ Contact deleted successfully');
 
@@ -139,7 +134,6 @@ function debugDeleteContactByFamilyId(familyId) {
 
 /**
  * Test contact creation for a family
- * @param {number} familyId - The family ID from the sheet
  */
 function debugTestContactCreation(familyId) {
     try {
@@ -190,7 +184,6 @@ function debugTestContactCreation(familyId) {
         if (result.success) {
             console.log('✓ Contact synced successfully');
 
-            // Try to find it
             console.log('\nVerifying contact was created...');
             const foundContact = findContactByFamilyId(familyId);
 

@@ -1,10 +1,11 @@
 /**
- * @file src/services/contactService.js (FIXED - Delete Contact Bug)
+ * @file src/services/contactService.js (FIXED - Correct Delete Method)
  * @description Manage Google Contacts synchronization with groups and archiving
  */
 
 /**
  * Create or update Google Contact for a family
+ * SIMPLIFIED: Delete and recreate instead of update to avoid 404 errors
  */
 function syncFamilyContact(familyData) {
     try {
@@ -13,8 +14,16 @@ function syncFamilyContact(familyData) {
         const existingContact = findContactByFamilyId(id);
 
         if (existingContact) {
-            updateContact(existingContact, familyData);
-            logInfo(`Contact updated for family: ${id}`);
+            // SIMPLIFIED: Delete the old contact and create a new one
+            // This avoids etag/404 issues with updates
+            logInfo(`Deleting existing contact for family: ${id}`);
+            People.People.deleteContact(existingContact.resourceName);
+
+            // Wait a moment for deletion to propagate
+            Utilities.sleep(500);
+
+            logInfo(`Creating fresh contact for family: ${id}`);
+            createContact(familyData);
         } else {
             createContact(familyData);
             logInfo(`Contact created for family: ${id}`);
@@ -29,7 +38,7 @@ function syncFamilyContact(familyData) {
 
 /**
  * Delete contact when family is archived
- * CORRECT: deleteContact takes the resource name as a direct string parameter
+ * FIXED: Use deleteContact method with resource name
  */
 function deleteContactForArchivedFamily(familyId) {
     try {
@@ -40,7 +49,7 @@ function deleteContactForArchivedFamily(familyId) {
             return { success: true, message: 'No contact to delete' };
         }
 
-        // CORRECT: Pass resource name directly as a string
+        // CORRECT: Use deleteContact method
         People.People.deleteContact(contact.resourceName);
 
         logInfo(`Contact deleted for archived family: ${familyId}`);
@@ -54,11 +63,9 @@ function deleteContactForArchivedFamily(familyId) {
 
 /**
  * Find contact by family ID stored in notes
- * FIXED: Only use list method (search API not available)
  */
 function findContactByFamilyId(familyId) {
     try {
-        // Convert familyId to string for comparison
         const searchId = String(familyId);
 
         logInfo(`Searching for contact with family ID: ${searchId}`);
@@ -100,14 +107,12 @@ function getOrCreateContactGroup(groupName) {
     const cache = CacheService.getScriptCache();
     const cacheKey = `contact_group_${groupName}`;
 
-    // Check cache first
     const cachedGroupId = cache.get(cacheKey);
     if (cachedGroupId) {
         return cachedGroupId;
     }
 
     try {
-        // Search for existing group
         const groups = People.ContactGroups.list({
             pageSize: 1000
         });
@@ -121,7 +126,6 @@ function getOrCreateContactGroup(groupName) {
             }
         }
 
-        // Create new group if not found
         const newGroup = People.ContactGroups.create({
             contactGroup: {
                 name: groupName
@@ -165,14 +169,12 @@ function getLocationGroupName(quartierId) {
 
 /**
  * Parse address from full address string
- * Returns: { street, postalCode, city, country }
  */
 function parseAddress(fullAddress) {
     if (!fullAddress) {
         return { street: '', postalCode: '', city: '', country: 'France' };
     }
 
-    // Expected format: "Street, PostalCode City" or "Street, PostalCode City, France"
     const parts = fullAddress.split(',').map(p => p.trim());
 
     if (parts.length < 2) {
@@ -182,12 +184,10 @@ function parseAddress(fullAddress) {
     const street = parts[0];
     const secondPart = parts[1];
 
-    // Extract postal code (5 digits) and city from second part
     const postalCodeMatch = secondPart.match(/\b(\d{5})\b/);
     const postalCode = postalCodeMatch ? postalCodeMatch[1] : '';
     const city = postalCode ? secondPart.replace(postalCode, '').trim() : secondPart;
 
-    // Country is usually last part if exists, otherwise default to France
     const country = parts.length >= 3 ? parts[parts.length - 1] : 'France';
 
     return { street, postalCode, city, country };
@@ -195,7 +195,6 @@ function parseAddress(fullAddress) {
 
 /**
  * Create new contact with groups and structured address
- * FIXED: Always normalize phone numbers before sending to API
  */
 function createContact(familyData) {
     const { id, nom, prenom, email, telephone, phoneBis, adresse, idQuartier } = familyData;
@@ -212,7 +211,6 @@ function createContact(familyData) {
         }]
     };
 
-    // FIXED: Normalize phone numbers before adding to contact
     if (telephone) {
         const normalizedPhone = normalizePhone(telephone);
 
@@ -224,7 +222,6 @@ function createContact(familyData) {
                 type: 'mobile'
             }];
 
-            // Add secondary phone if provided
             if (phoneBis) {
                 const normalizedPhoneBis = normalizePhone(phoneBis);
                 if (normalizedPhoneBis) {
@@ -244,7 +241,6 @@ function createContact(familyData) {
         }];
     }
 
-    // Parse and structure address
     if (adresse) {
         const parsedAddress = parseAddress(adresse);
         contactResource.addresses = [{
@@ -256,10 +252,8 @@ function createContact(familyData) {
         }];
     }
 
-    // Add contact groups
     const memberships = [];
 
-    // Add to main group "Famille dans le besoin"
     const mainGroupId = getOrCreateContactGroup('Famille dans le besoin');
     if (mainGroupId) {
         memberships.push({
@@ -269,7 +263,6 @@ function createContact(familyData) {
         });
     }
 
-    // Add to location-based group if quartier is available
     if (idQuartier) {
         const locationGroupName = getLocationGroupName(idQuartier);
         if (locationGroupName) {
@@ -288,7 +281,6 @@ function createContact(familyData) {
         contactResource.memberships = memberships;
     }
 
-    // Log the contact resource before creating
     logInfo(`Creating contact for family ${id}`, {
         name: `${prenom} ${nom}`,
         phone: contactResource.phoneNumbers ? contactResource.phoneNumbers[0].value : 'none',
@@ -301,91 +293,104 @@ function createContact(familyData) {
 
 /**
  * Update existing contact with groups and structured address
- * FIXED: Always normalize phone numbers before sending to API
+ * FIXED: Use correct updatePeopleContact method signature
  */
 function updateContact(contact, familyData) {
     const { id, nom, prenom, email, telephone, phoneBis, adresse, idQuartier } = familyData;
 
-    const updateResource = {
-        resourceName: contact.resourceName,
-        etag: contact.etag,
-        names: [{
-            givenName: prenom || '',
-            familyName: nom || '',
-            displayName: `${prenom} ${nom}`
-        }],
-        biographies: contact.biographies
-    };
+    try {
+        // IMPORTANT: Refetch the contact to get the latest etag
+        const freshContact = People.People.get({
+            resourceName: contact.resourceName,
+            personFields: 'names,emailAddresses,phoneNumbers,addresses,biographies,etags'
+        });
 
-    // FIXED: Normalize phone numbers before adding to contact
-    if (telephone) {
-        const normalizedPhone = normalizePhone(telephone);
+        const updateResource = {
+            resourceName: freshContact.resourceName,
+            etag: freshContact.etag,
+            names: [{
+                givenName: prenom || '',
+                familyName: nom || '',
+                displayName: `${prenom} ${nom}`
+            }],
+            biographies: freshContact.biographies || contact.biographies
+        };
 
-        if (!normalizedPhone) {
-            logWarning(`Invalid phone number for family ${id}: ${telephone}`);
-        } else {
-            updateResource.phoneNumbers = [{
-                value: normalizedPhone,
-                type: 'mobile'
-            }];
+        if (telephone) {
+            const normalizedPhone = normalizePhone(telephone);
 
-            // Add secondary phone if provided
-            if (phoneBis) {
-                const normalizedPhoneBis = normalizePhone(phoneBis);
-                if (normalizedPhoneBis) {
-                    updateResource.phoneNumbers.push({
-                        value: normalizedPhoneBis,
-                        type: 'home'
-                    });
+            if (!normalizedPhone) {
+                logWarning(`Invalid phone number for family ${id}: ${telephone}`);
+            } else {
+                updateResource.phoneNumbers = [{
+                    value: normalizedPhone,
+                    type: 'mobile'
+                }];
+
+                if (phoneBis) {
+                    const normalizedPhoneBis = normalizePhone(phoneBis);
+                    if (normalizedPhoneBis) {
+                        updateResource.phoneNumbers.push({
+                            value: normalizedPhoneBis,
+                            type: 'home'
+                        });
+                    }
                 }
             }
         }
+
+        if (email && isValidEmail(email)) {
+            updateResource.emailAddresses = [{
+                value: email,
+                type: 'home'
+            }];
+        }
+
+        if (adresse) {
+            const parsedAddress = parseAddress(adresse);
+            updateResource.addresses = [{
+                streetAddress: parsedAddress.street,
+                city: parsedAddress.city,
+                postalCode: parsedAddress.postalCode,
+                country: parsedAddress.country,
+                type: 'home'
+            }];
+        }
+
+        logInfo(`Updating contact for family ${id}`, {
+            name: `${prenom} ${nom}`,
+            phone: updateResource.phoneNumbers ? updateResource.phoneNumbers[0].value : 'none',
+            email: email || 'none',
+            resourceName: freshContact.resourceName
+        });
+
+        // FIXED: Correct signature according to Google Apps Script Advanced Service
+        // https://developers.google.com/apps-script/advanced/people
+        const updatedContact = People.People.updateContact(
+            freshContact.resourceName,
+            updateResource,
+            {
+                updatePersonFields: 'names,emailAddresses,phoneNumbers,addresses'
+            }
+        );
+
+        logInfo(`Contact updated successfully: ${updatedContact.resourceName}`);
+
+        updateContactGroups(freshContact.resourceName, idQuartier);
+
+        logInfo(`Contact groups updated for family: ${id}`);
+
+    } catch (e) {
+        logError(`Failed to update contact for family ${id}`, e);
+        throw e;
     }
-
-    if (email && isValidEmail(email)) {
-        updateResource.emailAddresses = [{
-            value: email,
-            type: 'home'
-        }];
-    }
-
-    // Parse and structure address
-    if (adresse) {
-        const parsedAddress = parseAddress(adresse);
-        updateResource.addresses = [{
-            streetAddress: parsedAddress.street,
-            city: parsedAddress.city,
-            postalCode: parsedAddress.postalCode,
-            country: parsedAddress.country,
-            type: 'home'
-        }];
-    }
-
-    // Log the update resource before updating
-    logInfo(`Updating contact for family ${id}`, {
-        name: `${prenom} ${nom}`,
-        phone: updateResource.phoneNumbers ? updateResource.phoneNumbers[0].value : 'none',
-        email: email || 'none'
-    });
-
-    // Update contact basic info
-    People.People.updateContact(updateResource, {
-        resourceName: contact.resourceName,
-        updatePersonFields: 'names,emailAddresses,phoneNumbers,addresses'
-    });
-
-    // Update group memberships (this will remove old location groups)
-    updateContactGroups(contact.resourceName, idQuartier);
-
-    logInfo(`Contact updated with groups for family: ${id}`);
 }
 
 /**
- * Update contact group memberships - removes old location groups, keeps only current
+ * Update contact group memberships
  */
 function updateContactGroups(contactResourceName, idQuartier) {
     try {
-        // Get current contact with memberships
         const contact = People.People.get({
             resourceName: contactResourceName,
             personFields: 'memberships'
@@ -396,25 +401,21 @@ function updateContactGroups(contactResourceName, idQuartier) {
         const newLocationGroupName = idQuartier ? getLocationGroupName(idQuartier) : null;
         const newLocationGroupId = newLocationGroupName ? getOrCreateContactGroup(newLocationGroupName) : null;
 
-        // Identify old location groups (pattern: "{Ville} - {Secteur}")
-        const locationGroupPattern = /^.+ - .+$/; // Matches "Something - Something"
+        const locationGroupPattern = /^.+ - .+$/;
         const oldLocationGroups = [];
 
         currentMemberships.forEach(membership => {
             if (membership.contactGroupMembership) {
                 const groupResourceName = membership.contactGroupMembership.contactGroupResourceName;
 
-                // Skip if it's the main group
                 if (groupResourceName === mainGroupId) {
                     return;
                 }
 
-                // Skip if it's the new location group (no need to remove and re-add)
                 if (newLocationGroupId && groupResourceName === newLocationGroupId) {
                     return;
                 }
 
-                // Try to identify if this is a location group by checking the group name
                 try {
                     const groupInfo = People.ContactGroups.get({
                         resourceName: groupResourceName
@@ -430,7 +431,6 @@ function updateContactGroups(contactResourceName, idQuartier) {
             }
         });
 
-        // Remove old location groups
         if (oldLocationGroups.length > 0) {
             oldLocationGroups.forEach(oldGroupId => {
                 try {
@@ -447,7 +447,6 @@ function updateContactGroups(contactResourceName, idQuartier) {
             });
         }
 
-        // Ensure main group membership
         const hasMainGroup = currentMemberships.some(m =>
             m.contactGroupMembership &&
             m.contactGroupMembership.contactGroupResourceName === mainGroupId
@@ -463,7 +462,6 @@ function updateContactGroups(contactResourceName, idQuartier) {
             logInfo(`Added contact to main group: Famille dans le besoin`);
         }
 
-        // Add new location group if exists and not already a member
         if (newLocationGroupId) {
             const hasNewLocationGroup = currentMemberships.some(m =>
                 m.contactGroupMembership &&

@@ -1,5 +1,5 @@
 /**
- * @file auth_test_functions.js (FIXED)
+ * @file tests/tests.js (FIXED - Correct Delete Method)
  * @description Simple functions to test People API authentication
  */
 
@@ -29,7 +29,7 @@ function testPeopleAPISimple() {
 
 /**
  * Test 2: Create and delete a test contact
- * FIXED: Use correct deletion method
+ * FIXED: Use deleteContact method
  * Run this AFTER testPeopleAPISimple works
  */
 function testCreateContactSimple() {
@@ -69,9 +69,9 @@ function testCreateContactSimple() {
             console.log('⚠️ Contact not found in search (may need more time to propagate)');
         }
 
-        // FIXED: Delete test contact using correct method
+        // FIXED: Use deleteContact method
         console.log('\nDeleting test contact...');
-        People.People.remove(contact.resourceName);
+        People.People.deleteContact(contact.resourceName);
 
         console.log('✅ Test contact deleted successfully!');
         console.log('\n🎉 All tests passed! Contact creation and deletion work correctly.');
