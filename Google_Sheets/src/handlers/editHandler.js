@@ -1,6 +1,6 @@
 /**
- * @file src/handlers/editHandler.js (FIXED)
- * @description Handle onEdit triggers with quartier validation and archive contact deletion
+ * @file src/handlers/editHandler.js (ENHANCED)
+ * @description Handle onEdit triggers with quartier auto-resolution and archive contact deletion
  */
 
 /**
@@ -33,7 +33,7 @@ function handleEdit(e) {
             // Validate before allowing status change to "Validé"
             if (newStatus === CONFIG.STATUS.VALIDATED) {
                 const criticite = sheet.getRange(row, OUTPUT_COLUMNS.CRITICITE + 1).getValue();
-                const quartierId = sheet.getRange(row, OUTPUT_COLUMNS.ID_QUARTIER + 1).getValue();
+                let quartierId = sheet.getRange(row, OUTPUT_COLUMNS.ID_QUARTIER + 1).getValue();
 
                 // Check if criticite is 0 or empty
                 if (!criticite || criticite === 0) {
@@ -68,25 +68,83 @@ function handleEdit(e) {
                     return;
                 }
 
-                // Validate quartier ID exists in GEO API
+                // NEW: Auto-resolve quartier if missing
                 if (!quartierId) {
-                    const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
-                    sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatusValue);
+                    logInfo(`Attempting to auto-resolve quartier for row ${row}`);
 
-                    SpreadsheetApp.getUi().alert(
-                        '⚠️ Quartier manquant',
-                        'Le dossier ne peut pas être validé sans un ID Quartier valide.\n\n' +
-                        'Le statut a été rétabli à: ' + oldStatusValue,
-                        SpreadsheetApp.getUi().ButtonSet.OK
-                    );
+                    const adresse = sheet.getRange(row, OUTPUT_COLUMNS.ADRESSE + 1).getValue();
 
+                    if (!adresse) {
+                        const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
+                        sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatusValue);
+
+                        SpreadsheetApp.getUi().alert(
+                            '⚠️ Quartier et adresse manquants',
+                            'Le dossier ne peut pas être validé sans adresse.\n\n' +
+                            'Le statut a été rétabli à: ' + oldStatusValue,
+                            SpreadsheetApp.getUi().ButtonSet.OK
+                        );
+
+                        return;
+                    }
+
+                    // Parse address
+                    const addressParts = adresse.split(',').map(p => p.trim());
+                    const address = addressParts[0] || '';
+                    const postalCode = addressParts[1] ? addressParts[1].match(/\d{5}/)?.[0] : '';
+                    const city = addressParts[2] || addressParts[1]?.replace(/\d{5}/, '').trim() || '';
+
+                    if (!address || !postalCode || !city) {
+                        const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
+                        sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatusValue);
+
+                        SpreadsheetApp.getUi().alert(
+                            '⚠️ Adresse incomplète',
+                            'Impossible de résoudre le quartier automatiquement.\n' +
+                            'Adresse incomplète ou mal formatée.\n\n' +
+                            'Format attendu: Adresse, Code Postal Ville\n\n' +
+                            'Le statut a été rétabli à: ' + oldStatusValue,
+                            SpreadsheetApp.getUi().ButtonSet.OK
+                        );
+
+                        return;
+                    }
+
+                    // Attempt to resolve quartier via GEO API
+                    const addressValidation = validateAddressAndGetQuartier(address, postalCode, city);
+
+                    if (!addressValidation.isValid || !addressValidation.quartierId) {
+                        const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
+                        sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatusValue);
+
+                        SpreadsheetApp.getUi().alert(
+                            '⚠️ Quartier introuvable',
+                            'Impossible de déterminer le quartier automatiquement.\n\n' +
+                            `Adresse: ${address}, ${postalCode} ${city}\n\n` +
+                            'Erreur: ' + (addressValidation.error || 'Aucun quartier trouvé') + '\n\n' +
+                            'Le statut a été rétabli à: ' + oldStatusValue,
+                            SpreadsheetApp.getUi().ButtonSet.OK
+                        );
+
+                        const existingComment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
+                        const newComment = existingComment +
+                            `\n⚠️ Tentative de validation échouée: ${addressValidation.error || 'Quartier introuvable'} - ${new Date().toLocaleString('fr-FR')}`;
+                        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
+
+                        return;
+                    }
+
+                    // Update quartier ID
+                    quartierId = addressValidation.quartierId;
+                    sheet.getRange(row, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue(quartierId);
+
+                    logInfo(`Quartier auto-resolved: ${quartierId} (${addressValidation.quartierName})`);
+
+                    // Add comment about auto-resolution
                     const existingComment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
                     const newComment = existingComment +
-                        `\n⚠️ Tentative de validation échouée: Quartier ID manquant - ${new Date().toLocaleString('fr-FR')}`;
+                        `\n✅ Quartier résolu automatiquement: ${addressValidation.quartierName || quartierId} - ${new Date().toLocaleString('fr-FR')}`;
                     sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
-
-                    logInfo(`Validation blocked for row ${row}: quartier ID missing`);
-                    return;
                 }
 
                 // Validate quartier exists in GEO API
@@ -155,10 +213,8 @@ function handleArchiveStatus(sheet, row) {
 
         logInfo(`Processing archive for family ${familyId} at row ${row}`);
 
-        // Delete contact from Google Contacts
         const deleteResult = deleteContactForArchivedFamily(familyId);
 
-        // Add comment about archiving and contact deletion
         const existingComment = data[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
         let newComment = existingComment ?
             `${existingComment}\n🗄️ Archivé le ${new Date().toLocaleString('fr-FR')}` :
@@ -174,7 +230,6 @@ function handleArchiveStatus(sheet, row) {
 
         sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
 
-        // Notify admin
         notifyAdmin(
             '🗄️ Famille archivée',
             `ID: ${familyId}\nNom: ${data[OUTPUT_COLUMNS.NOM]} ${data[OUTPUT_COLUMNS.PRENOM]}\nContact supprimé: ${deleteResult.success ? 'Oui' : 'Non'}`
@@ -192,7 +247,6 @@ function handleArchiveStatus(sheet, row) {
 
 /**
  * Process family when status changes to "Validé"
- * FIXED: Normalize phone numbers before passing to contact service
  */
 function processValidatedFamily(sheet, row) {
     try {
@@ -224,7 +278,6 @@ function processValidatedFamily(sheet, row) {
             logInfo(`Documents organized for family: ${familyId}`);
         }
 
-        // FIXED: Read phone numbers as strings and normalize them
         const rawPhone = String(data[OUTPUT_COLUMNS.TELEPHONE] || '');
         const rawPhoneBis = String(data[OUTPUT_COLUMNS.TELEPHONE_BIS] || '');
 
@@ -233,17 +286,11 @@ function processValidatedFamily(sheet, row) {
             nom: data[OUTPUT_COLUMNS.NOM],
             prenom: data[OUTPUT_COLUMNS.PRENOM],
             email: data[OUTPUT_COLUMNS.EMAIL],
-            telephone: rawPhone,  // Will be normalized in contactService
-            phoneBis: rawPhoneBis,  // Will be normalized in contactService
+            telephone: rawPhone,
+            phoneBis: rawPhoneBis,
             adresse: data[OUTPUT_COLUMNS.ADRESSE],
             idQuartier: data[OUTPUT_COLUMNS.ID_QUARTIER]
         };
-
-        logInfo(`Family data prepared for contact sync`, {
-            id: familyId,
-            rawPhone: rawPhone,
-            rawPhoneBis: rawPhoneBis
-        });
 
         const contactResult = syncFamilyContact(familyData);
 
@@ -258,7 +305,6 @@ function processValidatedFamily(sheet, row) {
         } else {
             logError(`Contact sync failed for family: ${familyId}`, contactResult.error);
 
-            // Add error comment to sheet
             const existingComment = data[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
             const newComment = existingComment ?
                 `${existingComment}\n⚠️ Erreur création contact: ${contactResult.error}` :
