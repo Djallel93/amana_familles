@@ -1,6 +1,8 @@
-// ============================================
-// OAUTH2 AUTHENTICATION
-// ============================================
+/**
+ * @file src/core/oauth.js
+ * @description OAuth2 authentication (REQUIRED for deployment)
+ */
+
 /**
  * Get OAuth2 service instance
  */
@@ -16,6 +18,7 @@ function getOAuthService() {
         .setParam('access_type', 'offline')
         .setParam('prompt', 'consent');
 }
+
 /**
  * Get valid access token
  */
@@ -26,6 +29,7 @@ function getOAuth2AccessToken() {
     }
     return service.getAccessToken();
 }
+
 /**
  * Get authorization URL (run once to authorize)
  */
@@ -35,6 +39,7 @@ function getAuthorizationUrl() {
     console.log('Open this URL to authorize: ' + authUrl);
     return authUrl;
 }
+
 /**
  * OAuth callback handler
  */
@@ -47,6 +52,7 @@ function authCallback(request) {
         return HtmlService.createHtmlOutput('❌ Authorization denied.');
     }
 }
+
 /**
  * Refresh access token if needed
  */
@@ -57,6 +63,7 @@ function refreshAccessToken() {
     }
     return service.getAccessToken(); // Automatically refreshes if expired
 }
+
 /**
  * Clear stored OAuth tokens
  */

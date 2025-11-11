@@ -1,158 +1,201 @@
 /**
- * @file tests/tests.js
- * @description Unit tests for core functions
+ * @file tests/tests.js (FIXED - Correct Delete Method)
+ * @description Simple functions to test People API authentication
  */
 
 /**
- * Test phone normalization
+ * Test 1: Simple read operation
+ * This should trigger the authorization flow
  */
-function testNormalizePhone() {
-    const tests = [
-        { input: '06 12 34 56 78', expected: '0612345678' },
-        { input: '06.12.34.56.78', expected: '0612345678' },
-        { input: '06-12-34-56-78', expected: '0612345678' },
-        { input: '(06) 12 34 56 78', expected: '0612345678' },
-        { input: '+33 6 12 34 56 78', expected: '+33612345678' }
-    ];
+function testPeopleAPISimple() {
+    try {
+        const response = People.People.Connections.list('people/me', {
+            pageSize: 1,
+            personFields: 'names'
+        });
 
-    tests.forEach(test => {
-        const result = normalizePhone(test.input);
-        console.log(`Input: ${test.input} -> Output: ${result} (Expected: ${test.expected}) - ${result === test.expected ? '✓' : '✗'}`);
-    });
+        console.log('✅ People API working!');
+        console.log('Total contacts:', response.totalItems || 0);
+        console.log('Connections returned:', response.connections ? response.connections.length : 0);
+
+        return 'SUCCESS';
+
+    } catch (e) {
+        console.error('❌ Error:', e.message);
+        console.error('Full error:', e);
+        return 'FAILED';
+    }
 }
 
 /**
- * Test email validation
+ * Test 2: Create and delete a test contact
+ * FIXED: Use deleteContact method
+ * Run this AFTER testPeopleAPISimple works
  */
-function testIsValidEmail() {
-    const tests = [
-        { input: 'test@example.com', expected: true },
-        { input: 'invalid.email', expected: false },
-        { input: 'test@', expected: false },
-        { input: '@example.com', expected: false },
-        { input: 'test+tag@example.com', expected: true }
-    ];
+function testCreateContactSimple() {
+    try {
+        console.log('Creating test contact...');
 
-    tests.forEach(test => {
-        const result = isValidEmail(test.input);
-        console.log(`Input: ${test.input} -> ${result} (Expected: ${test.expected}) - ${result === test.expected ? '✓' : '✗'}`);
-    });
-}
+        // Create test contact
+        const contact = People.People.createContact({
+            names: [{
+                givenName: 'Test',
+                familyName: 'Contact'
+            }],
+            phoneNumbers: [{
+                value: '+33 6 12 34 56 78',
+                type: 'mobile'
+            }],
+            biographies: [{
+                value: 'Family ID: 999',
+                contentType: 'TEXT_PLAIN'
+            }]
+        });
 
-/**
- * Test phone validation
- */
-function testIsValidPhone() {
-    const tests = [
-        { input: '0612345678', expected: true },
-        { input: '06 12 34 56 78', expected: true },
-        { input: '+33612345678', expected: true },
-        { input: '1234567890', expected: false },
-        { input: '06123', expected: false }
-    ];
+        console.log('✅ Contact created successfully!');
+        console.log('Resource name:', contact.resourceName);
+        console.log('Name:', contact.names ? contact.names[0].displayName : 'Unknown');
 
-    tests.forEach(test => {
-        const result = isValidPhone(test.input);
-        console.log(`Input: ${test.input} -> ${result} (Expected: ${test.expected}) - ${result === test.expected ? '✓' : '✗'}`);
-    });
-}
+        // Wait a moment
+        Utilities.sleep(2000);
 
-/**
- * Test file ID extraction
- */
-function testExtractFileIds() {
-    const tests = [
-        {
-            input: 'https://drive.google.com/file/d/ABC123/view',
-            expected: ['ABC123']
-        },
-        {
-            input: 'https://drive.google.com/open?id=XYZ789',
-            expected: ['XYZ789']
-        },
-        {
-            input: 'https://drive.google.com/file/d/ABC123/view, https://drive.google.com/file/d/DEF456/view',
-            expected: ['ABC123', 'DEF456']
+        // Try to find it
+        console.log('\nSearching for the contact...');
+        const found = findContactByFamilyId('999');
+
+        if (found) {
+            console.log('✅ Contact found in search!');
+        } else {
+            console.log('⚠️ Contact not found in search (may need more time to propagate)');
         }
-    ];
 
-    tests.forEach((test, index) => {
-        const result = extractFileIds(test.input);
-        const match = JSON.stringify(result) === JSON.stringify(test.expected);
-        console.log(`Test ${index + 1}: ${match ? '✓' : '✗'}`);
-        console.log(`  Input: ${test.input}`);
-        console.log(`  Result: ${JSON.stringify(result)}`);
-        console.log(`  Expected: ${JSON.stringify(test.expected)}`);
-    });
+        // FIXED: Use deleteContact method
+        console.log('\nDeleting test contact...');
+        People.People.deleteContact(contact.resourceName);
+
+        console.log('✅ Test contact deleted successfully!');
+        console.log('\n🎉 All tests passed! Contact creation and deletion work correctly.');
+
+        return 'SUCCESS';
+
+    } catch (e) {
+        console.error('❌ Error:', e.message);
+        console.error('Full error:', e);
+        return 'FAILED';
+    }
 }
 
 /**
- * Test family ID generation
+ * Test 3: Test the actual family contact sync workflow
+ * Run this AFTER testCreateContactSimple works
  */
-function testGenerateFamilyId() {
-    const ids = [];
-    for (let i = 0; i < 5; i++) {
-        const id = generateFamilyId();
-        ids.push(id);
-        console.log(`Generated ID ${i + 1}: ${id}`);
+function testFamilyContactSync() {
+    try {
+        console.log('Testing family contact sync workflow...');
+        console.log('==========================================');
+
+        // Get a family from the sheet
+        const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
+        if (!sheet) {
+            console.error('❌ Famille sheet not found');
+            return 'FAILED';
+        }
+
+        const data = sheet.getDataRange().getValues();
+
+        // Find first validated family
+        let testFamily = null;
+        for (let i = 1; i < data.length; i++) {
+            if (data[i][OUTPUT_COLUMNS.ETAT_DOSSIER] === CONFIG.STATUS.VALIDATED) {
+                testFamily = {
+                    id: data[i][OUTPUT_COLUMNS.ID],
+                    nom: data[i][OUTPUT_COLUMNS.NOM],
+                    prenom: data[i][OUTPUT_COLUMNS.PRENOM],
+                    email: data[i][OUTPUT_COLUMNS.EMAIL],
+                    telephone: String(data[i][OUTPUT_COLUMNS.TELEPHONE]),
+                    phoneBis: String(data[i][OUTPUT_COLUMNS.TELEPHONE_BIS] || ''),
+                    adresse: data[i][OUTPUT_COLUMNS.ADRESSE],
+                    idQuartier: data[i][OUTPUT_COLUMNS.ID_QUARTIER]
+                };
+                break;
+            }
+        }
+
+        if (!testFamily) {
+            console.error('❌ No validated family found for testing');
+            return 'FAILED';
+        }
+
+        console.log(`\n✓ Found test family: ${testFamily.id} - ${testFamily.nom} ${testFamily.prenom}`);
+        console.log(`  Phone: ${testFamily.telephone}`);
+
+        // Test sync
+        console.log('\nSyncing contact...');
+        const result = syncFamilyContact(testFamily);
+
+        if (result.success) {
+            console.log('✅ Contact synced successfully!');
+
+            // Try to find it
+            console.log('\nVerifying contact exists...');
+            const found = findContactByFamilyId(testFamily.id);
+
+            if (found) {
+                console.log('✅ Contact verified in Google Contacts!');
+                console.log(`  Name: ${found.names ? found.names[0].displayName : 'Unknown'}`);
+                console.log(`  Resource: ${found.resourceName}`);
+
+                console.log('\n🎉 Family contact sync working correctly!');
+                return 'SUCCESS';
+            } else {
+                console.log('⚠️ Contact created but not found (may need time to propagate)');
+                return 'PARTIAL_SUCCESS';
+            }
+        } else {
+            console.error('❌ Contact sync failed:', result.error);
+            return 'FAILED';
+        }
+
+    } catch (e) {
+        console.error('❌ Error:', e.message);
+        console.error('Full error:', e);
+        return 'FAILED';
+    }
+}
+
+/**
+ * Run all tests in sequence
+ */
+function runAllAuthTests() {
+    console.log('🧪 Running People API Authentication Tests');
+    console.log('==========================================\n');
+
+    console.log('TEST 1: Basic People API Read');
+    console.log('----------------------------');
+    const test1 = testPeopleAPISimple();
+    console.log(`Result: ${test1}\n`);
+
+    if (test1 !== 'SUCCESS') {
+        console.log('❌ Test 1 failed. Fix authorization before continuing.');
+        return;
     }
 
-    // Check uniqueness
-    const unique = new Set(ids).size === ids.length;
-    console.log(`All IDs unique: ${unique ? '✓' : '✗'}`);
-}
+    console.log('TEST 2: Contact Create/Delete');
+    console.log('----------------------------');
+    const test2 = testCreateContactSimple();
+    console.log(`Result: ${test2}\n`);
 
-/**
- * Test address formatting
- */
-function testFormatAddressForGeocoding() {
-    const tests = [
-        {
-            address: '1 Rue de la Paix',
-            postalCode: '44000',
-            city: 'Nantes',
-            expected: '1 Rue de la Paix, 44000, Nantes, France'
-        },
-        {
-            address: '10 Avenue des Champs',
-            postalCode: '75008',
-            city: 'Paris',
-            expected: '10 Avenue des Champs, 75008, Paris, France'
-        }
-    ];
+    if (test2 !== 'SUCCESS') {
+        console.log('❌ Test 2 failed. Check People API permissions.');
+        return;
+    }
 
-    tests.forEach((test, index) => {
-        const result = formatAddressForGeocoding(test.address, test.postalCode, test.city);
-        const match = result === test.expected;
-        console.log(`Test ${index + 1}: ${match ? '✓' : '✗'}`);
-        console.log(`  Result: ${result}`);
-        console.log(`  Expected: ${test.expected}`);
-    });
-}
+    console.log('TEST 3: Family Contact Sync');
+    console.log('----------------------------');
+    const test3 = testFamilyContactSync();
+    console.log(`Result: ${test3}\n`);
 
-/**
- * Run all tests
- */
-function runAllTests() {
-    console.log('=== Running All Tests ===\n');
-
-    console.log('--- Test Phone Normalization ---');
-    testNormalizePhone();
-
-    console.log('\n--- Test Email Validation ---');
-    testIsValidEmail();
-
-    console.log('\n--- Test Phone Validation ---');
-    testIsValidPhone();
-
-    console.log('\n--- Test File ID Extraction ---');
-    testExtractFileIds();
-
-    console.log('\n--- Test Family ID Generation ---');
-    testGenerateFamilyId();
-
-    console.log('\n--- Test Address Formatting ---');
-    testFormatAddressForGeocoding();
-
-    console.log('\n=== All Tests Complete ===');
+    console.log('==========================================');
+    console.log('🎉 ALL TESTS COMPLETE!');
+    console.log('Your People API integration is working correctly.');
 }

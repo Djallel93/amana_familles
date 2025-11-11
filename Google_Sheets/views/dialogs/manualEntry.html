@@ -4,11 +4,67 @@
 <head>
     <base target="_top">
     <?!= include('assets/css/styles.html'); ?>
+    <style>
+        .toggle-container {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .toggle-option {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #dadce0;
+            border-radius: 6px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+            background: white;
+        }
+
+        .toggle-option:hover {
+            border-color: #1a73e8;
+        }
+
+        .toggle-option.active {
+            background: #1a73e8;
+            color: white;
+            border-color: #1a73e8;
+            font-weight: bold;
+        }
+
+        .toggle-option .icon {
+            font-size: 24px;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .field-optional {
+            color: #666;
+            font-size: 12px;
+            margin-left: 5px;
+        }
+    </style>
 </head>
 
 <body>
     <div class="form-container">
-        <h2>📝 Inscription Manuelle - Famille</h2>
+        <h2>📝 Gestion Famille</h2>
+
+        <!-- Mode Toggle -->
+        <div class="toggle-container">
+            <div class="toggle-option active" id="modeInsert" onclick="setMode('insert')">
+                <span class="icon">➕</span>
+                <div>Nouvelle Famille</div>
+            </div>
+            <div class="toggle-option" id="modeUpdate" onclick="setMode('update')">
+                <span class="icon">✏️</span>
+                <div>Mise à Jour</div>
+            </div>
+        </div>
 
         <div id="alertBox" class="alert"></div>
         <div id="loadingBox" class="loading">
@@ -17,31 +73,42 @@
         </div>
 
         <form id="familyForm">
+            <!-- 🆔 NOUVEAU: Dropdown ID Famille (only for update mode) -->
+            <div class="form-group" id="familyIdGroup" style="display: none;">
+                <label class="required">Sélectionner une Famille</label>
+                <select id="familyId" name="familyId" onchange="loadFamilyData()">
+                    <option value="">-- Choisir une famille --</option>
+                </select>
+                <small style="color: #666; display: block; margin-top: 5px;">
+                    💡 Sélectionnez une famille pour pré-remplir les champs
+                </small>
+            </div>
+
             <!-- Informations Personnelles -->
             <div class="section-title">Informations Personnelles</div>
 
             <div class="form-group">
-                <label class="required">Nom de famille</label>
+                <label id="labelLastName" class="required">Nom de famille</label>
                 <input type="text" id="lastName" name="lastName" required>
             </div>
 
             <div class="form-group">
-                <label class="required">Prénom</label>
+                <label id="labelFirstName" class="required">Prénom</label>
                 <input type="text" id="firstName" name="firstName" required>
             </div>
 
             <div class="form-group">
-                <label class="required">Téléphone</label>
+                <label id="labelPhone" class="required">Téléphone</label>
                 <input type="tel" id="phone" name="phone" required placeholder="Ex: 0612345678">
             </div>
 
             <div class="form-group">
-                <label>Téléphone secondaire</label>
+                <label id="labelPhoneBis">Téléphone secondaire</label>
                 <input type="tel" id="phoneBis" name="phoneBis" placeholder="Optionnel">
             </div>
 
             <div class="form-group">
-                <label>Email</label>
+                <label id="labelEmail">Email</label>
                 <input type="email" id="email" name="email" placeholder="Optionnel">
             </div>
 
@@ -49,17 +116,17 @@
             <div class="section-title">Adresse</div>
 
             <div class="form-group">
-                <label class="required">Adresse complète</label>
+                <label id="labelAddress" class="required">Adresse complète</label>
                 <input type="text" id="address" name="address" required placeholder="Ex: 1 Rue de la Paix">
             </div>
 
             <div class="form-group">
-                <label class="required">Code postal</label>
+                <label id="labelPostalCode" class="required">Code postal</label>
                 <input type="text" id="postalCode" name="postalCode" required placeholder="Ex: 44000">
             </div>
 
             <div class="form-group">
-                <label class="required">Ville</label>
+                <label id="labelCity" class="required">Ville</label>
                 <input type="text" id="city" name="city" required placeholder="Ex: Nantes">
             </div>
 
@@ -67,31 +134,50 @@
             <div class="section-title">Composition du Foyer</div>
 
             <div class="form-group">
-                <label class="required">Nombre d'adultes</label>
+                <label id="labelNombreAdulte" class="required">Nombre d'adultes</label>
                 <input type="number" id="nombreAdulte" name="nombreAdulte" min="0" required value="1">
             </div>
 
             <div class="form-group">
-                <label class="required">Nombre d'enfants</label>
+                <label id="labelNombreEnfant" class="required">Nombre d'enfants</label>
                 <input type="number" id="nombreEnfant" name="nombreEnfant" min="0" required value="0">
+            </div>
+
+            <!-- Criticité -->
+            <div class="section-title">Priorité</div>
+
+            <div class="form-group">
+                <label id="labelCriticite" class="required">Criticité (0-5)</label>
+                <select id="criticite" name="criticite" required>
+                    <option value="">-- Sélectionner --</option>
+                    <option value="0">0 - Non évalué</option>
+                    <option value="1">1 - Faible</option>
+                    <option value="2">2 - Modérée</option>
+                    <option value="3">3 - Moyenne</option>
+                    <option value="4">4 - Haute</option>
+                    <option value="5">5 - Urgente</option>
+                </select>
+                <small style="color: #666; display: block; margin-top: 5px;">
+                    💡 La criticité permet de prioriser les familles lors des livraisons.
+                </small>
             </div>
 
             <!-- Informations Complémentaires -->
             <div class="section-title">Informations Complémentaires (Optionnel)</div>
 
             <div class="form-group">
-                <label>Circonstances / Situation actuelle</label>
+                <label id="labelCirconstances">Circonstances / Situation actuelle</label>
                 <textarea id="circonstances" name="circonstances"
                     placeholder="Décrivez brièvement la situation de la famille"></textarea>
             </div>
 
             <div class="form-group">
-                <label>Ressentit</label>
+                <label id="labelRessentit">Ressentit</label>
                 <textarea id="ressentit" name="ressentit" placeholder="Notes ou observations"></textarea>
             </div>
 
             <div class="form-group">
-                <label>Spécificités</label>
+                <label id="labelSpecificites">Spécificités</label>
                 <textarea id="specificites" name="specificites"
                     placeholder="Besoins particuliers, allergies, etc."></textarea>
             </div>
@@ -99,14 +185,165 @@
             <!-- Buttons -->
             <div class="button-group">
                 <button type="button" class="btn-secondary" onclick="google.script.host.close()">Annuler</button>
-                <button type="submit" class="btn-primary">Enregistrer</button>
+                <button type="submit" class="btn-primary" id="submitBtn">Enregistrer</button>
             </div>
         </form>
     </div>
 
     <script>
+        let currentMode = 'insert';
+        let allFamilies = []; // 🆔 Stocker toutes les familles
+
+        // 🔄 Charger les familles au démarrage
+        window.onload = function () {
+            google.script.run
+                .withSuccessHandler(function (families) {
+                    allFamilies = families;
+                    populateFamilyDropdown();
+                })
+                .withFailureHandler(function (error) {
+                    console.error('Erreur chargement familles:', error);
+                })
+                .getAllFamilyIds();
+        };
+
+        // 📋 Peupler le dropdown avec les familles
+        function populateFamilyDropdown() {
+            const select = document.getElementById('familyId');
+            select.innerHTML = '<option value="">-- Choisir une famille --</option>';
+
+            allFamilies.forEach(family => {
+                const option = document.createElement('option');
+                option.value = family.id;
+                option.textContent = `${family.id} - ${family.nom} ${family.prenom} (${family.telephone})`;
+                option.dataset.family = JSON.stringify(family);
+                select.appendChild(option);
+            });
+        }
+
+        // 📥 Charger les données de la famille sélectionnée
+        function loadFamilyData() {
+            const select = document.getElementById('familyId');
+            const selectedOption = select.options[select.selectedIndex];
+
+            if (!selectedOption || !selectedOption.value) {
+                clearForm();
+                return;
+            }
+
+            const family = JSON.parse(selectedOption.dataset.family);
+
+            // 🔄 Pré-remplir tous les champs
+            document.getElementById('lastName').value = family.nom || '';
+            document.getElementById('firstName').value = family.prenom || '';
+            document.getElementById('phone').value = family.telephone || '';
+            document.getElementById('email').value = family.email || '';
+            document.getElementById('nombreAdulte').value = family.nombreAdulte || 0;
+            document.getElementById('nombreEnfant').value = family.nombreEnfant || 0;
+            document.getElementById('criticite').value = family.criticite || '';
+            document.getElementById('circonstances').value = family.circonstances || '';
+            document.getElementById('ressentit').value = family.ressentit || '';
+            document.getElementById('specificites').value = family.specificites || '';
+
+            // 📍 Parser l'adresse
+            if (family.adresse) {
+                const addressParts = family.adresse.split(',');
+                if (addressParts.length >= 3) {
+                    document.getElementById('address').value = addressParts[0].trim();
+                    document.getElementById('postalCode').value = addressParts[1].trim();
+                    document.getElementById('city').value = addressParts[2].trim();
+                } else {
+                    document.getElementById('address').value = family.adresse;
+                }
+            }
+
+            showAlert('success', '✅ Données de la famille chargées');
+        }
+
+        // 🧹 Effacer le formulaire
+        function clearForm() {
+            document.getElementById('familyForm').reset();
+            document.getElementById('nombreAdulte').value = '1';
+            document.getElementById('nombreEnfant').value = '0';
+        }
+
+        // 🔀 Changer de mode (INSERT/UPDATE)
+        function setMode(mode) {
+            currentMode = mode;
+
+            // Mettre à jour l'UI du toggle
+            document.getElementById('modeInsert').classList.toggle('active', mode === 'insert');
+            document.getElementById('modeUpdate').classList.toggle('active', mode === 'update');
+
+            // Afficher/masquer le champ ID
+            document.getElementById('familyIdGroup').style.display = mode === 'update' ? 'block' : 'none';
+
+            // Mettre à jour les champs requis
+            const requiredFields = [
+                'lastName', 'firstName', 'phone', 'address', 'postalCode',
+                'city', 'nombreAdulte', 'nombreEnfant', 'criticite'
+            ];
+
+            requiredFields.forEach(fieldId => {
+                const field = document.getElementById(fieldId);
+                const label = document.getElementById(`label${fieldId.charAt(0).toUpperCase() + fieldId.slice(1)}`);
+
+                if (mode === 'update') {
+                    field.required = false;
+                    label.classList.remove('required');
+
+                    if (!label.querySelector('.field-optional')) {
+                        const optional = document.createElement('span');
+                        optional.className = 'field-optional';
+                        optional.textContent = '(optionnel)';
+                        label.appendChild(optional);
+                    }
+                } else {
+                    field.required = true;
+                    label.classList.add('required');
+
+                    const optional = label.querySelector('.field-optional');
+                    if (optional) {
+                        optional.remove();
+                    }
+                }
+            });
+
+            // Mettre à jour le champ familyId
+            if (mode === 'update') {
+                document.getElementById('familyId').required = true;
+            } else {
+                document.getElementById('familyId').required = false;
+                clearForm();
+            }
+
+            // Mettre à jour le texte du bouton
+            document.getElementById('submitBtn').textContent =
+                mode === 'insert' ? 'Enregistrer' : 'Mettre à Jour';
+
+            // Effacer les alertes
+            document.getElementById('alertBox').style.display = 'none';
+        }
+
+        // 📝 Soumettre le formulaire
         document.getElementById('familyForm').addEventListener('submit', function (e) {
             e.preventDefault();
+
+            if (currentMode === 'update') {
+                handleUpdate();
+            } else {
+                handleInsert();
+            }
+        });
+
+        // ➕ Gérer l'insertion
+        function handleInsert() {
+            const criticite = parseInt(document.getElementById('criticite').value);
+
+            if (isNaN(criticite) || criticite < 0 || criticite > 5) {
+                showAlert('error', 'La criticité doit être entre 0 et 5');
+                return;
+            }
 
             document.getElementById('loadingBox').style.display = 'block';
             document.getElementById('alertBox').style.display = 'none';
@@ -122,26 +359,92 @@
                 city: document.getElementById('city').value.trim(),
                 nombreAdulte: parseInt(document.getElementById('nombreAdulte').value),
                 nombreEnfant: parseInt(document.getElementById('nombreEnfant').value),
+                criticite: criticite,
                 circonstances: document.getElementById('circonstances').value.trim(),
                 ressentit: document.getElementById('ressentit').value.trim(),
                 specificites: document.getElementById('specificites').value.trim()
             };
 
             google.script.run
-                .withSuccessHandler(onSuccess)
+                .withSuccessHandler(onInsertSuccess)
                 .withFailureHandler(onFailure)
                 .processManualEntry(formData);
-        });
+        }
 
-        function onSuccess(result) {
+        // ✏️ Gérer la mise à jour
+        function handleUpdate() {
+            const familyId = document.getElementById('familyId').value;
+
+            if (!familyId) {
+                showAlert('error', 'Veuillez sélectionner une famille');
+                return;
+            }
+
+            // Construire les données de mise à jour (uniquement les champs non vides)
+            const updateData = {};
+            let hasData = false;
+
+            const fields = {
+                lastName: 'lastName',
+                firstName: 'firstName',
+                phone: 'phone',
+                phoneBis: 'phoneBis',
+                email: 'email',
+                address: 'address',
+                postalCode: 'postalCode',
+                city: 'city',
+                nombreAdulte: 'nombreAdulte',
+                nombreEnfant: 'nombreEnfant',
+                circonstances: 'circonstances',
+                ressentit: 'ressentit',
+                specificites: 'specificites',
+                criticite: 'criticite'
+            };
+
+            Object.keys(fields).forEach(fieldId => {
+                const value = document.getElementById(fieldId).value;
+                if (value !== '' && value !== null) {
+                    updateData[fields[fieldId]] = fieldId === 'nombreAdulte' ||
+                        fieldId === 'nombreEnfant' ||
+                        fieldId === 'criticite'
+                        ? parseInt(value)
+                        : value.trim();
+                    hasData = true;
+                }
+            });
+
+            if (!hasData) {
+                showAlert('error', 'Au moins un champ doit être renseigné pour la mise à jour');
+                return;
+            }
+
+            // Valider criticité si fournie
+            if (updateData.criticite !== undefined) {
+                if (isNaN(updateData.criticite) || updateData.criticite < 0 || updateData.criticite > 5) {
+                    showAlert('error', 'La criticité doit être entre 0 et 5');
+                    return;
+                }
+            }
+
+            document.getElementById('loadingBox').style.display = 'block';
+            document.getElementById('alertBox').style.display = 'none';
+
+            google.script.run
+                .withSuccessHandler(onUpdateSuccess)
+                .withFailureHandler(onFailure)
+                .processManualUpdate(familyId, updateData);
+        }
+
+        // ✅ Succès insertion
+        function onInsertSuccess(result) {
             document.getElementById('loadingBox').style.display = 'none';
             const alertBox = document.getElementById('alertBox');
 
             if (result.success) {
                 alertBox.className = 'alert alert-success';
                 alertBox.style.display = 'block';
-                alertBox.innerHTML = `<strong>✅ Succès!</strong><br>Famille enregistrée avec succès.<br>ID: <strong>${result.familyId}</strong><br>${result.quartierName ? 'Quartier: ' + result.quartierName : ''}`;
-                document.getElementById('familyForm').reset();
+                alertBox.innerHTML = `<strong>✅ Succès!</strong><br>Famille enregistrée avec succès.<br>ID: <strong>${result.familyId}</strong><br>${result.quartierName ? 'Quartier: ' + result.quartierName : ''}<br>Criticité: ${result.criticite}`;
+                clearForm();
 
                 setTimeout(() => {
                     google.script.host.close();
@@ -158,12 +461,43 @@
             }
         }
 
+        // ✅ Succès mise à jour
+        function onUpdateSuccess(result) {
+            document.getElementById('loadingBox').style.display = 'none';
+            const alertBox = document.getElementById('alertBox');
+
+            if (result.success) {
+                alertBox.className = 'alert alert-success';
+                alertBox.style.display = 'block';
+                alertBox.innerHTML = `<strong>✅ Mise à jour réussie!</strong><br>Famille ID: <strong>${result.familyId}</strong><br>Champs mis à jour: ${result.updatedFields.join(', ')}`;
+                clearForm();
+
+                setTimeout(() => {
+                    google.script.host.close();
+                }, 3000);
+
+            } else {
+                alertBox.className = 'alert alert-error';
+                alertBox.style.display = 'block';
+                alertBox.innerHTML = `<strong>❌ Erreur</strong><br>${result.error}`;
+            }
+        }
+
+        // ❌ Échec
         function onFailure(error) {
             document.getElementById('loadingBox').style.display = 'none';
             const alertBox = document.getElementById('alertBox');
             alertBox.className = 'alert alert-error';
             alertBox.style.display = 'block';
             alertBox.innerHTML = `<strong>❌ Erreur Système</strong><br>${error.message}`;
+        }
+
+        // 💬 Afficher une alerte
+        function showAlert(type, message) {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.className = `alert alert-${type}`;
+            alertBox.innerHTML = message;
+            alertBox.style.display = 'block';
         }
     </script>
 </body>

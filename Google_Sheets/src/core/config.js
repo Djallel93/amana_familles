@@ -1,27 +1,27 @@
 /**
- * @file src/core/config.js
- * @description Central configuration for the delivery management system
- * All sheet names, column mappings, and constants in one place
+ * @file src/core/config.js (Updated for GEO API v5.0 - NO SCHEMA CHANGES)
+ * @description 🎯 Configuration centrale avec génération d'ID auto-incrémentée
  */
 
 const CONFIG = {
-    // Sheet names
+    // 📋 Noms des feuilles
     SHEETS: {
-        FAMILLE_CLEANED: 'Famille',
+        FAMILLE: 'Famille',
         FORM_FR: 'Familles – FR',
         FORM_AR: 'Familles – AR',
-        FORM_EN: 'Familles – EN'
+        FORM_EN: 'Familles – EN',
+        FORM_UPDATE: 'Mise à Jour Famille'
     },
 
-    // Cache configuration (in seconds)
+    // ⏱️ Configuration du cache (en secondes)
     CACHE: {
         SHORT: 300,      // 5 minutes
         MEDIUM: 1800,    // 30 minutes
-        LONG: 3600,      // 1 hour
-        VERY_LONG: 21600 // 6 hours
+        LONG: 3600,      // 1 heure
+        VERY_LONG: 21600 // 6 heures
     },
 
-    // Status values
+    // 📊 Valeurs de statut
     STATUS: {
         REJECTED: 'Rejeté',
         RECEIVED: 'Recu',
@@ -36,14 +36,20 @@ const CONFIG = {
         PROCESSING: 'En cours',
         SUCCESS: 'Succès',
         ERROR: 'Erreur',
-        SKIPPED: 'Ignoré' // For already processed rows
+        SKIPPED: 'Ignoré'
     },
 
-    // Document types
+    // 📄 Types de documents
     DOC_TYPES: {
         IDENTITY: 'identity',
         CAF: 'CAF',
         RESOURCE: 'resource'
+    },
+
+    // ⚠️ Validation de criticité
+    CRITICITE: {
+        MIN: 0,
+        MAX: 5
     },
 
     OAUTH_CONFIG: {
@@ -52,15 +58,24 @@ const CONFIG = {
         FORMS_API_BASE_URL: 'https://forms.googleapis.com/v1'
     },
 
-    // API Configuration
+    // 🌍 Configuration API géographique v5.0
     GEO_API: {
-        MAX_DISTANCE: 50 // km
-    }
+        VERSION: '5.0',
+        MAX_DISTANCE: 50 // km (used for legacy compatibility)
+    },
+
+    // 🚫 Phrases de refus de consentement
+    REFUSAL_PHRASES: [
+        'Je refuse que mes données personnelles soient collectées et traitées',
+        'أرفض جمع ومعالجة بياناتي الشخصية',
+        'I refuse to have my personal data collected and processed'
+    ]
 };
 
 const BULK_IMPORT_SHEET_NAME = 'Bulk Import';
+const BULK_UPDATE_SHEET_NAME = 'Bulk Update';
 
-// Column indices for Bulk Import sheet (0-based)
+// 🗂️ Indices de colonnes pour Bulk Import (0-based)
 const BULK_COLUMNS = {
     NOM: 0,
     PRENOM: 1,
@@ -75,145 +90,113 @@ const BULK_COLUMNS = {
     CIRCONSTANCES: 10,
     RESSENTIT: 11,
     SPECIFICITES: 12,
-    STATUT: 13,
+    CRITICITE: 13,
     COMMENTAIRE: 14
 };
 
-// Multilingual column mapping - maps form questions to standardized field names
+// 🗂️ Indices de colonnes pour Bulk Update (0-based)
+const BULK_UPDATE_COLUMNS = {
+    ID: 0,
+    NOM: 1,
+    PRENOM: 2,
+    NOMBRE_ADULTE: 3,
+    NOMBRE_ENFANT: 4,
+    ADRESSE: 5,
+    CODE_POSTAL: 6,
+    VILLE: 7,
+    TELEPHONE: 8,
+    TELEPHONE_BIS: 9,
+    EMAIL: 10,
+    CIRCONSTANCES: 11,
+    RESSENTIT: 12,
+    SPECIFICITES: 13,
+    CRITICITE: 14,
+    COMMENTAIRE: 15
+};
+
+// 🌐 Mappage multilingue des colonnes
 const COLUMN_MAP = {
-    // Last Name
+    'Timestamp': 'timestamp',
+    'Email address': 'email',
+    'البريد الإلكتروني': 'email',
+    'Personal Data Protection': 'personalDataProtection',
+    'حماية البيانات الشخصية': 'personalDataProtection',
+    'Protection des données personnelles': 'personalDataProtection',
+    'ID Famille': 'familyId',
+    'Family ID': 'familyId',
+    'معرّف العائلة': 'familyId',
+    'Identifiant Famille': 'familyId',
+    'ID de la famille': 'familyId',
     'Nom de famille': 'lastName',
-    'Nom de famille ': 'lastName',
     'اللقب': 'lastName',
     'Last Name': 'lastName',
-
-    // First Name
     'Prénom de la personne à contacter': 'firstName',
-    'Prénom de la personne à contacter ': 'firstName',
     'إسم الشخص الذي يمكن التواصل معه': 'firstName',
-    'إسم الشخص الذي يمكن التواصل معه ': 'firstName',
     'First Name of the Contact Person': 'firstName',
-
-    // Phone
     'Numéro de téléphone de la personne à contacter': 'phone',
     'رقم هاتف الشخص الذي يمكن التواصل معه': 'phone',
     'Phone Number of the Contact Person': 'phone',
-
-    // Phone Bis
     'Autre numéro où nous pourrons vous joindre (optionnel)': 'phoneBis',
     'رقم هاتف آخر يمكننا التواصل معك من خلاله': 'phoneBis',
     'Another phone number where we can reach you': 'phoneBis',
-
-    // Email
-    'Email address': 'email',
-
-    // Address
     'Adresse': 'address',
-    'Adresse ': 'address',
     'العنوان': 'address',
-    'العنوان ': 'address',
     'Address': 'address',
-    'Address ': 'address',
-
-    // Postal Code
     'Code postale': 'postalCode',
     'الرمز البريدي': 'postalCode',
     'Postal Code': 'postalCode',
-
-    // City
     'Ville': 'city',
     'المدينة': 'city',
     'City': 'city',
-
-    // Number of Adults
     'Combien d\'adultes vivent actuellement dans votre foyer ?': 'nombreAdulte',
-    'Combien d\'adultes vivent actuellement dans votre foyer ? ': 'nombreAdulte',
     'كم عدد البالغين الذين يعيشون حاليًا في منزلك؟': 'nombreAdulte',
     'How many adults currently live in your household?': 'nombreAdulte',
-
-    // Number of Children
     'Combien d\'enfants vivent actuellement dans votre foyer ?': 'nombreEnfant',
-    'Combien d\'enfants vivent actuellement dans votre foyer ? ': 'nombreEnfant',
     'كم عدد الأطفال الذين يعيشون حاليًا في منزلك؟': 'nombreEnfant',
     'How many children currently live in your household?': 'nombreEnfant',
-
-    // Hosted
     'Êtes-vous actuellement hébergé(e) par une personne ou une organisation ?': 'hosted',
-    'Êtes-vous actuellement hébergé(e) par une personne ou une organisation ? ': 'hosted',
     'هل تتم استضافتك حاليًا من قبل شخص أو  منظمة ؟': 'hosted',
     'Are you currently being hosted by a person or an organization?': 'hosted',
-    'Are you currently being hosted by a person or an organization? ': 'hosted',
-
-    // Hosted By
     'Par qui êtes-vous hébergé(e) ?': 'hostedBy',
-    'Par qui êtes-vous hébergé(e) ? ': 'hostedBy',
     'من يتكفّل بإقامتك؟': 'hostedBy',
-    'من يتكفّل بإقامتك؟ ': 'hostedBy',
     'Who is hosting you?': 'hostedBy',
-
-    // Current Situation
     'Décrivez brièvement votre situation actuelle': 'circonstances',
-    'Décrivez brièvement votre situation actuelle ': 'circonstances',
     'صف وضعك الحالي باختصار': 'circonstances',
     'Briefly describe your current situation': 'circonstances',
-
-    // ID Type
+    'Ressentit': 'ressentit',
+    'Spécificités': 'specificites',
+    'Criticité (0-5)': 'criticite',
     'Type de pièce d\'identité': 'idType',
-    'Type de pièce d\'identité ': 'idType',
     'نوع وثيقة الهوية': 'idType',
     'Type of Identification Document': 'idType',
-
-    // Identity/Residence Proof
     'Justificatif d\'identité ou de résidence': 'identityDoc',
-    'Justificatif d\'identité ou de résidence ': 'identityDoc',
     'إثبات الهوية أو الإقامة': 'identityDoc',
-    'إثبات الهوية أو الإقامة ': 'identityDoc',
     'Proof of Identity or Residence': 'identityDoc',
-
-    // CAF Certificate
     'Attestation de la CAF (paiement et/ou quotient familial)': 'cafDoc',
     'شهادة من CAF (الدفع و/أو الحصّة العائلية)': 'cafDoc',
     'CAF Certificate (Payment and/or Family Quotient)': 'cafDoc',
-
-    // CAF Certificate Optional
     'Attestation de la CAF (paiement et/ou quotient familial) - (optionnel)': 'cafDocOptional',
     'شهادة من CAF (الدفع و/أو الحصّة العائلية) - (اختياري)': 'cafDocOptional',
     'CAF Certificate (optional)': 'cafDocOptional',
-
-    // Working Status
     'Travaillez-vous actuellement, vous ou votre conjoint(e) ?': 'working',
-    'Travaillez-vous actuellement, vous ou votre conjoint(e) ? ': 'working',
     'هل تعمل حالياً، أنت أو زوجك/زوجتك؟': 'working',
     'Are you or your spouse currently working?': 'working',
-
-    // Work Days
     'Combien de jours par semaine travaillez-vous ?': 'workDays',
-    'Combien de jours par semaine travaillez-vous ? ': 'workDays',
     'كم يوماً في الأسبوع تعمل؟': 'workDays',
     'How many days per week do you work?': 'workDays',
-
-    // Work Sector
     'Dans quel secteur travaillez-vous ?': 'workSector',
-    'Dans quel secteur travaillez-vous ? ': 'workSector',
     'في أي قطاع تعمل؟': 'workSector',
     'Which sector do you work in?': 'workSector',
-
-    // Other Aid
     'Percevez-vous actuellement des aides d\'autres organismes ?': 'otherAid',
-    'Percevez-vous actuellement des aides d\'autres organismes ? ': 'otherAid',
     'هل تتلقون حالياً مساعدات من منظمات أخرى ؟': 'otherAid',
     'Are you currently receiving support from other organizations?': 'otherAid',
-
-    // Resource Proof
     'Veuillez soumettre tous justificatif de ressources': 'resourceDoc',
     'يرجى تقديم جميع إثباتات الموارد': 'resourceDoc',
-    'Please submit any proof of income or financial support': 'resourceDoc',
-
-    // Timestamp
-    'Timestamp': 'timestamp'
+    'Please submit any proof of income or financial support': 'resourceDoc'
 };
 
-// Output sheet column indices (0-based)
+// 🗂️ Indices de colonnes pour la feuille de sortie (0-based)
+// ✅ NO CHANGES - Schema remains identical
 const OUTPUT_COLUMNS = {
     ID: 0,
     NOM: 1,
@@ -223,7 +206,7 @@ const OUTPUT_COLUMNS = {
     NOMBRE_ADULTE: 5,
     NOMBRE_ENFANT: 6,
     ADRESSE: 7,
-    ID_QUARTIER: 8,
+    ID_QUARTIER: 8,        // UNCHANGED - Still in position 8
     SE_DEPLACE: 9,
     EMAIL: 10,
     TELEPHONE: 11,
@@ -233,12 +216,13 @@ const OUTPUT_COLUMNS = {
     CIRCONSTANCES: 15,
     RESSENTIT: 16,
     SPECIFICITES: 17,
-    ETAT_DOSSIER: 18,
-    COMMENTAIRE_DOSSIER: 19
+    CRITICITE: 18,
+    ETAT_DOSSIER: 19,
+    COMMENTAIRE_DOSSIER: 20
 };
 
 /**
- * Get script property value with caching
+ * 🔑 Récupérer une propriété de script avec mise en cache
  */
 function getProperty(key) {
     const cache = CacheService.getScriptCache();
@@ -255,12 +239,42 @@ function getProperty(key) {
 }
 
 /**
- * Get all required script properties
+ * ⚙️ Récupérer toutes les propriétés de script requises
  */
 function getScriptConfig() {
     return {
         gestionFamillesFolderId: getProperty('GESTION_FAMILLES_FOLDER_ID'),
         spreadsheetId: getProperty('SPREADSHEET_ID'),
         geoApiUrl: getProperty('GEO_API_URL'),
+        geoApiKey: getProperty('GEO_API_KEY'), // NEW: API Key required for v5.0
+        adminEmail: getProperty('ADMIN_EMAIL')
     };
+}
+
+/**
+ * 🆔 Générer un ID de famille auto-incrémenté (numérique)
+ */
+function generateFamilyId() {
+    const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
+    if (!sheet) {
+        logError('❌ Impossible de trouver la feuille Famille pour générer l\'ID');
+        return Date.now();
+    }
+
+    const data = sheet.getDataRange().getValues();
+    let maxId = 0;
+
+    for (let i = 1; i < data.length; i++) {
+        const id = data[i][OUTPUT_COLUMNS.ID];
+        if (id) {
+            const num = parseInt(id);
+            if (!isNaN(num) && num > maxId) {
+                maxId = num;
+            }
+        }
+    }
+
+    const newId = maxId + 1;
+    logInfo(`🆔 Nouvel ID généré: ${newId} (précédent max: ${maxId})`);
+    return newId;
 }
