@@ -1,10 +1,10 @@
 /**
- * @file src/ui/helpers.js (UPDATED - Consistent behavior)
- * @description UI helper functions with manual entry setting "En cours" status
+ * @file src/ui/helpers.js (IMPROVED)
+ * @description UI helper functions with improved comment management and duplicate check
  */
 
 /**
- * Process manual entry (creates family with "En cours" status)
+ * Process manual entry (IMPROVED: Check duplicates FIRST, then insert)
  */
 function processManualEntry(formData) {
     try {
@@ -26,6 +26,43 @@ function processManualEntry(formData) {
             };
         }
 
+        // IMPROVED: Check duplicates BEFORE address validation
+        const duplicate = findDuplicateFamily(
+            formData.phone,
+            formData.lastName,
+            formData.email
+        );
+
+        if (duplicate.exists) {
+            // IMPROVED: Insert as REJECTED with formatted comment
+            const familyId = generateFamilyId();
+            const comment = formatComment('🚫', `Doublon détecté - Famille existante ID: ${duplicate.id}`);
+
+            writeToFamilySheet(formData, {
+                status: CONFIG.STATUS.REJECTED,
+                comment: comment,
+                familyId: familyId,
+                quartierId: null,
+                quartierName: null,
+                criticite: criticite
+            });
+
+            notifyAdmin(
+                '🚫 Doublon détecté',
+                `Nouvelle tentative d'inscription rejetée\nID créé: ${familyId}\nFamille existante: ${duplicate.id}\nNom: ${formData.lastName} ${formData.firstName}\nTéléphone: ${normalizePhone(formData.phone)}`
+            );
+
+            return {
+                success: false,
+                warning: true,
+                duplicate: true,
+                message: `Une famille avec ce téléphone et nom existe déjà (ID: ${duplicate.id})`,
+                familyId: duplicate.id,
+                newId: familyId
+            };
+        }
+
+        // Continue with address validation
         const addressValidation = validateAddressAndGetQuartier(
             formData.address,
             formData.postalCode,
@@ -39,31 +76,14 @@ function processManualEntry(formData) {
             };
         }
 
-        const duplicate = findDuplicateFamily(
-            formData.phone,
-            formData.lastName,
-            formData.email
-        );
-
-        if (duplicate.exists) {
-            return {
-                success: false,
-                warning: true,
-                duplicate: true,
-                message: `Une famille avec ce téléphone et nom existe déjà (ID: ${duplicate.id})`,
-                familyId: duplicate.id
-            };
-        }
-
         const familyId = generateFamilyId();
-
-        // CHANGED: Always set status to "En cours" (consistent with bulk operations)
         let status = CONFIG.STATUS.IN_PROGRESS;
-        let comment = `Créé manuellement le ${new Date().toLocaleString('fr-FR')}`;
 
-        // Add warning if quartier is invalid
+        // Build comment with formatted entries
+        let comment = formatComment('➕', 'Créé manuellement');
+
         if (addressValidation.quartierInvalid) {
-            comment += `\n⚠️ ${addressValidation.warning}`;
+            comment = addComment(comment, formatComment('⚠️', addressValidation.warning));
         }
 
         writeToFamilySheet(formData, {
@@ -74,9 +94,6 @@ function processManualEntry(formData) {
             quartierName: addressValidation.quartierName,
             criticite: criticite
         });
-
-        // CHANGED: NO contact sync - contact will be created when status changes to "Validé"
-        // This ensures quartier validation happens before contact creation
 
         notifyAdmin(
             '✅ Nouvelle famille ajoutée manuellement',
@@ -146,10 +163,9 @@ function updateManualEntryWithFormData(manualFamilyId, formData, docValidation) 
         docValidation.resourceIds
     );
 
+    // IMPROVED: Use formatted comment
     const existingComment = data[targetRow - 1][OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
-    const newComment = existingComment ?
-        `${existingComment}\nDocuments ajoutés via formulaire - ${new Date().toLocaleString('fr-FR')}` :
-        `Documents ajoutés via formulaire - ${new Date().toLocaleString('fr-FR')}`;
+    const newComment = addComment(existingComment, formatComment('📄', 'Documents ajoutés via formulaire'));
     sheet.getRange(targetRow, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
 
     logInfo('✅ Entrée manuelle mise à jour avec les documents du formulaire', manualFamilyId);
@@ -228,6 +244,7 @@ function clearAllCaches() {
 
 /**
  * Write data to Famille sheet (LAST EMPTY ROW)
+ * IMPROVED: Uses formatted comments
  */
 function writeToFamilySheet(formData, options = {}) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -287,6 +304,7 @@ function writeToFamilySheet(formData, options = {}) {
 
 /**
  * Update existing family
+ * IMPROVED: Uses formatted comments
  */
 function updateExistingFamily(duplicate, formData, addressValidation, docValidation) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -330,11 +348,13 @@ function updateExistingFamily(duplicate, formData, addressValidation, docValidat
         }
     }
 
-    const comment = `Mis à jour: ${changes.join(', ')} - ${new Date().toLocaleString('fr-FR')}`;
+    // IMPROVED: Use formatted comment
     const existingComment = existingData[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
-    sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(
-        existingComment + '\n' + comment
+    const newComment = addComment(
+        existingComment,
+        formatComment('🔄', `Mis à jour: ${changes.join(', ')}`)
     );
+    sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
 
     sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(CONFIG.STATUS.IN_PROGRESS);
 
@@ -343,8 +363,9 @@ function updateExistingFamily(duplicate, formData, addressValidation, docValidat
 
 /**
  * Get all family IDs (for dropdown UI)
+ * IMPROVED: Filter by status "Validé" for update mode
  */
-function getAllFamilyIds() {
+function getAllFamilyIds(filterValidated = false) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
     if (!sheet) return [];
 
@@ -353,6 +374,13 @@ function getAllFamilyIds() {
 
     for (let i = 1; i < data.length; i++) {
         const row = data[i];
+        const status = row[OUTPUT_COLUMNS.ETAT_DOSSIER];
+
+        // IMPROVED: Filter by status if requested
+        if (filterValidated && status !== CONFIG.STATUS.VALIDATED) {
+            continue;
+        }
+
         if (row[OUTPUT_COLUMNS.ID]) {
             families.push({
                 id: row[OUTPUT_COLUMNS.ID],
@@ -366,7 +394,8 @@ function getAllFamilyIds() {
                 criticite: row[OUTPUT_COLUMNS.CRITICITE],
                 circonstances: row[OUTPUT_COLUMNS.CIRCONSTANCES],
                 ressentit: row[OUTPUT_COLUMNS.RESSENTIT],
-                specificites: row[OUTPUT_COLUMNS.SPECIFICITES]
+                specificites: row[OUTPUT_COLUMNS.SPECIFICITES],
+                status: status
             });
         }
     }

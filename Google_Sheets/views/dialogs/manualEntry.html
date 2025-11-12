@@ -47,6 +47,14 @@
             font-size: 12px;
             margin-left: 5px;
         }
+
+        /* IMPROVED: Loading positioned below buttons */
+        .loading-inline {
+            display: none;
+            text-align: center;
+            padding: 15px 0;
+            margin-top: 15px;
+        }
     </style>
 </head>
 
@@ -67,20 +75,16 @@
         </div>
 
         <div id="alertBox" class="alert"></div>
-        <div id="loadingBox" class="loading">
-            <div class="spinner"></div>
-            <p>Traitement en cours...</p>
-        </div>
 
         <form id="familyForm">
-            <!-- 🆔 NOUVEAU: Dropdown ID Famille (only for update mode) -->
+            <!-- 🆔 Dropdown ID Famille (only for update mode) -->
             <div class="form-group" id="familyIdGroup" style="display: none;">
                 <label class="required">Sélectionner une Famille</label>
                 <select id="familyId" name="familyId" onchange="loadFamilyData()">
                     <option value="">-- Choisir une famille --</option>
                 </select>
                 <small style="color: #666; display: block; margin-top: 5px;">
-                    💡 Sélectionnez une famille pour pré-remplir les champs
+                    💡 Sélectionnez une famille pour pré-remplir les champs (seules les familles validées)
                 </small>
             </div>
 
@@ -187,15 +191,21 @@
                 <button type="button" class="btn-secondary" onclick="google.script.host.close()">Annuler</button>
                 <button type="submit" class="btn-primary" id="submitBtn">Enregistrer</button>
             </div>
+
+            <!-- IMPROVED: Loading positioned below buttons -->
+            <div id="loadingBox" class="loading-inline">
+                <div class="spinner"></div>
+                <p>Traitement en cours...</p>
+            </div>
         </form>
     </div>
 
     <script>
         let currentMode = 'insert';
-        let allFamilies = []; // 🆔 Stocker toutes les familles
+        let allFamilies = [];
 
-        // 🔄 Charger les familles au démarrage
-        window.onload = function () {
+        // 📋 Load families based on mode
+        function loadFamiliesForMode(filterValidated) {
             google.script.run
                 .withSuccessHandler(function (families) {
                     allFamilies = families;
@@ -204,8 +214,8 @@
                 .withFailureHandler(function (error) {
                     console.error('Erreur chargement familles:', error);
                 })
-                .getAllFamilyIds();
-        };
+                .getAllFamilyIds(filterValidated);
+        }
 
         // 📋 Peupler le dropdown avec les familles
         function populateFamilyDropdown() {
@@ -233,7 +243,6 @@
 
             const family = JSON.parse(selectedOption.dataset.family);
 
-            // 🔄 Pré-remplir tous les champs
             document.getElementById('lastName').value = family.nom || '';
             document.getElementById('firstName').value = family.prenom || '';
             document.getElementById('phone').value = family.telephone || '';
@@ -245,7 +254,6 @@
             document.getElementById('ressentit').value = family.ressentit || '';
             document.getElementById('specificites').value = family.specificites || '';
 
-            // 📍 Parser l'adresse
             if (family.adresse) {
                 const addressParts = family.adresse.split(',');
                 if (addressParts.length >= 3) {
@@ -271,14 +279,16 @@
         function setMode(mode) {
             currentMode = mode;
 
-            // Mettre à jour l'UI du toggle
             document.getElementById('modeInsert').classList.toggle('active', mode === 'insert');
             document.getElementById('modeUpdate').classList.toggle('active', mode === 'update');
 
-            // Afficher/masquer le champ ID
             document.getElementById('familyIdGroup').style.display = mode === 'update' ? 'block' : 'none';
 
-            // Mettre à jour les champs requis
+            // IMPROVED: Load filtered families for update mode (only validated)
+            if (mode === 'update') {
+                loadFamiliesForMode(true);
+            }
+
             const requiredFields = [
                 'lastName', 'firstName', 'phone', 'address', 'postalCode',
                 'city', 'nombreAdulte', 'nombreEnfant', 'criticite'
@@ -309,7 +319,6 @@
                 }
             });
 
-            // Mettre à jour le champ familyId
             if (mode === 'update') {
                 document.getElementById('familyId').required = true;
             } else {
@@ -317,11 +326,9 @@
                 clearForm();
             }
 
-            // Mettre à jour le texte du bouton
             document.getElementById('submitBtn').textContent =
                 mode === 'insert' ? 'Enregistrer' : 'Mettre à Jour';
 
-            // Effacer les alertes
             document.getElementById('alertBox').style.display = 'none';
         }
 
@@ -345,6 +352,7 @@
                 return;
             }
 
+            // IMPROVED: Show loading below buttons
             document.getElementById('loadingBox').style.display = 'block';
             document.getElementById('alertBox').style.display = 'none';
 
@@ -380,7 +388,6 @@
                 return;
             }
 
-            // Construire les données de mise à jour (uniquement les champs non vides)
             const updateData = {};
             let hasData = false;
 
@@ -418,7 +425,6 @@
                 return;
             }
 
-            // Valider criticité si fournie
             if (updateData.criticite !== undefined) {
                 if (isNaN(updateData.criticite) || updateData.criticite < 0 || updateData.criticite > 5) {
                     showAlert('error', 'La criticité doit être entre 0 et 5');
@@ -426,6 +432,7 @@
                 }
             }
 
+            // IMPROVED: Show loading below buttons
             document.getElementById('loadingBox').style.display = 'block';
             document.getElementById('alertBox').style.display = 'none';
 
@@ -451,9 +458,10 @@
                 }, 3000);
 
             } else if (result.duplicate) {
+                // IMPROVED: Show duplicate warning with better message
                 alertBox.className = 'alert alert-warning';
                 alertBox.style.display = 'block';
-                alertBox.innerHTML = `<strong>⚠️ Attention!</strong><br>${result.message}`;
+                alertBox.innerHTML = `<strong>⚠️ Doublon détecté!</strong><br>${result.message}<br><br>La tentative a été enregistrée avec le statut "Rejeté" (ID: ${result.newId})`;
             } else {
                 alertBox.className = 'alert alert-error';
                 alertBox.style.display = 'block';

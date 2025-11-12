@@ -1,85 +1,94 @@
 /**
- * @file src/core/utils.js (FIXED - Enhanced Phone Normalization)
- * @description Utility functions with improved phone number handling
+ * @file src/core/utils.js (IMPROVED)
+ * @description Utility functions with improved comment management
  */
+
+/**
+ * 📝 Format comment with timestamp and emoji
+ * Format: yyyy-MM-dd emoji comment
+ * @param {string} emoji - Emoji to prepend
+ * @param {string} message - Comment message
+ * @returns {string} - Formatted comment
+ */
+function formatComment(emoji, message) {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+
+    return `${dateStr} ${emoji} ${message}`;
+}
+
+/**
+ * 📝 Add comment to existing comments (keeps only last 5)
+ * @param {string} existingComments - Current comments
+ * @param {string} newComment - New comment to add
+ * @returns {string} - Updated comments string
+ */
+function addComment(existingComments, newComment) {
+    // Split existing comments by newline
+    const comments = existingComments ? existingComments.split('\n').filter(c => c.trim()) : [];
+
+    // Add new comment at the beginning (most recent first)
+    comments.unshift(newComment);
+
+    // Keep only last 5 comments
+    const recentComments = comments.slice(0, 5);
+
+    return recentComments.join('\n');
+}
 
 /**
  * 📞 Normaliser et formater un numéro de téléphone français
  * Format de sortie: +33 X XX XX XX XX (sans le 0 initial, sans parenthèses)
- * 
- * Handles formats like:
- * - 0612345678
- * - +33612345678
- * - +33 (0) 6 12 34 56 78
- * - 0033612345678
- * - 33612345678
- * 
- * @param {string|number} phone - Numéro de téléphone brut
- * @returns {string} - Numéro formaté ou chaîne vide
  */
 function normalizePhone(phone) {
     if (!phone) return '';
 
-    // Convert to string and trim
     let cleaned = String(phone).trim();
-
-    // Remove ALL non-digit characters (including spaces, parentheses, dashes, etc.)
-    // Keep only digits
     cleaned = cleaned.replace(/\D/g, '');
 
     if (!cleaned) return '';
 
-    // Now we have only digits - determine the format and extract local number
     let localNumber = '';
 
     if (cleaned.startsWith('0033')) {
-        // Format: 0033XXXXXXXXX -> extract 9 digits after 0033
         localNumber = cleaned.substring(4);
     } else if (cleaned.startsWith('33') && cleaned.length >= 11) {
-        // Format: 33XXXXXXXXX -> extract 9 digits after 33
         localNumber = cleaned.substring(2);
     } else if (cleaned.startsWith('0') && cleaned.length === 10) {
-        // Format: 0XXXXXXXXX -> remove leading 0
         localNumber = cleaned.substring(1);
     } else if (cleaned.length === 9 && !cleaned.startsWith('0')) {
-        // Already in correct format without leading 0
         localNumber = cleaned;
     } else if (cleaned.length === 10 && cleaned.startsWith('0')) {
-        // Another check for 10-digit format
         localNumber = cleaned.substring(1);
     } else {
-        // Unrecognized format
         logWarning(`⚠️ Format de téléphone non standard: ${phone} -> ${cleaned}`);
 
-        // Try to extract 9 digits if possible
         if (cleaned.length >= 9) {
-            // Take the last 9 digits
             localNumber = cleaned.slice(-9);
         } else {
-            return cleaned; // Return as-is if we can't parse it
+            return cleaned;
         }
     }
 
-    // Validate we have exactly 9 digits
     if (localNumber.length !== 9) {
         logWarning(`⚠️ Numéro de téléphone invalide (doit avoir 9 chiffres après l'indicatif): ${phone} (extracted: ${localNumber})`);
 
-        // If we have more than 9 digits, try to extract the last 9
         if (localNumber.length > 9) {
             localNumber = localNumber.slice(-9);
         } else {
-            return cleaned; // Return original cleaned version
+            return cleaned;
         }
     }
 
-    // Final validation: must start with valid French mobile prefix (6, 7) or landline (1-5, 9)
     const firstDigit = localNumber[0];
     if (!/[1-9]/.test(firstDigit)) {
         logWarning(`⚠️ Numéro invalide - premier chiffre doit être 1-9: ${phone}`);
         return cleaned;
     }
 
-    // Format to international: +33 X XX XX XX XX
     return `+33 ${localNumber[0]} ${localNumber.substring(1, 3)} ${localNumber.substring(3, 5)} ${localNumber.substring(5, 7)} ${localNumber.substring(7, 9)}`;
 }
 
@@ -89,21 +98,15 @@ function normalizePhone(phone) {
 function isValidPhone(phone) {
     if (!phone) return false;
 
-    // Clean the number
     const digitsOnly = String(phone).replace(/\D/g, '');
 
-    // Check valid formats
     if (digitsOnly.startsWith('0') && digitsOnly.length === 10) {
-        // Format: 0XXXXXXXXX
         return /^0[1-9]\d{8}$/.test(digitsOnly);
     } else if (digitsOnly.startsWith('33') && digitsOnly.length === 11) {
-        // Format: 33XXXXXXXXX
         return /^33[1-9]\d{8}$/.test(digitsOnly);
     } else if (digitsOnly.startsWith('0033') && digitsOnly.length === 13) {
-        // Format: 0033XXXXXXXXX
         return /^0033[1-9]\d{8}$/.test(digitsOnly);
     } else if (digitsOnly.length === 9 && /^[1-9]/.test(digitsOnly[0])) {
-        // Format: XXXXXXXXX (already without country code or leading 0)
         return true;
     }
 
@@ -264,6 +267,7 @@ function extractFileIds(urlString) {
 
 /**
  * 🔍 Vérifier les doublons de famille (téléphone + nom)
+ * IMPROVED: Check BEFORE inserting
  */
 function findDuplicateFamily(phone, lastName, email = null) {
     try {

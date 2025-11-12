@@ -1,6 +1,6 @@
 /**
- * @file src/handlers/editHandler.js (ENHANCED)
- * @description Handle onEdit triggers with quartier auto-resolution and archive contact deletion
+ * @file src/handlers/editHandler.js (IMPROVED)
+ * @description Handle onEdit triggers with improved comment management
  */
 
 /**
@@ -17,25 +17,21 @@ function handleEdit(e) {
         const row = e.range.getRow();
         const col = e.range.getColumn();
 
-        if (row === 1) return; // Header row
+        if (row === 1) return;
 
-        // Check if status column was edited
         if (col === OUTPUT_COLUMNS.ETAT_DOSSIER + 1) {
             const newStatus = e.value;
             const oldStatus = e.oldValue;
 
-            // Handle status change to "Archivé" - delete contact
             if (newStatus === CONFIG.STATUS.ARCHIVED) {
                 handleArchiveStatus(sheet, row);
                 return;
             }
 
-            // Validate before allowing status change to "Validé"
             if (newStatus === CONFIG.STATUS.VALIDATED) {
                 const criticite = sheet.getRange(row, OUTPUT_COLUMNS.CRITICITE + 1).getValue();
                 let quartierId = sheet.getRange(row, OUTPUT_COLUMNS.ID_QUARTIER + 1).getValue();
 
-                // Check if criticite is 0 or empty
                 if (!criticite || criticite === 0) {
                     const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
                     sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatusValue);
@@ -52,7 +48,6 @@ function handleEdit(e) {
                     return;
                 }
 
-                // Validate criticite range
                 if (criticite < CONFIG.CRITICITE.MIN || criticite > CONFIG.CRITICITE.MAX) {
                     const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
                     sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatusValue);
@@ -68,7 +63,6 @@ function handleEdit(e) {
                     return;
                 }
 
-                // NEW: Auto-resolve quartier if missing
                 if (!quartierId) {
                     logInfo(`Attempting to auto-resolve quartier for row ${row}`);
 
@@ -88,7 +82,6 @@ function handleEdit(e) {
                         return;
                     }
 
-                    // Parse address
                     const addressParts = adresse.split(',').map(p => p.trim());
                     const address = addressParts[0] || '';
                     const postalCode = addressParts[1] ? addressParts[1].match(/\d{5}/)?.[0] : '';
@@ -110,7 +103,6 @@ function handleEdit(e) {
                         return;
                     }
 
-                    // Attempt to resolve quartier via GEO API
                     const addressValidation = validateAddressAndGetQuartier(address, postalCode, city);
 
                     if (!addressValidation.isValid || !addressValidation.quartierId) {
@@ -126,28 +118,31 @@ function handleEdit(e) {
                             SpreadsheetApp.getUi().ButtonSet.OK
                         );
 
+                        // IMPROVED: Use formatted comment
                         const existingComment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
-                        const newComment = existingComment +
-                            `\n⚠️ Tentative de validation échouée: ${addressValidation.error || 'Quartier introuvable'} - ${new Date().toLocaleString('fr-FR')}`;
+                        const newComment = addComment(
+                            existingComment,
+                            formatComment('❌', `Tentative de validation échouée: ${addressValidation.error || 'Quartier introuvable'}`)
+                        );
                         sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
 
                         return;
                     }
 
-                    // Update quartier ID
                     quartierId = addressValidation.quartierId;
                     sheet.getRange(row, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue(quartierId);
 
                     logInfo(`Quartier auto-resolved: ${quartierId} (${addressValidation.quartierName})`);
 
-                    // Add comment about auto-resolution
+                    // IMPROVED: Use formatted comment
                     const existingComment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
-                    const newComment = existingComment +
-                        `\n✅ Quartier résolu automatiquement: ${addressValidation.quartierName || quartierId} - ${new Date().toLocaleString('fr-FR')}`;
+                    const newComment = addComment(
+                        existingComment,
+                        formatComment('✅', `Quartier résolu automatiquement: ${addressValidation.quartierName || quartierId}`)
+                    );
                     sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
                 }
 
-                // Validate quartier exists in GEO API
                 const quartierValidation = validateQuartierId(quartierId);
 
                 if (!quartierValidation.isValid) {
@@ -162,21 +157,22 @@ function handleEdit(e) {
                         SpreadsheetApp.getUi().ButtonSet.OK
                     );
 
+                    // IMPROVED: Use formatted comment
                     const existingComment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
-                    const newComment = existingComment +
-                        `\n⚠️ Tentative de validation échouée: ${quartierValidation.error} - ${new Date().toLocaleString('fr-FR')}`;
+                    const newComment = addComment(
+                        existingComment,
+                        formatComment('❌', `Tentative de validation échouée: ${quartierValidation.error}`)
+                    );
                     sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
 
                     logInfo(`Validation blocked for row ${row}: ${quartierValidation.error}`);
                     return;
                 }
 
-                // Proceed with validation
                 processValidatedFamily(sheet, row);
             }
         }
 
-        // Validate criticite value when it's edited
         if (col === OUTPUT_COLUMNS.CRITICITE + 1) {
             const criticite = e.value;
 
@@ -205,6 +201,7 @@ function handleEdit(e) {
 
 /**
  * Handle archive status - delete contact
+ * IMPROVED: Use formatted comments
  */
 function handleArchiveStatus(sheet, row) {
     try {
@@ -216,19 +213,18 @@ function handleArchiveStatus(sheet, row) {
         const deleteResult = deleteContactForArchivedFamily(familyId);
 
         const existingComment = data[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
-        let newComment = existingComment ?
-            `${existingComment}\n🗄️ Archivé le ${new Date().toLocaleString('fr-FR')}` :
-            `🗄️ Archivé le ${new Date().toLocaleString('fr-FR')}`;
+        let newComment = formatComment('🗄️', 'Archivé');
 
         if (deleteResult.success) {
-            newComment += `\n📞 Contact Google supprimé`;
+            newComment = addComment(newComment, formatComment('📞', 'Contact Google supprimé'));
             logInfo(`Contact deleted successfully for archived family: ${familyId}`);
         } else {
-            newComment += `\n⚠️ Échec suppression contact: ${deleteResult.error}`;
+            newComment = addComment(newComment, formatComment('⚠️', `Échec suppression contact: ${deleteResult.error}`));
             logError(`Failed to delete contact for family: ${familyId}`, deleteResult.error);
         }
 
-        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
+        const finalComment = addComment(existingComment, newComment);
+        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(finalComment);
 
         notifyAdmin(
             '🗄️ Famille archivée',
@@ -239,14 +235,14 @@ function handleArchiveStatus(sheet, row) {
         logError('Failed to process archive status', error);
 
         const comment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
-        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(
-            comment + `\n❌ Erreur archivage: ${error.toString()}`
-        );
+        const newComment = addComment(comment, formatComment('❌', `Erreur archivage: ${error.toString()}`));
+        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
     }
 }
 
 /**
  * Process family when status changes to "Validé"
+ * IMPROVED: Use formatted comments
  */
 function processValidatedFamily(sheet, row) {
     try {
@@ -294,30 +290,25 @@ function processValidatedFamily(sheet, row) {
 
         const contactResult = syncFamilyContact(familyData);
 
+        // IMPROVED: Use formatted comments
+        const existingComment = data[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
+        let newComment;
+
         if (contactResult.success) {
             logInfo(`Contact synced for family: ${familyId}`);
-
-            const existingComment = data[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
-            const newComment = existingComment ?
-                `${existingComment}\n✅ Validé et traité le ${new Date().toLocaleString('fr-FR')}` :
-                `✅ Validé et traité le ${new Date().toLocaleString('fr-FR')}`;
-            sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
+            newComment = addComment(existingComment, formatComment('✅', 'Validé et traité'));
         } else {
             logError(`Contact sync failed for family: ${familyId}`, contactResult.error);
-
-            const existingComment = data[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
-            const newComment = existingComment ?
-                `${existingComment}\n⚠️ Erreur création contact: ${contactResult.error}` :
-                `⚠️ Erreur création contact: ${contactResult.error}`;
-            sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
+            newComment = addComment(existingComment, formatComment('⚠️', `Erreur création contact: ${contactResult.error}`));
         }
+
+        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
 
     } catch (error) {
         logError('Failed to process validated family', error);
 
         const comment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
-        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(
-            comment + `\n❌ Erreur de traitement: ${error.toString()}`
-        );
+        const newComment = addComment(comment, formatComment('❌', `Erreur de traitement: ${error.toString()}`));
+        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
     }
 }
