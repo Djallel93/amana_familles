@@ -1,6 +1,6 @@
 /**
- * @file src/services/familyUpdateService.js (ENHANCED)
- * @description Core family update functionality with force status option
+ * @file src/services/familyUpdateService.js (ENHANCED WITH LANGUAGE SUPPORT)
+ * @description Core family update functionality with language field
  */
 
 /**
@@ -33,9 +33,9 @@ function updateFamilyById(familyId, updateData) {
         let needsAddressValidation = false;
         let quartierWarning = null;
 
-        // CHANGED: Check if we should force status to "En cours" (for bulk updates)
+        // Check if we should force status to "En cours" (for bulk updates)
         const forceInProgress = updateData.forceInProgress === true;
-        delete updateData.forceInProgress; // Remove this flag from updateData
+        delete updateData.forceInProgress;
 
         // Update name fields
         if (updateData.lastName) {
@@ -117,7 +117,6 @@ function updateFamilyById(familyId, updateData) {
                 sheet.getRange(targetRow, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue(addressValidation.quartierId || '');
                 changes.push('adresse');
 
-                // Check if quartier is invalid
                 if (addressValidation.quartierInvalid) {
                     quartierWarning = addressValidation.warning;
                 }
@@ -153,7 +152,16 @@ function updateFamilyById(familyId, updateData) {
             changes.push('criticite');
         }
 
-        // CHANGED: Force status to "En cours" if requested (bulk updates) or if quartier is invalid
+        // Update language
+        if (updateData.langue) {
+            if (!['fr', 'ar', 'en'].includes(updateData.langue)) {
+                return { success: false, error: 'Langue invalide (doit être: fr, ar, ou en)' };
+            }
+            sheet.getRange(targetRow, OUTPUT_COLUMNS.LANGUE + 1).setValue(updateData.langue);
+            changes.push('langue');
+        }
+
+        // Force status to "En cours" if requested (bulk updates) or if quartier is invalid
         const currentStatus = existingData[OUTPUT_COLUMNS.ETAT_DOSSIER];
         if (forceInProgress || (quartierWarning && currentStatus === CONFIG.STATUS.VALIDATED)) {
             sheet.getRange(targetRow, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(CONFIG.STATUS.IN_PROGRESS);

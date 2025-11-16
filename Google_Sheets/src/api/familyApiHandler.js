@@ -1,6 +1,6 @@
 /**
  * @file src/api/familyApiHandler.js
- * @description REST API endpoints with on-demand location hierarchy resolution
+ * @description REST API endpoints with email verification support
  */
 
 /**
@@ -45,11 +45,17 @@ function doGet(e) {
             case 'familiesbycriticite':
                 return getFamiliesByCriticite(e);
 
+            case 'confirmfamilyinfo':
+                return handleConfirmFamilyInfo(e);
+
+            case 'sendverificationemails':
+                return handleSendVerificationEmails(e);
+
             case 'ping':
                 return jsonResponse({
                     status: 'ok',
                     message: 'Famille API operational',
-                    version: '2.0',
+                    version: '2.1',
                     geoApiVersion: CONFIG.GEO_API.VERSION,
                     timestamp: new Date().toISOString()
                 });
@@ -62,6 +68,54 @@ function doGet(e) {
         logError('API request failed', error);
         return jsonResponse({ error: error.toString() }, 500);
     }
+}
+
+/**
+ * Handle email confirmation from families
+ */
+function handleConfirmFamilyInfo(e) {
+    const id = e.parameter.id;
+    const token = e.parameter.token;
+
+    if (!id || !token) {
+        return HtmlService.createHtmlOutput(`
+            <html>
+                <body style="font-family: Arial; text-align: center; padding: 50px;">
+                    <h1 style="color: #f44336;">❌ Erreur</h1>
+                    <p>Paramètres manquants</p>
+                </body>
+            </html>
+        `);
+    }
+
+    const result = confirmFamilyInfo(id, token);
+
+    if (result.success) {
+        const familyName = result.familyData ?
+            `${result.familyData.prenom} ${result.familyData.nom}` : '';
+        const language = result.familyData ? result.familyData.langue : CONFIG.LANGUAGES.FR;
+
+        return HtmlService.createHtmlOutput(
+            generateConfirmationPage(language, familyName)
+        );
+    } else {
+        return HtmlService.createHtmlOutput(`
+            <html>
+                <body style="font-family: Arial; text-align: center; padding: 50px;">
+                    <h1 style="color: #f44336;">❌ Erreur</h1>
+                    <p>${result.error}</p>
+                </body>
+            </html>
+        `);
+    }
+}
+
+/**
+ * Handle API request to send verification emails
+ */
+function handleSendVerificationEmails(e) {
+    const result = sendVerificationEmailsToAll();
+    return jsonResponse(result);
 }
 
 /**
@@ -263,7 +317,8 @@ function getFamilyAddressById(e) {
         prenom: family.prenom,
         adresse: family.adresse,
         idQuartier: family.idQuartier,
-        criticite: family.criticite
+        criticite: family.criticite,
+        langue: family.langue
     };
 
     if (includeHierarchy) {
@@ -384,16 +439,10 @@ function getFamiliesBySecteur(e) {
             .setMimeType(ContentService.MimeType.JSON);
     }
 
-    // Get all validated families
     const allFamilies = getValidatedFamilies(null, false);
-
-    // Collect unique quartier IDs
     const quartierIds = [...new Set(allFamilies.map(f => f.idQuartier).filter(id => id))];
-
-    // Batch resolve hierarchies
     const hierarchies = batchGetLocationHierarchies(quartierIds);
 
-    // Filter families by secteur
     const filteredFamilies = allFamilies.filter(family => {
         if (!family.idQuartier) return false;
         const hierarchy = hierarchies[family.idQuartier];
@@ -401,7 +450,6 @@ function getFamiliesBySecteur(e) {
         return hierarchy.secteur && hierarchy.secteur.id == secteurId;
     });
 
-    // Enrich with hierarchy info
     filteredFamilies.forEach(family => {
         const hierarchy = hierarchies[family.idQuartier];
         if (hierarchy) {
@@ -439,16 +487,10 @@ function getFamiliesByVille(e) {
             .setMimeType(ContentService.MimeType.JSON);
     }
 
-    // Get all validated families
     const allFamilies = getValidatedFamilies(null, false);
-
-    // Collect unique quartier IDs
     const quartierIds = [...new Set(allFamilies.map(f => f.idQuartier).filter(id => id))];
-
-    // Batch resolve hierarchies
     const hierarchies = batchGetLocationHierarchies(quartierIds);
 
-    // Filter families by ville
     const filteredFamilies = allFamilies.filter(family => {
         if (!family.idQuartier) return false;
         const hierarchy = hierarchies[family.idQuartier];
@@ -456,7 +498,6 @@ function getFamiliesByVille(e) {
         return hierarchy.ville && hierarchy.ville.id == villeId;
     });
 
-    // Enrich with hierarchy info
     filteredFamilies.forEach(family => {
         const hierarchy = hierarchies[family.idQuartier];
         if (hierarchy) {
@@ -571,10 +612,10 @@ function rowToFamilyObject(row, includeHierarchy = false) {
         circonstances: row[OUTPUT_COLUMNS.CIRCONSTANCES],
         ressentit: row[OUTPUT_COLUMNS.RESSENTIT],
         specificites: row[OUTPUT_COLUMNS.SPECIFICITES],
-        criticite: parseInt(row[OUTPUT_COLUMNS.CRITICITE]) || 0
+        criticite: parseInt(row[OUTPUT_COLUMNS.CRITICITE]) || 0,
+        langue: row[OUTPUT_COLUMNS.LANGUE] || CONFIG.LANGUAGES.FR
     };
 
-    // Optionally resolve hierarchy
     if (includeHierarchy && family.idQuartier) {
         const hierarchy = getLocationHierarchyFromQuartier(family.idQuartier);
         if (!hierarchy.error) {

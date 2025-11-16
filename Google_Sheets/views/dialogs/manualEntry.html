@@ -48,7 +48,6 @@
             margin-left: 5px;
         }
 
-        /* IMPROVED: Loading positioned below buttons */
         .loading-inline {
             display: none;
             text-align: center;
@@ -147,8 +146,8 @@
                 <input type="number" id="nombreEnfant" name="nombreEnfant" min="0" required value="0">
             </div>
 
-            <!-- Criticité -->
-            <div class="section-title">Priorité</div>
+            <!-- Criticité et Langue -->
+            <div class="section-title">Priorité et Langue</div>
 
             <div class="form-group">
                 <label id="labelCriticite" class="required">Criticité (0-5)</label>
@@ -163,6 +162,18 @@
                 </select>
                 <small style="color: #666; display: block; margin-top: 5px;">
                     💡 La criticité permet de prioriser les familles lors des livraisons.
+                </small>
+            </div>
+
+            <div class="form-group">
+                <label id="labelLangue">Langue préférée</label>
+                <select id="langue" name="langue">
+                    <option value="fr">🇫🇷 Français</option>
+                    <option value="ar">🇸🇦 العربية (Arabe)</option>
+                    <option value="en">🇬🇧 English</option>
+                </select>
+                <small style="color: #666; display: block; margin-top: 5px;">
+                    💡 Utilisé pour les communications futures (emails, formulaires).
                 </small>
             </div>
 
@@ -192,7 +203,7 @@
                 <button type="submit" class="btn-primary" id="submitBtn">Enregistrer</button>
             </div>
 
-            <!-- IMPROVED: Loading positioned below buttons -->
+            <!-- Loading positioned below buttons -->
             <div id="loadingBox" class="loading-inline">
                 <div class="spinner"></div>
                 <p>Traitement en cours...</p>
@@ -204,7 +215,7 @@
         let currentMode = 'insert';
         let allFamilies = [];
 
-        // 📋 Load families based on mode
+        // Load families based on mode
         function loadFamiliesForMode(filterValidated) {
             google.script.run
                 .withSuccessHandler(function (families) {
@@ -217,7 +228,7 @@
                 .getAllFamilyIds(filterValidated);
         }
 
-        // 📋 Peupler le dropdown avec les familles
+        // Populate the dropdown with families
         function populateFamilyDropdown() {
             const select = document.getElementById('familyId');
             select.innerHTML = '<option value="">-- Choisir une famille --</option>';
@@ -231,7 +242,7 @@
             });
         }
 
-        // 📥 Charger les données de la famille sélectionnée
+        // Load selected family data
         function loadFamilyData() {
             const select = document.getElementById('familyId');
             const selectedOption = select.options[select.selectedIndex];
@@ -250,6 +261,7 @@
             document.getElementById('nombreAdulte').value = family.nombreAdulte || 0;
             document.getElementById('nombreEnfant').value = family.nombreEnfant || 0;
             document.getElementById('criticite').value = family.criticite || '';
+            document.getElementById('langue').value = family.langue || 'fr';
             document.getElementById('circonstances').value = family.circonstances || '';
             document.getElementById('ressentit').value = family.ressentit || '';
             document.getElementById('specificites').value = family.specificites || '';
@@ -268,14 +280,15 @@
             showAlert('success', '✅ Données de la famille chargées');
         }
 
-        // 🧹 Effacer le formulaire
+        // Clear the form
         function clearForm() {
             document.getElementById('familyForm').reset();
             document.getElementById('nombreAdulte').value = '1';
             document.getElementById('nombreEnfant').value = '0';
+            document.getElementById('langue').value = 'fr';
         }
 
-        // 🔀 Changer de mode (INSERT/UPDATE)
+        // Set mode (INSERT/UPDATE)
         function setMode(mode) {
             currentMode = mode;
 
@@ -284,7 +297,6 @@
 
             document.getElementById('familyIdGroup').style.display = mode === 'update' ? 'block' : 'none';
 
-            // IMPROVED: Load filtered families for update mode (only validated)
             if (mode === 'update') {
                 loadFamiliesForMode(true);
             }
@@ -332,7 +344,7 @@
             document.getElementById('alertBox').style.display = 'none';
         }
 
-        // 📝 Soumettre le formulaire
+        // Submit the form
         document.getElementById('familyForm').addEventListener('submit', function (e) {
             e.preventDefault();
 
@@ -343,7 +355,7 @@
             }
         });
 
-        // ➕ Gérer l'insertion
+        // Handle insertion
         function handleInsert() {
             const criticite = parseInt(document.getElementById('criticite').value);
 
@@ -352,7 +364,6 @@
                 return;
             }
 
-            // IMPROVED: Show loading below buttons
             document.getElementById('loadingBox').style.display = 'block';
             document.getElementById('alertBox').style.display = 'none';
 
@@ -370,7 +381,8 @@
                 criticite: criticite,
                 circonstances: document.getElementById('circonstances').value.trim(),
                 ressentit: document.getElementById('ressentit').value.trim(),
-                specificites: document.getElementById('specificites').value.trim()
+                specificites: document.getElementById('specificites').value.trim(),
+                langue: document.getElementById('langue').value
             };
 
             google.script.run
@@ -379,7 +391,7 @@
                 .processManualEntry(formData);
         }
 
-        // ✏️ Gérer la mise à jour
+        // Handle update
         function handleUpdate() {
             const familyId = document.getElementById('familyId').value;
 
@@ -405,7 +417,8 @@
                 circonstances: 'circonstances',
                 ressentit: 'ressentit',
                 specificites: 'specificites',
-                criticite: 'criticite'
+                criticite: 'criticite',
+                langue: 'langue'
             };
 
             Object.keys(fields).forEach(fieldId => {
@@ -432,7 +445,6 @@
                 }
             }
 
-            // IMPROVED: Show loading below buttons
             document.getElementById('loadingBox').style.display = 'block';
             document.getElementById('alertBox').style.display = 'none';
 
@@ -442,7 +454,7 @@
                 .processManualUpdate(familyId, updateData);
         }
 
-        // ✅ Succès insertion
+        // Success insertion
         function onInsertSuccess(result) {
             document.getElementById('loadingBox').style.display = 'none';
             const alertBox = document.getElementById('alertBox');
@@ -450,7 +462,7 @@
             if (result.success) {
                 alertBox.className = 'alert alert-success';
                 alertBox.style.display = 'block';
-                alertBox.innerHTML = `<strong>✅ Succès!</strong><br>Famille enregistrée avec succès.<br>ID: <strong>${result.familyId}</strong><br>${result.quartierName ? 'Quartier: ' + result.quartierName : ''}<br>Criticité: ${result.criticite}`;
+                alertBox.innerHTML = `<strong>✅ Succès!</strong><br>Famille enregistrée avec succès.<br>ID: <strong>${result.familyId}</strong><br>${result.quartierName ? 'Quartier: ' + result.quartierName : ''}<br>Criticité: ${result.criticite}<br>Langue: ${result.langue}`;
                 clearForm();
 
                 setTimeout(() => {
@@ -458,7 +470,6 @@
                 }, 3000);
 
             } else if (result.duplicate) {
-                // IMPROVED: Show duplicate warning with better message
                 alertBox.className = 'alert alert-warning';
                 alertBox.style.display = 'block';
                 alertBox.innerHTML = `<strong>⚠️ Doublon détecté!</strong><br>${result.message}<br><br>La tentative a été enregistrée avec le statut "Rejeté" (ID: ${result.newId})`;
@@ -469,7 +480,7 @@
             }
         }
 
-        // ✅ Succès mise à jour
+        // Success update
         function onUpdateSuccess(result) {
             document.getElementById('loadingBox').style.display = 'none';
             const alertBox = document.getElementById('alertBox');
@@ -491,7 +502,7 @@
             }
         }
 
-        // ❌ Échec
+        // Failure
         function onFailure(error) {
             document.getElementById('loadingBox').style.display = 'none';
             const alertBox = document.getElementById('alertBox');
@@ -500,7 +511,7 @@
             alertBox.innerHTML = `<strong>❌ Erreur Système</strong><br>${error.message}`;
         }
 
-        // 💬 Afficher une alerte
+        // Show alert
         function showAlert(type, message) {
             const alertBox = document.getElementById('alertBox');
             alertBox.className = `alert alert-${type}`;

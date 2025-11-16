@@ -1,10 +1,10 @@
 /**
- * @file src/ui/helpers.js (IMPROVED)
- * @description UI helper functions with improved comment management and duplicate check
+ * @file src/ui/helpers.js (IMPROVED WITH LANGUAGE SUPPORT)
+ * @description UI helper functions with language support
  */
 
 /**
- * Process manual entry (IMPROVED: Check duplicates FIRST, then insert)
+ * Process manual entry (IMPROVED: Check duplicates FIRST, include language)
  */
 function processManualEntry(formData) {
     try {
@@ -37,6 +37,7 @@ function processManualEntry(formData) {
             // IMPROVED: Insert as REJECTED with formatted comment
             const familyId = generateFamilyId();
             const comment = formatComment('🚫', `Doublon détecté - Famille existante ID: ${duplicate.id}`);
+            const langue = formData.langue || CONFIG.LANGUAGES.FR;
 
             writeToFamilySheet(formData, {
                 status: CONFIG.STATUS.REJECTED,
@@ -44,12 +45,13 @@ function processManualEntry(formData) {
                 familyId: familyId,
                 quartierId: null,
                 quartierName: null,
-                criticite: criticite
+                criticite: criticite,
+                langue: langue
             });
 
             notifyAdmin(
                 '🚫 Doublon détecté',
-                `Nouvelle tentative d'inscription rejetée\nID créé: ${familyId}\nFamille existante: ${duplicate.id}\nNom: ${formData.lastName} ${formData.firstName}\nTéléphone: ${normalizePhone(formData.phone)}`
+                `Nouvelle tentative d'inscription rejetée\nID créé: ${familyId}\nFamille existante: ${duplicate.id}\nNom: ${formData.lastName} ${formData.firstName}\nTéléphone: ${normalizePhone(formData.phone)}\nLangue: ${langue}`
             );
 
             return {
@@ -78,6 +80,7 @@ function processManualEntry(formData) {
 
         const familyId = generateFamilyId();
         let status = CONFIG.STATUS.IN_PROGRESS;
+        const langue = formData.langue || CONFIG.LANGUAGES.FR;
 
         // Build comment with formatted entries
         let comment = formatComment('➕', 'Créé manuellement');
@@ -92,15 +95,16 @@ function processManualEntry(formData) {
             familyId: familyId,
             quartierId: addressValidation.quartierId,
             quartierName: addressValidation.quartierName,
-            criticite: criticite
+            criticite: criticite,
+            langue: langue
         });
 
         notifyAdmin(
             '✅ Nouvelle famille ajoutée manuellement',
-            `ID: ${familyId}\nNom: ${formData.lastName} ${formData.firstName}\nTéléphone: ${normalizePhone(formData.phone)}\nAdresse: ${formData.address}, ${formData.postalCode} ${formData.city}\nQuartier: ${addressValidation.quartierName || 'Non assigné'}\nCriticité: ${criticite}\n\n⚠️ Statut: En cours (nécessite validation manuelle)`
+            `ID: ${familyId}\nNom: ${formData.lastName} ${formData.firstName}\nTéléphone: ${normalizePhone(formData.phone)}\nAdresse: ${formData.address}, ${formData.postalCode} ${formData.city}\nQuartier: ${addressValidation.quartierName || 'Non assigné'}\nCriticité: ${criticite}\nLangue: ${langue}\n\n⚠️ Statut: En cours (nécessite validation manuelle)`
         );
 
-        logInfo('✅ Entrée manuelle traitée avec succès', { familyId, criticite, status });
+        logInfo('✅ Entrée manuelle traitée avec succès', { familyId, criticite, status, langue });
 
         return {
             success: true,
@@ -108,6 +112,7 @@ function processManualEntry(formData) {
             quartierId: addressValidation.quartierId,
             quartierName: addressValidation.quartierName,
             criticite: criticite,
+            langue: langue,
             status: status,
             message: `Famille créée avec succès. Changez le statut à "Validé" pour créer le contact Google.`
         };
@@ -193,7 +198,8 @@ function calculateStatistics() {
             totalAdults: 0,
             totalChildren: 0,
             byCriticite: {},
-            byQuartier: {}
+            byQuartier: {},
+            byLangue: {}
         };
     }
 
@@ -206,7 +212,8 @@ function calculateStatistics() {
         totalAdults: 0,
         totalChildren: 0,
         byCriticite: { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
-        byQuartier: {}
+        byQuartier: {},
+        byLangue: { fr: 0, ar: 0, en: 0, unknown: 0 }
     };
 
     for (let i = 1; i < data.length; i++) {
@@ -214,6 +221,7 @@ function calculateStatistics() {
         const status = row[OUTPUT_COLUMNS.ETAT_DOSSIER];
         const criticite = parseInt(row[OUTPUT_COLUMNS.CRITICITE]) || 0;
         const quartierId = row[OUTPUT_COLUMNS.ID_QUARTIER];
+        const langue = row[OUTPUT_COLUMNS.LANGUE] || 'unknown';
 
         if (status === CONFIG.STATUS.VALIDATED) stats.validated++;
         if (status === CONFIG.STATUS.IN_PROGRESS) stats.inProgress++;
@@ -228,6 +236,12 @@ function calculateStatistics() {
 
         if (quartierId) {
             stats.byQuartier[quartierId] = (stats.byQuartier[quartierId] || 0) + 1;
+        }
+
+        if (['fr', 'ar', 'en'].includes(langue)) {
+            stats.byLangue[langue]++;
+        } else {
+            stats.byLangue.unknown++;
         }
     }
 
@@ -244,7 +258,7 @@ function clearAllCaches() {
 
 /**
  * Write data to Famille sheet (LAST EMPTY ROW)
- * IMPROVED: Uses formatted comments
+ * IMPROVED: Uses formatted comments and includes langue field
  */
 function writeToFamilySheet(formData, options = {}) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -261,13 +275,14 @@ function writeToFamilySheet(formData, options = {}) {
         identityIds = [],
         cafIds = [],
         resourceIds = [],
-        criticite = 0
+        criticite = 0,
+        langue = CONFIG.LANGUAGES.FR
     } = options;
 
     const normalizedPhone = normalizePhone(formData.phone);
     const normalizedPhoneBis = formData.phoneBis ? normalizePhone(formData.phoneBis) : '';
 
-    const row = Array(21).fill('');
+    const row = Array(22).fill(''); // Updated to 22 columns
     row[OUTPUT_COLUMNS.ID] = familyId;
     row[OUTPUT_COLUMNS.NOM] = formData.lastName || '';
     row[OUTPUT_COLUMNS.PRENOM] = formData.firstName || '';
@@ -287,6 +302,7 @@ function writeToFamilySheet(formData, options = {}) {
     row[OUTPUT_COLUMNS.RESSENTIT] = '';
     row[OUTPUT_COLUMNS.SPECIFICITES] = '';
     row[OUTPUT_COLUMNS.CRITICITE] = criticite;
+    row[OUTPUT_COLUMNS.LANGUE] = langue;
     row[OUTPUT_COLUMNS.ETAT_DOSSIER] = status;
     row[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] = comment;
 
@@ -297,7 +313,7 @@ function writeToFamilySheet(formData, options = {}) {
     const cacheKey = `dup_${normalizedPhone.replace(/[\s\(\)]/g, '')}_${formData.lastName.toLowerCase().trim()}`;
     cache.remove(cacheKey);
 
-    logInfo(`💾 Famille écrite dans la feuille à la ligne ${lastEmptyRow}`, { familyId, status });
+    logInfo(`💾 Famille écrite dans la feuille à la ligne ${lastEmptyRow}`, { familyId, status, langue });
 
     return familyId;
 }
@@ -348,6 +364,15 @@ function updateExistingFamily(duplicate, formData, addressValidation, docValidat
         }
     }
 
+    // Update language if provided
+    if (formData.langue) {
+        const oldLangue = existingData[OUTPUT_COLUMNS.LANGUE] || '';
+        if (formData.langue !== oldLangue) {
+            sheet.getRange(row, OUTPUT_COLUMNS.LANGUE + 1).setValue(formData.langue);
+            changes.push('langue');
+        }
+    }
+
     // IMPROVED: Use formatted comment
     const existingComment = existingData[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
     const newComment = addComment(
@@ -392,6 +417,7 @@ function getAllFamilyIds(filterValidated = false) {
                 nombreAdulte: row[OUTPUT_COLUMNS.NOMBRE_ADULTE],
                 nombreEnfant: row[OUTPUT_COLUMNS.NOMBRE_ENFANT],
                 criticite: row[OUTPUT_COLUMNS.CRITICITE],
+                langue: row[OUTPUT_COLUMNS.LANGUE] || CONFIG.LANGUAGES.FR,
                 circonstances: row[OUTPUT_COLUMNS.CIRCONSTANCES],
                 ressentit: row[OUTPUT_COLUMNS.RESSENTIT],
                 specificites: row[OUTPUT_COLUMNS.SPECIFICITES],

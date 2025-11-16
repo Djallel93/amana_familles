@@ -1,6 +1,6 @@
 /**
  * @file src/handlers/formHandler.js (UPDATED)
- * @description Unified form submission handler supporting multilingual forms and Google Form
+ * @description Unified form submission handler with language detection
  */
 
 /**
@@ -20,9 +20,12 @@ function onFormSubmit(e) {
             return;
         }
 
+        // Detect language from sheet name
+        const detectedLanguage = detectLanguageFromSheet(sheetName);
+
         // Check if this is the Google Form sheet
         if (sheetName === CONFIG.SHEETS.GOOGLE_FORM) {
-            processGoogleFormSubmission(sheet, row);
+            processGoogleFormSubmission(sheet, row, detectedLanguage);
             return;
         }
 
@@ -30,6 +33,9 @@ function onFormSubmit(e) {
         const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
         const values = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
         const formData = parseFormResponse(headers, values);
+
+        // Add detected language to formData
+        formData.langue = detectedLanguage;
 
         // Check consent refusal
         if (isConsentRefused(formData)) {
@@ -57,12 +63,15 @@ function onFormSubmit(e) {
 /**
  * Process Google Form submission (insert-only, no documents)
  */
-function processGoogleFormSubmission(sheet, row) {
+function processGoogleFormSubmission(sheet, row, language = CONFIG.LANGUAGES.FR) {
     try {
         logInfo('📱 Processing Google Form submission');
 
         const values = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
         const formData = parseGoogleFormData(values);
+
+        // Add language
+        formData.langue = language;
 
         // Add status column for tracking
         const statusColumn = sheet.getLastColumn() + 1;
@@ -77,7 +86,8 @@ function processGoogleFormSubmission(sheet, row) {
             writeToFamilySheet(formData, {
                 status: CONFIG.STATUS.REJECTED,
                 comment: errorMessage,
-                criticite: 0
+                criticite: 0,
+                langue: language
             });
 
             notifyAdmin(
@@ -102,7 +112,8 @@ function processGoogleFormSubmission(sheet, row) {
             writeToFamilySheet(formData, {
                 status: CONFIG.STATUS.REJECTED,
                 comment: errorMessage,
-                criticite: 0
+                criticite: 0,
+                langue: language
             });
 
             notifyAdmin(
@@ -136,7 +147,7 @@ function processGoogleFormSubmission(sheet, row) {
 
             notifyAdmin(
                 '🔄 Family Updated (Google Form)',
-                `ID: ${duplicate.id}\nName: ${formData.lastName} ${formData.firstName}\nPhone: ${normalizePhone(formData.phone)}`
+                `ID: ${duplicate.id}\nName: ${formData.lastName} ${formData.firstName}\nPhone: ${normalizePhone(formData.phone)}\nLanguage: ${language}`
             );
         } else {
             const familyId = generateFamilyId();
@@ -150,7 +161,8 @@ function processGoogleFormSubmission(sheet, row) {
                 identityIds: [],
                 cafIds: [],
                 resourceIds: [],
-                criticite: formData.criticite
+                criticite: formData.criticite,
+                langue: language
             });
 
             sheet.getRange(row, statusColumn).setValue(`✅ Créé: ${familyId}`);
@@ -159,7 +171,8 @@ function processGoogleFormSubmission(sheet, row) {
                 `Phone: ${normalizePhone(formData.phone)}\n` +
                 `Address: ${formData.address}, ${formData.postalCode} ${formData.city}\n` +
                 `Quartier: ${addressValidation.quartierName || 'Non assigné'}\n` +
-                `Criticité: ${formData.criticite}` +
+                `Criticité: ${formData.criticite}\n` +
+                `Language: ${language}` +
                 (addressValidation.quartierInvalid ? `\n\n⚠️ WARNING: Quartier ID invalid` : '');
 
             notifyAdmin('✅ New Submission (Google Form)', notificationMsg);
@@ -241,7 +254,8 @@ function processInsert(formData) {
             writeToFamilySheet(formData, {
                 status: CONFIG.STATUS.REJECTED,
                 comment: `Champs requis manquants: ${fieldValidation.errors.join(', ')}`,
-                criticite: 0
+                criticite: 0,
+                langue: formData.langue || CONFIG.LANGUAGES.FR
             });
             notifyAdmin('⚠️ Submission Rejected', `Reason: ${fieldValidation.errors.join(', ')}\nName: ${formData.lastName} ${formData.firstName}`);
             return;
@@ -258,7 +272,8 @@ function processInsert(formData) {
             writeToFamilySheet(formData, {
                 status: CONFIG.STATUS.REJECTED,
                 comment: `Adresse invalide: ${addressValidation.error}`,
-                criticite: 0
+                criticite: 0,
+                langue: formData.langue || CONFIG.LANGUAGES.FR
             });
             notifyAdmin('⚠️ Submission Rejected', `Invalid address\nFamily: ${formData.lastName} ${formData.firstName}\nAddress: ${formData.address}`);
             return;
@@ -290,7 +305,8 @@ function processInsert(formData) {
                 status: CONFIG.STATUS.REJECTED,
                 comment: `Documents invalides: ${docValidation.errors.join(', ')}`,
                 quartierId: addressValidation.quartierId,
-                criticite: 0
+                criticite: 0,
+                langue: formData.langue || CONFIG.LANGUAGES.FR
             });
             notifyAdmin('⚠️ Submission Rejected', `Invalid documents\nFamily: ${formData.lastName} ${formData.firstName}\nErrors: ${docValidation.errors.join(', ')}`);
             return;
@@ -318,13 +334,15 @@ function processInsert(formData) {
                 identityIds: docValidation.identityIds,
                 cafIds: docValidation.cafIds,
                 resourceIds: docValidation.resourceIds,
-                criticite: 0
+                criticite: 0,
+                langue: formData.langue || CONFIG.LANGUAGES.FR
             });
 
             const notificationMsg = `ID: ${familyId}\nName: ${formData.lastName} ${formData.firstName}\n` +
                 `Phone: ${normalizePhone(formData.phone)}\n` +
                 `Address: ${formData.address}, ${formData.postalCode} ${formData.city}\n` +
-                `Quartier: ${addressValidation.quartierName || 'Non assigné'}` +
+                `Quartier: ${addressValidation.quartierName || 'Non assigné'}\n` +
+                `Language: ${formData.langue || CONFIG.LANGUAGES.FR}` +
                 (addressValidation.quartierInvalid ? `\n\n⚠️ WARNING: Quartier ID invalid in GEO API` : '');
 
             notifyAdmin('✅ New Submission', notificationMsg);
@@ -412,7 +430,8 @@ function buildUpdateData(formData) {
         circonstances: 'circonstances',
         ressentit: 'ressentit',
         specificites: 'specificites',
-        criticite: 'criticite'
+        criticite: 'criticite',
+        langue: 'langue'
     };
 
     Object.keys(fieldMapping).forEach(key => {
@@ -453,6 +472,10 @@ function validateUpdateData(updateData) {
             updateData.criticite > CONFIG.CRITICITE.MAX) {
             return { isValid: false, error: 'Criticité invalide (doit être entre 0 et 5)' };
         }
+    }
+
+    if (updateData.langue && !['fr', 'ar', 'en'].includes(updateData.langue)) {
+        return { isValid: false, error: 'Langue invalide (doit être: fr, ar, ou en)' };
     }
 
     return { isValid: true };

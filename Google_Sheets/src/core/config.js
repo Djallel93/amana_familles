@@ -1,6 +1,6 @@
 /**
- * @file src/core/config.js (UPDATED)
- * @description Configuration with Google Form sheet mapping
+ * @file src/core/config.js (UPDATED WITH LANGUAGE SUPPORT)
+ * @description Configuration with language field support
  */
 
 const CONFIG = {
@@ -12,6 +12,23 @@ const CONFIG = {
         FORM_EN: 'Familles – EN',
         FAMILLE: 'Famille',
         FORM_UPDATE: 'Mise à Jour Famille'
+    },
+
+    // 🌍 Langues supportées
+    LANGUAGES: {
+        FR: 'fr',
+        AR: 'ar',
+        EN: 'en'
+    },
+
+    // 📧 Configuration des emails de vérification
+    EMAIL_VERIFICATION: {
+        SUBJECT: {
+            fr: '🔔 Mise à jour de vos informations',
+            ar: '🔔 تحديث معلوماتك',
+            en: '🔔 Update Your Information'
+        },
+        FROM_NAME: 'Gestion des Familles'
     },
 
     // ⏱️ Configuration du cache (en secondes)
@@ -92,7 +109,8 @@ const BULK_COLUMNS = {
     RESSENTIT: 11,
     SPECIFICITES: 12,
     CRITICITE: 13,
-    COMMENTAIRE: 14
+    LANGUE: 14,
+    COMMENTAIRE: 15
 };
 
 // 🗂️ Indices de colonnes pour Bulk Update (0-based)
@@ -112,7 +130,8 @@ const BULK_UPDATE_COLUMNS = {
     RESSENTIT: 12,
     SPECIFICITES: 13,
     CRITICITE: 14,
-    COMMENTAIRE: 15
+    LANGUE: 15,
+    COMMENTAIRE: 16
 };
 
 // 🗂️ NEW: Indices de colonnes pour Google Form (0-based)
@@ -216,7 +235,7 @@ const COLUMN_MAP = {
     'Please submit any proof of income or financial support': 'resourceDoc'
 };
 
-// 🗂️ Indices de colonnes pour la feuille de sortie (0-based)
+// 🗂️ Indices de colonnes pour la feuille de sortie (0-based) - UPDATED WITH LANGUE
 const OUTPUT_COLUMNS = {
     ID: 0,
     NOM: 1,
@@ -237,8 +256,9 @@ const OUTPUT_COLUMNS = {
     RESSENTIT: 16,
     SPECIFICITES: 17,
     CRITICITE: 18,
-    ETAT_DOSSIER: 19,
-    COMMENTAIRE_DOSSIER: 20
+    LANGUE: 19,
+    ETAT_DOSSIER: 20,
+    COMMENTAIRE_DOSSIER: 21
 };
 
 /**
@@ -267,7 +287,11 @@ function getScriptConfig() {
         spreadsheetId: getProperty('SPREADSHEET_ID'),
         geoApiUrl: getProperty('GEO_API_URL'),
         geoApiKey: getProperty('GEO_API_KEY'),
-        adminEmail: getProperty('ADMIN_EMAIL')
+        adminEmail: getProperty('ADMIN_EMAIL'),
+        formUrlFr: getProperty('FORM_URL_FR'),
+        formUrlAr: getProperty('FORM_URL_AR'),
+        formUrlEn: getProperty('FORM_URL_EN'),
+        webAppUrl: getProperty('WEB_APP_URL')
     };
 }
 
@@ -297,4 +321,14 @@ function generateFamilyId() {
     const newId = maxId + 1;
     logInfo(`🆔 Nouvel ID généré: ${newId} (précédent max: ${maxId})`);
     return newId;
+}
+
+/**
+ * 🌍 Detect language from sheet name
+ */
+function detectLanguageFromSheet(sheetName) {
+    if (sheetName === CONFIG.SHEETS.FORM_FR) return CONFIG.LANGUAGES.FR;
+    if (sheetName === CONFIG.SHEETS.FORM_AR) return CONFIG.LANGUAGES.AR;
+    if (sheetName === CONFIG.SHEETS.FORM_EN) return CONFIG.LANGUAGES.EN;
+    return CONFIG.LANGUAGES.FR; // Default
 }
