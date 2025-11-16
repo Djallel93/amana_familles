@@ -1,6 +1,6 @@
 /**
- * @file src/handlers/editHandler.js (IMPROVED)
- * @description Handle onEdit triggers with improved comment management
+ * @file src/handlers/editHandler.js (UPDATED)
+ * @description Handle onEdit triggers with zakat/sadaqa validation requirements
  */
 
 /**
@@ -32,6 +32,11 @@ function handleEdit(e) {
                 const criticite = sheet.getRange(row, OUTPUT_COLUMNS.CRITICITE + 1).getValue();
                 let quartierId = sheet.getRange(row, OUTPUT_COLUMNS.ID_QUARTIER + 1).getValue();
 
+                // NEW: Get zakat and sadaqa values
+                const zakatElFitr = sheet.getRange(row, OUTPUT_COLUMNS.ZAKAT_EL_FITR + 1).getValue();
+                const sadaqa = sheet.getRange(row, OUTPUT_COLUMNS.SADAQA + 1).getValue();
+
+                // VALIDATION 1: Check criticite
                 if (!criticite || criticite === 0) {
                     const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
                     sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatusValue);
@@ -63,6 +68,25 @@ function handleEdit(e) {
                     return;
                 }
 
+                // VALIDATION 2: Check zakat_el_fitr and sadaqa (NEW)
+                if (zakatElFitr !== true && sadaqa !== true) {
+                    const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
+                    sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatusValue);
+
+                    SpreadsheetApp.getUi().alert(
+                        '⚠️ Zakat El Fitr ou Sadaqa requis',
+                        'Vous devez cocher au moins une des cases suivantes avant de valider:\n\n' +
+                        '• Zakat El Fitr\n' +
+                        '• Sadaqa\n\n' +
+                        'Le statut a été rétabli à: ' + oldStatusValue,
+                        SpreadsheetApp.getUi().ButtonSet.OK
+                    );
+
+                    logInfo(`Validation blocked for row ${row}: neither zakat nor sadaqa checked`);
+                    return;
+                }
+
+                // VALIDATION 3: Check quartier (auto-resolve if missing)
                 if (!quartierId) {
                     logInfo(`Attempting to auto-resolve quartier for row ${row}`);
 
@@ -118,7 +142,6 @@ function handleEdit(e) {
                             SpreadsheetApp.getUi().ButtonSet.OK
                         );
 
-                        // IMPROVED: Use formatted comment
                         const existingComment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
                         const newComment = addComment(
                             existingComment,
@@ -134,7 +157,6 @@ function handleEdit(e) {
 
                     logInfo(`Quartier auto-resolved: ${quartierId} (${addressValidation.quartierName})`);
 
-                    // IMPROVED: Use formatted comment
                     const existingComment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
                     const newComment = addComment(
                         existingComment,
@@ -157,7 +179,6 @@ function handleEdit(e) {
                         SpreadsheetApp.getUi().ButtonSet.OK
                     );
 
-                    // IMPROVED: Use formatted comment
                     const existingComment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
                     const newComment = addComment(
                         existingComment,
@@ -169,6 +190,7 @@ function handleEdit(e) {
                     return;
                 }
 
+                // All validations passed - process validated family
                 processValidatedFamily(sheet, row);
             }
         }
@@ -201,7 +223,6 @@ function handleEdit(e) {
 
 /**
  * Handle archive status - delete contact
- * IMPROVED: Use formatted comments
  */
 function handleArchiveStatus(sheet, row) {
     try {
@@ -242,7 +263,6 @@ function handleArchiveStatus(sheet, row) {
 
 /**
  * Process family when status changes to "Validé"
- * IMPROVED: Use formatted comments
  */
 function processValidatedFamily(sheet, row) {
     try {
@@ -252,22 +272,22 @@ function processValidatedFamily(sheet, row) {
 
         const familyId = data[OUTPUT_COLUMNS.ID];
         const identityUrls = data[OUTPUT_COLUMNS.IDENTITE];
-        const cafUrls = data[OUTPUT_COLUMNS.CAF];
+        const aidesEtatUrls = data[OUTPUT_COLUMNS.AIDES_ETAT]; // UPDATED
 
         const identityIds = extractFileIds(identityUrls);
-        const cafIds = extractFileIds(cafUrls);
+        const aidesEtatIds = extractFileIds(aidesEtatUrls); // UPDATED
 
-        if (identityIds.length > 0 || cafIds.length > 0) {
-            const organized = organizeDocuments(familyId, identityIds, cafIds, []);
+        if (identityIds.length > 0 || aidesEtatIds.length > 0) {
+            const organized = organizeDocuments(familyId, identityIds, aidesEtatIds, []);
 
             if (organized.identity.length > 0) {
                 sheet.getRange(row, OUTPUT_COLUMNS.IDENTITE + 1).setValue(
                     formatDocumentLinks(organized.identity)
                 );
             }
-            if (organized.caf.length > 0) {
-                sheet.getRange(row, OUTPUT_COLUMNS.CAF + 1).setValue(
-                    formatDocumentLinks(organized.caf)
+            if (organized.aidesEtat.length > 0) { // UPDATED
+                sheet.getRange(row, OUTPUT_COLUMNS.AIDES_ETAT + 1).setValue(
+                    formatDocumentLinks(organized.aidesEtat)
                 );
             }
 
@@ -290,7 +310,6 @@ function processValidatedFamily(sheet, row) {
 
         const contactResult = syncFamilyContact(familyData);
 
-        // IMPROVED: Use formatted comments
         const existingComment = data[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
         let newComment;
 

@@ -1,6 +1,6 @@
 /**
- * @file src/core/config.js (UPDATED WITH LANGUAGE SUPPORT)
- * @description Configuration with language field support
+ * @file src/core/config.js (UPDATED WITH LANGUAGE FULL NAMES)
+ * @description Configuration with full language names
  */
 
 const CONFIG = {
@@ -14,19 +14,19 @@ const CONFIG = {
         FORM_UPDATE: 'Mise à Jour Famille'
     },
 
-    // 🌍 Langues supportées
+    // 🌍 Langues supportées (FULL NAMES)
     LANGUAGES: {
-        FR: 'fr',
-        AR: 'ar',
-        EN: 'en'
+        FR: 'Français',
+        AR: 'Arabe',
+        EN: 'Anglais'
     },
 
     // 📧 Configuration des emails de vérification
     EMAIL_VERIFICATION: {
         SUBJECT: {
-            fr: '🔔 Mise à jour de vos informations',
-            ar: '🔔 تحديث معلوماتك',
-            en: '🔔 Update Your Information'
+            'Français': '🔔 Mise à jour de vos informations',
+            'Arabe': '🔔 تحديث معلوماتك',
+            'Anglais': '🔔 Update Your Information'
         },
         FROM_NAME: 'Gestion des Familles'
     },
@@ -57,10 +57,10 @@ const CONFIG = {
         SKIPPED: 'Ignoré'
     },
 
-    // 📄 Types de documents
+    // 📄 Types de documents (UPDATED)
     DOC_TYPES: {
         IDENTITY: 'identity',
-        CAF: 'CAF',
+        AIDES_ETAT: 'aides_etat', // RENAMED from CAF
         RESOURCE: 'resource'
     },
 
@@ -134,7 +134,7 @@ const BULK_UPDATE_COLUMNS = {
     COMMENTAIRE: 16
 };
 
-// 🗂️ NEW: Indices de colonnes pour Google Form (0-based)
+// 🗂️ Indices de colonnes pour Google Form (0-based)
 const GOOGLE_FORM_COLUMNS = {
     TIMESTAMP: 0,
     DATE_SAISIE: 1,
@@ -154,7 +154,7 @@ const GOOGLE_FORM_COLUMNS = {
     SPECIFICITES: 15
 };
 
-// 🌐 Mappage multilingue des colonnes
+// 🌐 Mappage multilingue des colonnes (UPDATED)
 const COLUMN_MAP = {
     'Timestamp': 'timestamp',
     'Email address': 'email',
@@ -212,12 +212,12 @@ const COLUMN_MAP = {
     'Justificatif d\'identité ou de résidence': 'identityDoc',
     'إثبات الهوية أو الإقامة': 'identityDoc',
     'Proof of Identity or Residence': 'identityDoc',
-    'Attestation de la CAF (paiement et/ou quotient familial)': 'cafDoc',
-    'شهادة من CAF (الدفع و/أو الحصّة العائلية)': 'cafDoc',
-    'CAF Certificate (Payment and/or Family Quotient)': 'cafDoc',
-    'Attestation de la CAF (paiement et/ou quotient familial) - (optionnel)': 'cafDocOptional',
-    'شهادة من CAF (الدفع و/أو الحصّة العائلية) - (اختياري)': 'cafDocOptional',
-    'CAF Certificate (optional)': 'cafDocOptional',
+    'Attestation de la CAF (paiement et/ou quotient familial)': 'aidesEtatDoc',
+    'شهادة من CAF (الدفع و/أو الحصّة العائلية)': 'aidesEtatDoc',
+    'CAF Certificate (Payment and/or Family Quotient)': 'aidesEtatDoc',
+    'Aide médicale de l\'État (AME)': 'aidesEtatDoc',
+    'المساعدة الطبية للدولة (AME)': 'aidesEtatDoc',
+    'State Medical Aid (AME)': 'aidesEtatDoc',
     'Travaillez-vous actuellement, vous ou votre conjoint(e) ?': 'working',
     'هل تعمل حالياً، أنت أو زوجك/زوجتك؟': 'working',
     'Are you or your spouse currently working?': 'working',
@@ -235,7 +235,7 @@ const COLUMN_MAP = {
     'Please submit any proof of income or financial support': 'resourceDoc'
 };
 
-// 🗂️ Indices de colonnes pour la feuille de sortie (0-based) - UPDATED WITH LANGUE
+// 🗂️ Indices de colonnes pour la feuille de sortie (0-based) - UPDATED
 const OUTPUT_COLUMNS = {
     ID: 0,
     NOM: 1,
@@ -251,7 +251,7 @@ const OUTPUT_COLUMNS = {
     TELEPHONE: 11,
     TELEPHONE_BIS: 12,
     IDENTITE: 13,
-    CAF: 14,
+    AIDES_ETAT: 14,
     CIRCONSTANCES: 15,
     RESSENTIT: 16,
     SPECIFICITES: 17,
@@ -324,11 +324,23 @@ function generateFamilyId() {
 }
 
 /**
- * 🌍 Detect language from sheet name
+ * 🌍 Detect language from sheet name (returns full name)
  */
 function detectLanguageFromSheet(sheetName) {
     if (sheetName === CONFIG.SHEETS.FORM_FR) return CONFIG.LANGUAGES.FR;
     if (sheetName === CONFIG.SHEETS.FORM_AR) return CONFIG.LANGUAGES.AR;
     if (sheetName === CONFIG.SHEETS.FORM_EN) return CONFIG.LANGUAGES.EN;
     return CONFIG.LANGUAGES.FR; // Default
+}
+
+/**
+ * 🌍 Get language code from full name (for backward compatibility)
+ */
+function getLanguageCode(languageName) {
+    const mapping = {
+        'Français': 'fr',
+        'Arabe': 'ar',
+        'Anglais': 'en'
+    };
+    return mapping[languageName] || 'fr';
 }

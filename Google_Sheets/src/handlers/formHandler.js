@@ -1,6 +1,6 @@
 /**
  * @file src/handlers/formHandler.js (UPDATED)
- * @description Unified form submission handler with language detection
+ * @description Unified form submission handler with AME support and validation requirements
  */
 
 /**
@@ -142,7 +142,7 @@ function processGoogleFormSubmission(sheet, row, language = CONFIG.LANGUAGES.FR)
         );
 
         if (duplicate.exists) {
-            updateExistingFamily(duplicate, formData, addressValidation, { identityIds: [], cafIds: [], resourceIds: [] });
+            updateExistingFamily(duplicate, formData, addressValidation, { identityIds: [], aidesEtatIds: [], resourceIds: [] });
             sheet.getRange(row, statusColumn).setValue(`✅ Mis à jour: ${duplicate.id}`);
 
             notifyAdmin(
@@ -159,7 +159,7 @@ function processGoogleFormSubmission(sheet, row, language = CONFIG.LANGUAGES.FR)
                 quartierId: addressValidation.quartierId,
                 quartierName: addressValidation.quartierName,
                 identityIds: [],
-                cafIds: [],
+                aidesEtatIds: [], // UPDATED
                 resourceIds: [],
                 criticite: formData.criticite,
                 langue: language
@@ -243,7 +243,7 @@ function detectFormType(formData, sheetName) {
 }
 
 /**
- * Process INSERT submission (new family)
+ * Process INSERT submission (new family) - UPDATED with AME
  */
 function processInsert(formData) {
     try {
@@ -294,9 +294,10 @@ function processInsert(formData) {
         }
 
         logInfo('📄 Validating documents');
+        // UPDATED: Both CAF and AME documents go to aidesEtatDoc field
         const docValidation = validateDocuments(
             formData.identityDoc,
-            formData.cafDoc || formData.cafDocOptional,
+            formData.aidesEtatDoc, // Handles both CAF and AME
             formData.resourceDoc
         );
 
@@ -332,7 +333,7 @@ function processInsert(formData) {
                 quartierId: addressValidation.quartierId,
                 quartierName: addressValidation.quartierName,
                 identityIds: docValidation.identityIds,
-                cafIds: docValidation.cafIds,
+                aidesEtatIds: docValidation.aidesEtatIds, // UPDATED from cafIds
                 resourceIds: docValidation.resourceIds,
                 criticite: 0,
                 langue: formData.langue || CONFIG.LANGUAGES.FR
@@ -455,7 +456,7 @@ function buildUpdateData(formData) {
 }
 
 /**
- * Validate update data
+ * Validate update data (UPDATED with full language names)
  */
 function validateUpdateData(updateData) {
     if (updateData.email && !isValidEmail(updateData.email)) {
@@ -474,8 +475,9 @@ function validateUpdateData(updateData) {
         }
     }
 
-    if (updateData.langue && !['fr', 'ar', 'en'].includes(updateData.langue)) {
-        return { isValid: false, error: 'Langue invalide (doit être: fr, ar, ou en)' };
+    // UPDATED: Check for full language names
+    if (updateData.langue && !['Français', 'Arabe', 'Anglais'].includes(updateData.langue)) {
+        return { isValid: false, error: 'Langue invalide (doit être: Français, Arabe, ou Anglais)' };
     }
 
     return { isValid: true };

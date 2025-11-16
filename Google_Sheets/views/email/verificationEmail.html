@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="<?= langCode ?>" dir="<?= isRTL ? 'rtl' : 'ltr' ?>">
+Google_Sheets
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <?!= include('views/email/emailStyles'); ?>
+</head>
+
+<body>
+    <div class="email-container<?= isRTL ? ' rtl' : '' ?>">
+        <div class="header">
+            <div class="icon">📋</div>
+            <h1>
+                <?= subject ?>
+            </h1>
+        </div>
+
+        <div class="content">
+            <div class="greeting">
+                <?= greeting ?>
+                <?= familyData.prenom ?>
+                <?= familyData.nom ?>,
+            </div>
+
+            <div class="intro">
+                <?= intro ?>
+            </div>
+
+            <div class="info-box">
+                <div class="info-title">
+                    <?= currentInfo ?>
+                </div>
+
+                <div class="info-row">
+                    <div class="info-label">
+                        <?= labels.name ?>:
+                    </div>
+                    <div class="info-value">
+                        <?= familyData.prenom ?>
+                        <?= familyData.nom ?>
+                    </div>
+                </div>
+
+                <div class="info-row">
+                    <div class="info-label">
+                        <?= labels.address ?>:
+                    </div>
+                    <div class="info-value">
+                        <?= familyData.adresse ?>
+                    </div>
+                </div>
+
+                <div class="info-row">
+                    <div class="info-label">
+                        <?= labels.adults ?>:
+                    </div>
+                    <div class="info-value">
+                        <?= familyData.nombreAdulte ?>
+                    </div>
+                </div>
+
+                <div class="info-row">
+                    <div class="info-label">
+                        <?= labels.children ?>:
+                    </div>
+                    <div class="info-value">
+                        <?= familyData.nombreEnfant ?>
+                    </div>
+                </div>
+            </div>
+
+            <div class="question">
+                <?= question ?>
+            </div>
+
+            <div class="button-container">
+                <a href="<?= confirmUrl ?>" class="button button-confirm">
+                    <?= buttonUpToDate ?>
+                </a>
+                <a href="<?= updateUrl ?>" class="button button-update">
+                    <?= buttonChanged ?>
+                </a>
+            </div>
+        </div>
+
+        <div class="footer">
+            <div class="footer-message">
+                <?= footer ?>
+            </div>
+            <div class="footer-thanks">
+                <?= thanks ?>
+            </div>
+            <div class="team-signature">—
+                <?= team ?>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

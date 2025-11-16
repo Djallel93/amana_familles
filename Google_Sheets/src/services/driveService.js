@@ -1,6 +1,6 @@
 /**
- * @file src/services/driveService.js
- * @description Handle Drive operations for family documents
+ * @file src/services/driveService.js (UPDATED)
+ * @description Handle Drive operations with updated document types
  */
 
 /**
@@ -31,13 +31,13 @@ function getOrCreateFamilyFolder(familyId) {
 }
 
 /**
- * Organize uploaded documents for a family
+ * Organize uploaded documents for a family (UPDATED with aides_etat)
  */
-function organizeDocuments(familyId, identityDocs, cafDocs, resourceDocs) {
+function organizeDocuments(familyId, identityDocs, aidesEtatDocs, resourceDocs) {
     const folder = getOrCreateFamilyFolder(familyId);
     const organized = {
         identity: [],
-        caf: [],
+        aidesEtat: [], // RENAMED from 'caf'
         resource: []
     };
 
@@ -55,16 +55,17 @@ function organizeDocuments(familyId, identityDocs, cafDocs, resourceDocs) {
         });
     }
 
-    if (cafDocs && cafDocs.length > 0) {
-        cafDocs.forEach((fileId, index) => {
+    // UPDATED: Renamed from CAF to aides_etat
+    if (aidesEtatDocs && aidesEtatDocs.length > 0) {
+        aidesEtatDocs.forEach((fileId, index) => {
             try {
-                const newName = `CAF_${index + 1}`;
+                const newName = `aides_etat_${index + 1}`;
                 const movedFile = moveAndRenameFile(fileId, folder, newName);
                 if (movedFile) {
-                    organized.caf.push(movedFile.getId());
+                    organized.aidesEtat.push(movedFile.getId());
                 }
             } catch (e) {
-                logError(`Failed to organize CAF doc: ${fileId}`, e);
+                logError(`Failed to organize aides etat doc: ${fileId}`, e);
             }
         });
     }
@@ -112,9 +113,9 @@ function moveAndRenameFile(fileId, targetFolder, newName) {
 }
 
 /**
- * Validate uploaded documents exist
+ * Validate uploaded documents exist (UPDATED with aides_etat)
  */
-function validateDocuments(identityDocUrls, cafDocUrls, resourceDocUrls) {
+function validateDocuments(identityDocUrls, aidesEtatDocUrls, resourceDocUrls) {
     const errors = [];
 
     const identityIds = extractFileIds(identityDocUrls);
@@ -128,10 +129,11 @@ function validateDocuments(identityDocUrls, cafDocUrls, resourceDocUrls) {
         });
     }
 
-    const cafIds = extractFileIds(cafDocUrls);
-    cafIds.forEach(id => {
+    // UPDATED: Changed from cafIds to aidesEtatIds
+    const aidesEtatIds = extractFileIds(aidesEtatDocUrls);
+    aidesEtatIds.forEach(id => {
         if (!fileExists(id)) {
-            errors.push(`Document CAF introuvable: ${id}`);
+            errors.push(`Document aides d'état introuvable: ${id}`);
         }
     });
 
@@ -146,7 +148,7 @@ function validateDocuments(identityDocUrls, cafDocUrls, resourceDocUrls) {
         isValid: errors.length === 0,
         errors: errors,
         identityIds: identityIds,
-        cafIds: cafIds,
+        aidesEtatIds: aidesEtatIds, // RENAMED from cafIds
         resourceIds: resourceIds
     };
 }
