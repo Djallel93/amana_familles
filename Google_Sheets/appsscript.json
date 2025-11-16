@@ -23,7 +23,7 @@
     },
     "webapp": {
         "executeAs": "USER_DEPLOYING",
-        "access": "ANYONE"
+        "access": "ANYONE_ANONYMOUS"
     },
     "exceptionLogging": "STACKDRIVER",
     "oauthScopes": [
@@ -41,9 +41,6 @@
         "https://www.googleapis.com/auth/contacts",
         "https://www.googleapis.com/auth/userinfo.profile"
     ],
-    "executionApi": {
-        "access": "ANYONE"
-    },
     "runtimeVersion": "V8",
     "sheets": {}
 }
