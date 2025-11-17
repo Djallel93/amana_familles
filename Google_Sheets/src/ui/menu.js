@@ -1,6 +1,6 @@
 /**
- * @file src/ui/menu.js (UPDATED with Email Verification)
- * @description Updated menu with email verification functionality
+ * @file src/ui/menu.js (UPDATED - Removed Debug Functions)
+ * @description Updated menu with email verification and fixed UI flow
  */
 
 /**
@@ -27,12 +27,6 @@ function onOpen() {
             .addItem('🧹 Effacer Feuille Update', 'clearBulkUpdateSheetWithConfirm')
             .addItem('📊 Statistiques Update', 'showBulkUpdateStats')
             .addItem('🔄 Réinitialiser "Processing"', 'resetUpdateProcessingStatusWithConfirm'))
-        .addSeparator()
-        .addSubMenu(ui.createMenu('🔍 Debug Contacts')
-            .addItem('📋 Lister tous les contacts', 'debugListAllContacts')
-            .addItem('🔎 Chercher un contact par ID', 'showDebugFindContactDialog')
-            .addItem('🗑️ Supprimer un contact par ID', 'showDebugDeleteContactDialog')
-            .addItem('🧪 Tester création contact', 'showDebugTestContactDialog'))
         .addSeparator()
         .addItem('🔄 Rafraîchir Cache', 'clearAllCaches')
         .addItem('📊 Statistiques Générales', 'showStatistics')
@@ -79,11 +73,11 @@ function showBulkUpdateDialog() {
 }
 
 // ============================================
-// EMAIL VERIFICATION MENU FUNCTIONS
+// EMAIL VERIFICATION MENU FUNCTIONS (FIXED UI FLOW)
 // ============================================
 
 /**
- * Send verification emails with confirmation
+ * Send verification emails with confirmation (FIXED)
  */
 function sendVerificationEmailsWithConfirm() {
     const ui = SpreadsheetApp.getUi();
@@ -126,46 +120,26 @@ function sendVerificationEmailsWithConfirm() {
         ui.ButtonSet.YES_NO
     );
 
-    if (response === ui.Button.YES) {
-        // Show progress
-        const progressHtml = HtmlService.createHtmlOutput(`
-            <html>
-                <body style="font-family: Arial; text-align: center; padding: 50px;">
-                    <h2>📧 Envoi en cours...</h2>
-                    <p>Veuillez patienter pendant l'envoi des emails.</p>
-                    <div style="margin: 30px auto; width: 50px; height: 50px; border: 5px solid #f3f3f3; border-top: 5px solid #1a73e8; border-radius: 50%; animation: spin 1s linear infinite;"></div>
-                    <style>
-                        @keyframes spin {
-                            0% { transform: rotate(0deg); }
-                            100% { transform: rotate(360deg); }
-                        }
-                    </style>
-                </body>
-            </html>
-        `);
-        ui.showModalDialog(progressHtml, 'Envoi d\'emails');
-
-        // Send emails
-        const result = sendVerificationEmailsToAll();
-
-        if (result.success) {
-            ui.alert(
-                '✅ Envoi terminé',
-                `Résultats :\n\n` +
-                `✅ Envoyés : ${result.results.sent}\n` +
-                `⏭️ Ignorés : ${result.results.skipped}\n` +
-                `❌ Échecs : ${result.results.failed}\n\n` +
-                `Total traité : ${result.results.total}`,
-                ui.ButtonSet.OK
-            );
-        } else {
-            ui.alert(
-                '❌ Erreur',
-                `L'envoi des emails a échoué :\n\n${result.error}`,
-                ui.ButtonSet.OK
-            );
-        }
+    if (response !== ui.Button.YES) {
+        return;
     }
+
+    // Show modal dialog with dynamic content
+    showEmailSendingDialog(eligibleCount);
+}
+
+/**
+ * Show email sending dialog with live updates (NEW)
+ */
+function showEmailSendingDialog(totalCount) {
+    const html = HtmlService.createHtmlOutputFromFile('views/dialogs/emailSending')
+        .setWidth(500)
+        .setHeight(700);
+
+    SpreadsheetApp.getUi().showModalDialog(html, 'Envoi d\'emails de vérification');
+
+    // Start sending in background
+    // Note: This will be called from the HTML dialog
 }
 
 /**
@@ -192,7 +166,7 @@ function showEmailPreview() {
                 nom: row[OUTPUT_COLUMNS.NOM],
                 prenom: row[OUTPUT_COLUMNS.PRENOM],
                 email: row[OUTPUT_COLUMNS.EMAIL],
-                langue: row[OUTPUT_COLUMNS.LANGUE] || 'fr'
+                langue: row[OUTPUT_COLUMNS.LANGUE] || 'Français'
             });
         }
     }
@@ -210,7 +184,7 @@ function showEmailPreview() {
     let previewText = `📧 Aperçu des destinataires (${eligible.length} famille(s))\n\n`;
 
     eligible.slice(0, 20).forEach(f => {
-        previewText += `• ${f.prenom} ${f.nom} (ID: ${f.id})\n  📧 ${f.email} | 🌍 ${f.langue.toUpperCase()}\n\n`;
+        previewText += `• ${f.prenom} ${f.nom} (ID: ${f.id})\n  📧 ${f.email} | 🌍 ${f.langue}\n\n`;
     });
 
     if (eligible.length > 20) {
@@ -218,80 +192,6 @@ function showEmailPreview() {
     }
 
     ui.alert('📧 Aperçu des Destinataires', previewText, ui.ButtonSet.OK);
-}
-
-// ============================================
-// DEBUG MENU FUNCTIONS
-// ============================================
-
-/**
- * Show dialog to search for a contact by family ID
- */
-function showDebugFindContactDialog() {
-    const ui = SpreadsheetApp.getUi();
-    const response = ui.prompt(
-        '🔎 Chercher un contact',
-        'Entrez l\'ID de la famille:',
-        ui.ButtonSet.OK_CANCEL
-    );
-
-    if (response.getSelectedButton() === ui.Button.OK) {
-        const familyId = response.getResponseText().trim();
-        if (familyId) {
-            debugFindContactByFamilyId(familyId);
-            ui.alert('✓ Recherche terminée', 'Consultez les logs (Ctrl+Entrée ou Cmd+Entrée)', ui.ButtonSet.OK);
-        }
-    }
-}
-
-/**
- * Show dialog to delete a contact by family ID
- */
-function showDebugDeleteContactDialog() {
-    const ui = SpreadsheetApp.getUi();
-    const response = ui.prompt(
-        '🗑️ Supprimer un contact',
-        'Entrez l\'ID de la famille:',
-        ui.ButtonSet.OK_CANCEL
-    );
-
-    if (response.getSelectedButton() === ui.Button.OK) {
-        const familyId = response.getResponseText().trim();
-        if (familyId) {
-            const confirmResponse = ui.alert(
-                '⚠️ Confirmation',
-                `Êtes-vous sûr de vouloir supprimer le contact pour la famille ${familyId} ?`,
-                ui.ButtonSet.YES_NO
-            );
-
-            if (confirmResponse === ui.Button.YES) {
-                debugDeleteContactByFamilyId(familyId);
-                ui.alert('✓ Terminé', 'Consultez les logs pour voir le résultat', ui.ButtonSet.OK);
-            }
-        }
-    }
-}
-
-/**
- * Show dialog to test contact creation for a family
- */
-function showDebugTestContactDialog() {
-    const ui = SpreadsheetApp.getUi();
-    const response = ui.prompt(
-        '🧪 Tester création de contact',
-        'Entrez l\'ID de la famille:',
-        ui.ButtonSet.OK_CANCEL
-    );
-
-    if (response.getSelectedButton() === ui.Button.OK) {
-        const familyId = parseInt(response.getResponseText().trim());
-        if (!isNaN(familyId)) {
-            debugTestContactCreation(familyId);
-            ui.alert('✓ Test terminé', 'Consultez les logs (Ctrl+Entrée ou Cmd+Entrée)', ui.ButtonSet.OK);
-        } else {
-            ui.alert('❌ Erreur', 'ID invalide. Doit être un nombre.', ui.ButtonSet.OK);
-        }
-    }
 }
 
 // ============================================

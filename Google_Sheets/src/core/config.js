@@ -1,6 +1,6 @@
 /**
- * @file src/core/config.js (UPDATED WITH LANGUAGE FULL NAMES)
- * @description Configuration with full language names
+ * @file src/core/config.js (UPDATED WITH FAMILLE_API_KEY)
+ * @description Configuration with full language names and API key
  */
 
 const CONFIG = {
@@ -60,7 +60,7 @@ const CONFIG = {
     // 📄 Types de documents (UPDATED)
     DOC_TYPES: {
         IDENTITY: 'identity',
-        AIDES_ETAT: 'aides_etat', // RENAMED from CAF
+        AIDES_ETAT: 'aides_etat',
         RESOURCE: 'resource'
     },
 
@@ -235,7 +235,7 @@ const COLUMN_MAP = {
     'Please submit any proof of income or financial support': 'resourceDoc'
 };
 
-// 🗂️ Indices de colonnes pour la feuille de sortie (0-based) - UPDATED
+// 🗂️ Indices de colonnes pour la feuille de sortie (0-based)
 const OUTPUT_COLUMNS = {
     ID: 0,
     NOM: 1,
@@ -279,7 +279,7 @@ function getProperty(key) {
 }
 
 /**
- * ⚙️ Récupérer toutes les propriétés de script requises
+ * ⚙️ Récupérer toutes les propriétés de script requises (UPDATED)
  */
 function getScriptConfig() {
     return {
@@ -291,7 +291,8 @@ function getScriptConfig() {
         formUrlFr: getProperty('FORM_URL_FR'),
         formUrlAr: getProperty('FORM_URL_AR'),
         formUrlEn: getProperty('FORM_URL_EN'),
-        webAppUrl: getProperty('WEB_APP_URL')
+        webAppUrl: getProperty('WEB_APP_URL'),
+        familleApiKey: getProperty('FAMILLE_API_KEY') // NEW: Added API key
     };
 }
 

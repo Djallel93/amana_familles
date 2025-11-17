@@ -1,10 +1,10 @@
 /**
- * @file src/api/familyApiHandler.js
- * @description REST API endpoints with email verification support
+ * @file src/api/familyApiHandler.js (UPDATED - Simple API Key Auth)
+ * @description REST API with API key authentication
  */
 
 /**
- * Main doGet handler for API requests
+ * Main doGet handler with API key authentication
  */
 function doGet(e) {
     try {
@@ -12,6 +12,17 @@ function doGet(e) {
 
         if (!action) {
             return jsonResponse({ error: 'Missing action parameter' }, 400);
+        }
+
+        // Public endpoints (no API key required)
+        const publicActions = ['confirmfamilyinfo', 'ping'];
+
+        if (!publicActions.includes(action.toLowerCase())) {
+            // Verify API key for protected endpoints
+            const authResult = authenticateRequest(e);
+            if (!authResult.success) {
+                return jsonResponse({ error: authResult.error }, 401);
+            }
         }
 
         switch (action.toLowerCase()) {
@@ -71,6 +82,35 @@ function doGet(e) {
 }
 
 /**
+ * Authenticate API request using API key
+ */
+function authenticateRequest(e) {
+    const config = getScriptConfig();
+    const expectedApiKey = config.familleApiKey;
+
+    if (!expectedApiKey) {
+        logError('FAMILLE_API_KEY not configured');
+        return { success: false, error: 'API authentication not configured' };
+    }
+
+    const providedApiKey = e.parameter.apiKey || e.parameter.api_key;
+
+    if (!providedApiKey) {
+        return {
+            success: false,
+            error: 'Missing API key. Include ?apiKey=YOUR_KEY in request.'
+        };
+    }
+
+    if (providedApiKey !== expectedApiKey) {
+        logWarning(`Invalid API key attempt`);
+        return { success: false, error: 'Invalid API key' };
+    }
+
+    return { success: true };
+}
+
+/**
  * Handle email confirmation from families
  */
 function handleConfirmFamilyInfo(e) {
@@ -78,17 +118,22 @@ function handleConfirmFamilyInfo(e) {
     const token = e.parameter.token;
 
     if (!id || !token) {
-        return HtmlService.createHtmlOutput(`
-            <html>
-                <body style="font-family: Arial; text-align: center; padding: 50px;">
-                    <h1 style="color: #f44336;">❌ Erreur</h1>
-                    <p>Paramètres manquants</p>
-                </body>
-            </html>
-        `);
+        return HtmlService.createHtmlOutput(generateErrorPage(
+            'Paramètres manquants',
+            'Le lien de confirmation est invalide.'
+        ));
     }
 
-    const result = confirmFamilyInfo(id, token);
+    // Simple token validation: token should match FAMILLE_API_KEY
+    const config = getScriptConfig();
+    if (token !== config.familleApiKey) {
+        return HtmlService.createHtmlOutput(generateErrorPage(
+            'Token invalide',
+            'Le lien de confirmation a expiré ou est invalide.'
+        ));
+    }
+
+    const result = confirmFamilyInfo(id);
 
     if (result.success) {
         const familyName = result.familyData ?
@@ -99,15 +144,55 @@ function handleConfirmFamilyInfo(e) {
             generateConfirmationPage(language, familyName)
         );
     } else {
-        return HtmlService.createHtmlOutput(`
-            <html>
-                <body style="font-family: Arial; text-align: center; padding: 50px;">
-                    <h1 style="color: #f44336;">❌ Erreur</h1>
-                    <p>${result.error}</p>
-                </body>
-            </html>
-        `);
+        return HtmlService.createHtmlOutput(generateErrorPage(
+            'Erreur',
+            result.error || 'Une erreur est survenue.'
+        ));
     }
+}
+
+/**
+ * Generate error page
+ */
+function generateErrorPage(title, message) {
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            background: #f44336;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            padding: 50px 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            text-align: center;
+            max-width: 500px;
+        }
+        .icon { font-size: 70px; margin-bottom: 25px; }
+        h1 { color: #333; font-size: 28px; margin-bottom: 15px; }
+        p { color: #666; font-size: 16px; line-height: 1.6; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">❌</div>
+        <h1>${title}</h1>
+        <p>${message}</p>
+    </div>
+</body>
+</html>`;
 }
 
 /**
@@ -120,7 +205,6 @@ function handleSendVerificationEmails(e) {
 
 /**
  * Get all validated families with optional sorting
- * Optional: includeHierarchy=true to add ville/secteur info
  */
 function getAllFamilies(e) {
     const orderBy = e.parameter.orderBy;
@@ -166,7 +250,6 @@ function getAllFamilies(e) {
     });
 
     cache.put(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
-
     return result;
 }
 
@@ -234,19 +317,14 @@ function sortFamiliesByDistance(families, refLat, refLng) {
 
                 if (coords) {
                     const coordinates = JSON.parse(coords);
-
                     const distanceResult = calculateDistance(
-                        refLat,
-                        refLng,
+                        refLat, refLng,
                         coordinates.latitude,
                         coordinates.longitude
                     );
 
-                    if (distanceResult && !distanceResult.error) {
-                        family.distance = distanceResult.distance;
-                    } else {
-                        family.distance = 999999;
-                    }
+                    family.distance = distanceResult && !distanceResult.error ?
+                        distanceResult.distance : 999999;
                 } else {
                     family.distance = 999999;
                 }
@@ -260,7 +338,6 @@ function sortFamiliesByDistance(families, refLat, refLng) {
     });
 
     families.sort((a, b) => a.distance - b.distance);
-
     return families;
 }
 
@@ -291,7 +368,6 @@ function getFamilyById(e) {
 
     const result = jsonResponse(family);
     cache.put(cacheKey, result.getContent(), CONFIG.CACHE.MEDIUM);
-
     return result;
 }
 
@@ -421,7 +497,7 @@ function getFamiliesByQuartier(e) {
 }
 
 /**
- * Get families by secteur (requires resolving hierarchy)
+ * Get families by secteur
  */
 function getFamiliesBySecteur(e) {
     const secteurId = e.parameter.secteurId;
@@ -469,7 +545,7 @@ function getFamiliesBySecteur(e) {
 }
 
 /**
- * Get families by ville (requires resolving hierarchy)
+ * Get families by ville
  */
 function getFamiliesByVille(e) {
     const villeId = e.parameter.villeId;
@@ -517,7 +593,7 @@ function getFamiliesByVille(e) {
 }
 
 /**
- * Get families who can travel (se_deplace = true)
+ * Get families who can travel
  */
 function getFamiliesSeDeplace(e) {
     const includeHierarchy = e.parameter.includeHierarchy === 'true';
@@ -545,7 +621,7 @@ function getFamiliesSeDeplace(e) {
 }
 
 /**
- * Helper: Find family by ID
+ * Find family by ID
  */
 function findFamilyById(id, includeHierarchy = false) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -565,7 +641,7 @@ function findFamilyById(id, includeHierarchy = false) {
 }
 
 /**
- * Helper: Get validated families with optional filter
+ * Get validated families with optional filter
  */
 function getValidatedFamilies(filterFn = null, includeHierarchy = false) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -592,7 +668,7 @@ function getValidatedFamilies(filterFn = null, includeHierarchy = false) {
 }
 
 /**
- * Helper: Convert row to family object with optional hierarchy resolution
+ * Convert row to family object
  */
 function rowToFamilyObject(row, includeHierarchy = false) {
     const family = {
@@ -631,11 +707,9 @@ function rowToFamilyObject(row, includeHierarchy = false) {
 }
 
 /**
- * Helper: Create JSON response
+ * Create JSON response
  */
 function jsonResponse(data, statusCode = 200) {
-    const output = ContentService.createTextOutput(JSON.stringify(data))
+    return ContentService.createTextOutput(JSON.stringify(data))
         .setMimeType(ContentService.MimeType.JSON);
-
-    return output;
 }

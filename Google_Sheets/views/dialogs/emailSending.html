@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <base target="_top">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', 'Helvetica', sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            color: #1a73e8;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .status-box {
+            text-align: center;
+            padding: 30px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #1a73e8;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .status-message {
+            font-size: 16px;
+            color: #555;
+            margin-bottom: 15px;
+        }
+
+        .progress-details {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+
+        .progress-details h3 {
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .progress-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .progress-row:last-child {
+            border-bottom: none;
+        }
+
+        .progress-label {
+            font-weight: 600;
+            color: #666;
+        }
+
+        .progress-value {
+            color: #333;
+        }
+
+        .success-icon {
+            font-size: 60px;
+            margin-bottom: 15px;
+        }
+
+        .close-button {
+            display: none;
+            margin: 20px auto 0;
+            padding: 12px 30px;
+            background: #1a73e8;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .close-button:hover {
+            background: #1557b0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h2>📧 Envoi d'emails de vérification</h2>
+
+        <div class="status-box" id="statusBox">
+            <div class="spinner" id="spinner"></div>
+            <div class="status-message" id="statusMessage">Envoi en cours...</div>
+        </div>
+
+        <div class="progress-details" id="progressDetails" style="display: none;">
+            <h3>📊 Résultats</h3>
+            <div id="progressContent"></div>
+        </div>
+
+        <button class="close-button" id="closeButton" onclick="google.script.host.close()">
+            Fermer
+        </button>
+    </div>
+
+    <script>
+        // Auto-start sending when dialog opens
+        window.onload = function () {
+            sendEmails();
+        };
+
+        function sendEmails() {
+            google.script.run
+                .withSuccessHandler(onSuccess)
+                .withFailureHandler(onError)
+                .sendVerificationEmailsToAll();
+        }
+
+        function onSuccess(result) {
+            // Hide spinner
+            document.getElementById('spinner').style.display = 'none';
+
+            if (!result.success) {
+                document.getElementById('statusMessage').innerHTML = `
+                    <div style="color: #d93025; font-weight: bold;">❌ Erreur</div>
+                    <p style="margin-top: 10px;">${result.error}</p>
+                `;
+                document.getElementById('closeButton').style.display = 'block';
+                return;
+            }
+
+            // Show success icon
+            document.getElementById('statusBox').innerHTML = `
+                <div class="success-icon">✅</div>
+                <div class="status-message" style="color: #34a853; font-weight: bold;">
+                    Envoi terminé avec succès !
+                </div>
+            `;
+
+            // Show results
+            const results = result.results;
+            document.getElementById('progressContent').innerHTML = `
+                <div class="progress-row">
+                    <div class="progress-label">Total traité:</div>
+                    <div class="progress-value">${results.total}</div>
+                </div>
+                <div class="progress-row">
+                    <div class="progress-label" style="color: #34a853;">✅ Envoyés:</div>
+                    <div class="progress-value">${results.sent}</div>
+                </div>
+                <div class="progress-row">
+                    <div class="progress-label" style="color: #ff9800;">⏭️ Ignorés:</div>
+                    <div class="progress-value">${results.skipped}</div>
+                </div>
+                <div class="progress-row">
+                    <div class="progress-label" style="color: #d93025;">❌ Échecs:</div>
+                    <div class="progress-value">${results.failed}</div>
+                </div>
+            `;
+
+            document.getElementById('progressDetails').style.display = 'block';
+            document.getElementById('closeButton').style.display = 'block';
+        }
+
+        function onError(error) {
+            document.getElementById('spinner').style.display = 'none';
+            document.getElementById('statusMessage').innerHTML = `
+                <div style="color: #d93025; font-weight: bold;">❌ Erreur</div>
+                <p style="margin-top: 10px;">${error.message}</p>
+            `;
+            document.getElementById('closeButton').style.display = 'block';
+        }
+    </script>
+</body>
+
+</html>

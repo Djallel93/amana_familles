@@ -1,10 +1,10 @@
 /**
- * @file src/services/emailVerificationService.js (UPDATED)
- * @description Email verification service with separated HTML template files
+ * @file src/services/emailVerificationService.js (UPDATED - Simple API Key)
+ * @description Email verification with phone/address, uses API key directly
  */
 
 /**
- * Get email translations (UPDATED with full language names as keys)
+ * Get email translations
  */
 function getEmailTranslations() {
     return {
@@ -13,6 +13,7 @@ function getEmailTranslations() {
             intro: 'Nous espérons que vous allez bien. Dans le cadre de notre suivi, nous souhaitons vérifier que vos informations sont toujours à jour.',
             currentInfo: 'Vos informations actuelles :',
             name: 'Nom complet',
+            phone: 'Téléphone',
             address: 'Adresse',
             adults: 'Nombre d\'adultes',
             children: 'Nombre d\'enfants',
@@ -28,6 +29,7 @@ function getEmailTranslations() {
             intro: 'نأمل أن تكون بخير. كجزء من متابعتنا، نود التحقق من أن معلوماتك لا تزال محدثة.',
             currentInfo: 'معلوماتك الحالية:',
             name: 'الاسم الكامل',
+            phone: 'الهاتف',
             address: 'العنوان',
             adults: 'عدد البالغين',
             children: 'عدد الأطفال',
@@ -43,6 +45,7 @@ function getEmailTranslations() {
             intro: 'We hope you are doing well. As part of our follow-up, we would like to verify that your information is still up to date.',
             currentInfo: 'Your current information:',
             name: 'Full name',
+            phone: 'Phone',
             address: 'Address',
             adults: 'Number of adults',
             children: 'Number of children',
@@ -64,10 +67,8 @@ function generateVerificationEmailHtml(familyData, language, confirmUrl, updateU
     const isRTL = language === 'Arabe';
     const langCode = getLanguageCode(language);
 
-    // Create template from HTML file
     const template = HtmlService.createTemplateFromFile('views/email/verificationEmail');
 
-    // Set template variables
     template.langCode = langCode;
     template.isRTL = isRTL;
     template.subject = CONFIG.EMAIL_VERIFICATION.SUBJECT[language];
@@ -76,6 +77,7 @@ function generateVerificationEmailHtml(familyData, language, confirmUrl, updateU
     template.currentInfo = t.currentInfo;
     template.labels = {
         name: t.name,
+        phone: t.phone,
         address: t.address,
         adults: t.adults,
         children: t.children
@@ -90,12 +92,11 @@ function generateVerificationEmailHtml(familyData, language, confirmUrl, updateU
     template.thanks = t.thanks;
     template.team = t.team;
 
-    // Evaluate and return HTML
     return template.evaluate().getContent();
 }
 
 /**
- * Send verification email to a single family (UPDATED)
+ * Send verification email to a single family
  */
 function sendVerificationEmail(familyData) {
     try {
@@ -113,9 +114,14 @@ function sendVerificationEmail(familyData) {
 
         const language = familyData.langue || CONFIG.LANGUAGES.FR;
 
-        // Build confirmation URL (API endpoint) - UPDATED: Use API_KEY
-        const apiKey = getProperty('API_KEY');
-        const confirmUrl = `${config.webAppUrl}?action=confirmFamilyInfo&id=${familyData.id}&token=${generateSecureToken(familyData.id, apiKey)}`;
+        // Use API key directly as token
+        const apiKey = config.familleApiKey;
+        if (!apiKey) {
+            logError('FAMILLE_API_KEY not configured');
+            return { success: false, reason: 'error', error: 'API key not configured' };
+        }
+
+        const confirmUrl = `${config.webAppUrl}?action=confirmFamilyInfo&id=${familyData.id}&token=${apiKey}`;
 
         // Build update URL (Google Form)
         const langCode = getLanguageCode(language);
@@ -148,7 +154,7 @@ function sendVerificationEmail(familyData) {
 }
 
 /**
- * Send verification emails to all validated families with emails
+ * Send verification emails to all validated families
  */
 function sendVerificationEmailsToAll() {
     try {
@@ -188,6 +194,7 @@ function sendVerificationEmailsToAll() {
                 nom: row[OUTPUT_COLUMNS.NOM],
                 prenom: row[OUTPUT_COLUMNS.PRENOM],
                 email: row[OUTPUT_COLUMNS.EMAIL],
+                telephone: row[OUTPUT_COLUMNS.TELEPHONE],
                 adresse: row[OUTPUT_COLUMNS.ADRESSE],
                 nombreAdulte: row[OUTPUT_COLUMNS.NOMBRE_ADULTE],
                 nombreEnfant: row[OUTPUT_COLUMNS.NOMBRE_ENFANT],
@@ -200,7 +207,6 @@ function sendVerificationEmailsToAll() {
             if (result.success) {
                 results.sent++;
 
-                // Update comment in sheet
                 const existingComment = row[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
                 const newComment = addComment(
                     existingComment,
@@ -218,7 +224,6 @@ function sendVerificationEmailsToAll() {
                 }
             }
 
-            // Respect Gmail quota
             Utilities.sleep(100);
         }
 
@@ -241,26 +246,10 @@ function sendVerificationEmailsToAll() {
 }
 
 /**
- * Generate secure token for email confirmation (UPDATED: use API_KEY)
+ * Handle confirmation from email
  */
-function generateSecureToken(familyId, apiKey) {
-    const timestamp = new Date().getTime();
-    const secret = apiKey || 'default_secret';
-    const data = `${familyId}:${timestamp}:${secret}`;
-
-    return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, data));
-}
-
-/**
- * Handle confirmation from email (called by API endpoint)
- */
-function confirmFamilyInfo(familyId, token) {
+function confirmFamilyInfo(familyId) {
     try {
-        // Validate token (basic validation)
-        if (!token || token.length < 10) {
-            return { success: false, error: 'Invalid token' };
-        }
-
         const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
         if (!sheet) {
             return { success: false, error: 'Sheet not found' };
@@ -286,7 +275,6 @@ function confirmFamilyInfo(familyId, token) {
             return { success: false, error: 'Family not found' };
         }
 
-        // Update comment
         const existingComment = data[targetRow - 1][OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
         const newComment = addComment(
             existingComment,
@@ -311,7 +299,7 @@ function confirmFamilyInfo(familyId, token) {
 }
 
 /**
- * Generate confirmation page using template file
+ * Generate confirmation page (mobile-friendly static HTML)
  */
 function generateConfirmationPage(language, familyName) {
     const messages = {
@@ -335,18 +323,50 @@ function generateConfirmationPage(language, familyName) {
     const t = messages[language] || messages['Français'];
     const isRTL = language === 'Arabe';
     const langCode = getLanguageCode(language);
+    const dir = isRTL ? 'rtl' : 'ltr';
 
-    // Create template from HTML file
-    const template = HtmlService.createTemplateFromFile('views/email/confirmationPage');
+    const html = `<!DOCTYPE html>
+<html lang="${langCode}" dir="${dir}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${t.title}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #4a90e2;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            padding: 50px 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            max-width: 500px;
+        }
+        .icon { font-size: 70px; margin-bottom: 25px; }
+        h1 { color: #333; font-size: 28px; margin-bottom: 15px; font-weight: 700; }
+        p { color: #666; font-size: 16px; line-height: 1.6; margin-bottom: 12px; }
+        .family-name { color: #4a90e2; font-weight: 600; }
+        .closing { margin-top: 25px; font-size: 14px; color: #888; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">✅</div>
+        <h1>${t.title}</h1>
+        <p>${t.message}</p>
+        ${familyName ? `<p class="family-name">${familyName}</p>` : ''}
+        <p class="closing">${t.closing}</p>
+    </div>
+</body>
+</html>`;
 
-    // Set template variables
-    template.langCode = langCode;
-    template.isRTL = isRTL;
-    template.title = t.title;
-    template.message = t.message;
-    template.closing = t.closing;
-    template.familyName = familyName || '';
-
-    // Evaluate and return HTML
-    return template.evaluate().getContent();
+    return html;
 }

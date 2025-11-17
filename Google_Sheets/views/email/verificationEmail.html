@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="<?= langCode ?>" dir="<?= isRTL ? 'rtl' : 'ltr' ?>">
-Google_Sheets
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -39,6 +39,15 @@ Google_Sheets
                     <div class="info-value">
                         <?= familyData.prenom ?>
                         <?= familyData.nom ?>
+                    </div>
+                </div>
+
+                <div class="info-row">
+                    <div class="info-label">
+                        <?= labels.phone ?>:
+                    </div>
+                    <div class="info-value">
+                        <?= familyData.telephone ?>
                     </div>
                 </div>
 
