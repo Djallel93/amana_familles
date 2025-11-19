@@ -1,6 +1,6 @@
 /**
- * @file src/services/emailVerificationService.js (UPDATED - Simple API Key)
- * @description Email verification with phone/address, uses API key directly
+ * @file src/services/emailVerificationService.js (UPDATED)
+ * @description Email verification with phone/address, uses static HTML for mobile compatibility
  */
 
 /**
@@ -15,6 +15,8 @@ function getEmailTranslations() {
             name: 'Nom complet',
             phone: 'Téléphone',
             address: 'Adresse',
+            postalCode: 'Code postal',
+            city: 'Ville',
             adults: 'Nombre d\'adultes',
             children: 'Nombre d\'enfants',
             question: 'Vos informations sont-elles toujours correctes ?',
@@ -31,6 +33,8 @@ function getEmailTranslations() {
             name: 'الاسم الكامل',
             phone: 'الهاتف',
             address: 'العنوان',
+            postalCode: 'الرمز البريدي',
+            city: 'المدينة',
             adults: 'عدد البالغين',
             children: 'عدد الأطفال',
             question: 'هل معلوماتك لا تزال صحيحة؟',
@@ -47,6 +51,8 @@ function getEmailTranslations() {
             name: 'Full name',
             phone: 'Phone',
             address: 'Address',
+            postalCode: 'Postal code',
+            city: 'City',
             adults: 'Number of adults',
             children: 'Number of children',
             question: 'Is your information still correct?',
@@ -60,39 +66,53 @@ function getEmailTranslations() {
 }
 
 /**
- * Generate HTML email using template file
+ * Generate HTML email using static template with string replacement
  */
 function generateVerificationEmailHtml(familyData, language, confirmUrl, updateUrl) {
     const t = getEmailTranslations()[language] || getEmailTranslations()['Français'];
     const isRTL = language === 'Arabe';
-    const langCode = getLanguageCode(language);
 
-    const template = HtmlService.createTemplateFromFile('views/email/verificationEmail');
+    // Parse address into components
+    const addressParts = familyData.adresse ? familyData.adresse.split(',').map(p => p.trim()) : ['', '', ''];
+    const street = addressParts[0] || '';
+    const postalCode = addressParts[1] ? addressParts[1].match(/\d{5}/)?.[0] || '' : '';
+    const city = addressParts[2] || addressParts[1]?.replace(/\d{5}/, '').trim() || '';
 
-    template.langCode = langCode;
-    template.isRTL = isRTL;
-    template.subject = CONFIG.EMAIL_VERIFICATION.SUBJECT[language];
-    template.greeting = t.greeting;
-    template.intro = t.intro;
-    template.currentInfo = t.currentInfo;
-    template.labels = {
-        name: t.name,
-        phone: t.phone,
-        address: t.address,
-        adults: t.adults,
-        children: t.children
-    };
-    template.familyData = familyData;
-    template.question = t.question;
-    template.buttonUpToDate = t.buttonUpToDate;
-    template.buttonChanged = t.buttonChanged;
-    template.confirmUrl = confirmUrl;
-    template.updateUrl = updateUrl;
-    template.footer = t.footer;
-    template.thanks = t.thanks;
-    template.team = t.team;
+    // Load template
+    const template = HtmlService.createHtmlOutputFromFile('views/email/verificationEmailTemplate').getContent();
 
-    return template.evaluate().getContent();
+    // Replace all placeholders
+    let html = template
+        .replace(/{{DIR_CLASS}}/g, isRTL ? 'rtl' : '')
+        .replace(/{{SUBJECT}}/g, CONFIG.EMAIL_VERIFICATION.SUBJECT[language])
+        .replace(/{{GREETING}}/g, t.greeting)
+        .replace(/{{FIRST_NAME}}/g, familyData.prenom || '')
+        .replace(/{{LAST_NAME}}/g, familyData.nom || '')
+        .replace(/{{INTRO}}/g, t.intro)
+        .replace(/{{CURRENT_INFO}}/g, t.currentInfo)
+        .replace(/{{LABEL_NAME}}/g, t.name)
+        .replace(/{{LABEL_PHONE}}/g, t.phone)
+        .replace(/{{LABEL_ADDRESS}}/g, t.address)
+        .replace(/{{LABEL_POSTAL_CODE}}/g, t.postalCode)
+        .replace(/{{LABEL_CITY}}/g, t.city)
+        .replace(/{{LABEL_ADULTS}}/g, t.adults)
+        .replace(/{{LABEL_CHILDREN}}/g, t.children)
+        .replace(/{{PHONE}}/g, familyData.telephone || '')
+        .replace(/{{ADDRESS}}/g, street)
+        .replace(/{{POSTAL_CODE}}/g, postalCode)
+        .replace(/{{CITY}}/g, city)
+        .replace(/{{NUM_ADULTS}}/g, familyData.nombreAdulte || 0)
+        .replace(/{{NUM_CHILDREN}}/g, familyData.nombreEnfant || 0)
+        .replace(/{{QUESTION}}/g, t.question)
+        .replace(/{{BUTTON_UP_TO_DATE}}/g, t.buttonUpToDate)
+        .replace(/{{BUTTON_CHANGED}}/g, t.buttonChanged)
+        .replace(/{{CONFIRM_URL}}/g, confirmUrl)
+        .replace(/{{UPDATE_URL}}/g, updateUrl)
+        .replace(/{{FOOTER}}/g, t.footer)
+        .replace(/{{THANKS}}/g, t.thanks)
+        .replace(/{{TEAM}}/g, t.team);
+
+    return html;
 }
 
 /**
@@ -296,77 +316,4 @@ function confirmFamilyInfo(familyId) {
         logError('Failed to confirm family info', error);
         return { success: false, error: error.toString() };
     }
-}
-
-/**
- * Generate confirmation page (mobile-friendly static HTML)
- */
-function generateConfirmationPage(language, familyName) {
-    const messages = {
-        'Français': {
-            title: 'Merci pour votre confirmation !',
-            message: 'Vos informations ont été confirmées avec succès.',
-            closing: 'Vous pouvez fermer cette fenêtre.'
-        },
-        'Arabe': {
-            title: 'شكرا لتأكيدك!',
-            message: 'تم تأكيد معلوماتك بنجاح.',
-            closing: 'يمكنك إغلاق هذه النافذة.'
-        },
-        'Anglais': {
-            title: 'Thank you for your confirmation!',
-            message: 'Your information has been confirmed successfully.',
-            closing: 'You can close this window.'
-        }
-    };
-
-    const t = messages[language] || messages['Français'];
-    const isRTL = language === 'Arabe';
-    const langCode = getLanguageCode(language);
-    const dir = isRTL ? 'rtl' : 'ltr';
-
-    const html = `<!DOCTYPE html>
-<html lang="${langCode}" dir="${dir}">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${t.title}</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #4a90e2;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            padding: 50px 30px;
-            border-radius: 8px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            text-align: center;
-            max-width: 500px;
-        }
-        .icon { font-size: 70px; margin-bottom: 25px; }
-        h1 { color: #333; font-size: 28px; margin-bottom: 15px; font-weight: 700; }
-        p { color: #666; font-size: 16px; line-height: 1.6; margin-bottom: 12px; }
-        .family-name { color: #4a90e2; font-weight: 600; }
-        .closing { margin-top: 25px; font-size: 14px; color: #888; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="icon">✅</div>
-        <h1>${t.title}</h1>
-        <p>${t.message}</p>
-        ${familyName ? `<p class="family-name">${familyName}</p>` : ''}
-        <p class="closing">${t.closing}</p>
-    </div>
-</body>
-</html>`;
-
-    return html;
 }

@@ -1,6 +1,6 @@
 /**
- * @file src/api/familyApiHandler.js (UPDATED - Simple API Key Auth)
- * @description REST API with API key authentication
+ * @file src/api/familyApiHandler.js (UPDATED)
+ * @description REST API with static HTML confirmation pages for mobile compatibility
  */
 
 /**
@@ -111,88 +111,33 @@ function authenticateRequest(e) {
 }
 
 /**
- * Handle email confirmation from families
+ * Handle email confirmation from families (UPDATED - Static HTML)
  */
 function handleConfirmFamilyInfo(e) {
     const id = e.parameter.id;
     const token = e.parameter.token;
 
     if (!id || !token) {
-        return HtmlService.createHtmlOutput(generateErrorPage(
-            'Paramètres manquants',
-            'Le lien de confirmation est invalide.'
-        ));
+        // Return static error page
+        return HtmlService.createHtmlOutputFromFile('views/email/confirmationError');
     }
 
     // Simple token validation: token should match FAMILLE_API_KEY
     const config = getScriptConfig();
     if (token !== config.familleApiKey) {
-        return HtmlService.createHtmlOutput(generateErrorPage(
-            'Token invalide',
-            'Le lien de confirmation a expiré ou est invalide.'
-        ));
+        // Return static error page
+        return HtmlService.createHtmlOutputFromFile('views/email/confirmationError');
     }
 
     const result = confirmFamilyInfo(id);
 
     if (result.success) {
-        const familyName = result.familyData ?
-            `${result.familyData.prenom} ${result.familyData.nom}` : '';
-        const language = result.familyData ? result.familyData.langue : CONFIG.LANGUAGES.FR;
-
-        return HtmlService.createHtmlOutput(
-            generateConfirmationPage(language, familyName)
-        );
+        // Return static success page (works on mobile!)
+        return HtmlService.createHtmlOutputFromFile('views/email/confirmationSuccess');
     } else {
-        return HtmlService.createHtmlOutput(generateErrorPage(
-            'Erreur',
-            result.error || 'Une erreur est survenue.'
-        ));
+        // Return static error page
+        return HtmlService.createHtmlOutputFromFile('views/email/confirmationError');
     }
-}
-
-/**
- * Generate error page
- */
-function generateErrorPage(title, message) {
-    return `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${title}</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: Arial, sans-serif;
-            background: #f44336;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            padding: 50px 30px;
-            border-radius: 8px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            text-align: center;
-            max-width: 500px;
-        }
-        .icon { font-size: 70px; margin-bottom: 25px; }
-        h1 { color: #333; font-size: 28px; margin-bottom: 15px; }
-        p { color: #666; font-size: 16px; line-height: 1.6; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="icon">❌</div>
-        <h1>${title}</h1>
-        <p>${message}</p>
-    </div>
-</body>
-</html>`;
 }
 
 /**
