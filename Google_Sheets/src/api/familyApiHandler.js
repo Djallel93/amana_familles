@@ -1,6 +1,6 @@
 /**
  * @file src/api/familyApiHandler.js (UPDATED)
- * @description REST API with static HTML confirmation pages for mobile compatibility
+ * @description REST API with dynamic HTML confirmation pages that show family name
  */
 
 /**
@@ -111,33 +111,64 @@ function authenticateRequest(e) {
 }
 
 /**
- * Handle email confirmation from families (UPDATED - Static HTML)
+ * Handle email confirmation from families (UPDATED - Dynamic HTML with name)
  */
 function handleConfirmFamilyInfo(e) {
     const id = e.parameter.id;
     const token = e.parameter.token;
 
     if (!id || !token) {
-        // Return static error page
-        return HtmlService.createHtmlOutputFromFile('views/email/confirmationError');
+        return createConfirmationErrorPage('missing_params');
     }
 
     // Simple token validation: token should match FAMILLE_API_KEY
     const config = getScriptConfig();
     if (token !== config.familleApiKey) {
-        // Return static error page
-        return HtmlService.createHtmlOutputFromFile('views/email/confirmationError');
+        return createConfirmationErrorPage('invalid_token');
     }
 
     const result = confirmFamilyInfo(id);
 
     if (result.success) {
-        // Return static success page (works on mobile!)
-        return HtmlService.createHtmlOutputFromFile('views/email/confirmationSuccess');
+        // Return dynamic success page with family name
+        return createConfirmationSuccessPage(result.familyData);
     } else {
-        // Return static error page
-        return HtmlService.createHtmlOutputFromFile('views/email/confirmationError');
+        // Check if already confirmed
+        if (result.error === 'already_confirmed') {
+            return createConfirmationErrorPage('already_confirmed');
+        }
+        return createConfirmationErrorPage('unknown_error');
     }
+}
+
+/**
+ * Create dynamic confirmation success page (NEW)
+ */
+function createConfirmationSuccessPage(familyData) {
+    const template = HtmlService.createTemplateFromFile('views/email/confirmationSuccess');
+
+    // Pass data to template
+    template.firstName = familyData.prenom || '';
+    template.lastName = familyData.nom || '';
+    template.langue = familyData.langue || 'Français';
+
+    return template.evaluate()
+        .setTitle('Confirmation réussie')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/**
+ * Create dynamic confirmation error page (NEW)
+ */
+function createConfirmationErrorPage(errorType) {
+    const template = HtmlService.createTemplateFromFile('views/email/confirmationError');
+
+    // Pass error type to template
+    template.errorType = errorType;
+
+    return template.evaluate()
+        .setTitle('Erreur de confirmation')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 /**

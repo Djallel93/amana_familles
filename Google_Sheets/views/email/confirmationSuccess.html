@@ -1,16 +1,17 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Confirmation réussie</title>
     <style>
-        * { 
-            margin: 0; 
-            padding: 0; 
-            box-sizing: border-box; 
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        
+
         body {
             font-family: 'Arial', 'Helvetica', sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -20,7 +21,7 @@
             justify-content: center;
             padding: 20px;
         }
-        
+
         .container {
             background: white;
             padding: 50px 30px;
@@ -31,49 +32,67 @@
             width: 100%;
             animation: slideIn 0.5s ease-out;
         }
-        
+
         @keyframes slideIn {
             from {
                 opacity: 0;
                 transform: translateY(-20px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
             }
         }
-        
-        .icon { 
-            font-size: 80px; 
+
+        .icon {
+            font-size: 80px;
             margin-bottom: 25px;
             animation: bounce 1s ease-in-out;
         }
-        
+
         @keyframes bounce {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-10px); }
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-10px);
+            }
         }
-        
-        h1 { 
-            color: #333; 
-            font-size: 28px; 
-            margin-bottom: 15px; 
-            font-weight: 700; 
+
+        h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 15px;
+            font-weight: 700;
         }
-        
-        p { 
-            color: #666; 
-            font-size: 16px; 
-            line-height: 1.6; 
-            margin-bottom: 12px; 
+
+        .name-display {
+            font-size: 24px;
+            color: #667eea;
+            font-weight: 600;
+            margin: 20px 0;
+            padding: 15px;
+            background: #f0f4ff;
+            border-radius: 8px;
         }
-        
-        .closing { 
-            margin-top: 25px; 
-            font-size: 14px; 
-            color: #888; 
+
+        p {
+            color: #666;
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 12px;
         }
-        
+
+        .closing {
+            margin-top: 25px;
+            font-size: 14px;
+            color: #888;
+        }
+
         .success-badge {
             display: inline-block;
             background: #d4edda;
@@ -88,24 +107,36 @@
             .container {
                 padding: 40px 20px;
             }
-            
+
             h1 {
                 font-size: 24px;
             }
-            
+
             .icon {
                 font-size: 60px;
+            }
+
+            .name-display {
+                font-size: 20px;
             }
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <div class="icon">✅</div>
         <h1>Merci pour votre confirmation !</h1>
+
+        <div class="name-display">
+            <?= firstName ?>
+            <?= lastName ?>
+        </div>
+
         <p>Vos informations ont été confirmées avec succès.</p>
         <div class="success-badge">✓ Confirmation enregistrée</div>
         <p class="closing">Vous pouvez fermer cette fenêtre.</p>
     </div>
 </body>
+
 </html>

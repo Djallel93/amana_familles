@@ -1,6 +1,6 @@
 /**
  * @file src/services/emailVerificationService.js (UPDATED)
- * @description Email verification with phone/address, uses static HTML for mobile compatibility
+ * @description Email verification with GEO API for proper address display and confirmation tracking
  */
 
 /**
@@ -66,17 +66,53 @@ function getEmailTranslations() {
 }
 
 /**
- * Generate HTML email using static template with string replacement
+ * Generate HTML email using template with proper address from GEO API
  */
 function generateVerificationEmailHtml(familyData, language, confirmUrl, updateUrl) {
     const t = getEmailTranslations()[language] || getEmailTranslations()['Français'];
     const isRTL = language === 'Arabe';
 
-    // Parse address into components
-    const addressParts = familyData.adresse ? familyData.adresse.split(',').map(p => p.trim()) : ['', '', ''];
-    const street = addressParts[0] || '';
-    const postalCode = addressParts[1] ? addressParts[1].match(/\d{5}/)?.[0] || '' : '';
-    const city = addressParts[2] || addressParts[1]?.replace(/\d{5}/, '').trim() || '';
+    // Get proper address information from GEO API using quartier
+    let street = '';
+    let postalCode = '';
+    let city = '';
+
+    if (familyData.idQuartier) {
+        try {
+            const hierarchy = getLocationHierarchyFromQuartier(familyData.idQuartier);
+
+            if (!hierarchy.error && hierarchy.ville) {
+                city = hierarchy.ville.nom || '';
+                postalCode = hierarchy.ville.codePostal || '';
+
+                // Extract street from full address
+                if (familyData.adresse) {
+                    const addressParts = familyData.adresse.split(',').map(p => p.trim());
+                    street = addressParts[0] || '';
+                }
+            } else {
+                // Fallback to parsing if GEO API fails
+                logWarning('GEO API failed, falling back to address parsing', hierarchy.error);
+                const addressParts = familyData.adresse ? familyData.adresse.split(',').map(p => p.trim()) : ['', '', ''];
+                street = addressParts[0] || '';
+                postalCode = addressParts[1] ? addressParts[1].match(/\d{5}/)?.[0] || '' : '';
+                city = addressParts[2] || addressParts[1]?.replace(/\d{5}/, '').trim() || '';
+            }
+        } catch (e) {
+            logError('Error getting address from GEO API', e);
+            // Fallback to simple parsing
+            const addressParts = familyData.adresse ? familyData.adresse.split(',').map(p => p.trim()) : ['', '', ''];
+            street = addressParts[0] || '';
+            postalCode = addressParts[1] ? addressParts[1].match(/\d{5}/)?.[0] || '' : '';
+            city = addressParts[2] || addressParts[1]?.replace(/\d{5}/, '').trim() || '';
+        }
+    } else {
+        // No quartier ID, fallback to simple parsing
+        const addressParts = familyData.adresse ? familyData.adresse.split(',').map(p => p.trim()) : ['', '', ''];
+        street = addressParts[0] || '';
+        postalCode = addressParts[1] ? addressParts[1].match(/\d{5}/)?.[0] || '' : '';
+        city = addressParts[2] || addressParts[1]?.replace(/\d{5}/, '').trim() || '';
+    }
 
     // Load template
     const template = HtmlService.createHtmlOutputFromFile('views/email/verificationEmailTemplate').getContent();
@@ -216,6 +252,7 @@ function sendVerificationEmailsToAll() {
                 email: row[OUTPUT_COLUMNS.EMAIL],
                 telephone: row[OUTPUT_COLUMNS.TELEPHONE],
                 adresse: row[OUTPUT_COLUMNS.ADRESSE],
+                idQuartier: row[OUTPUT_COLUMNS.ID_QUARTIER],
                 nombreAdulte: row[OUTPUT_COLUMNS.NOMBRE_ADULTE],
                 nombreEnfant: row[OUTPUT_COLUMNS.NOMBRE_ENFANT],
                 langue: row[OUTPUT_COLUMNS.LANGUE] || CONFIG.LANGUAGES.FR,
@@ -266,13 +303,49 @@ function sendVerificationEmailsToAll() {
 }
 
 /**
- * Handle confirmation from email
+ * Check if family has already confirmed (NEW)
+ */
+function hasAlreadyConfirmed(familyId) {
+    try {
+        const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
+        if (!sheet) {
+            return false;
+        }
+
+        const data = sheet.getDataRange().getValues();
+
+        for (let i = 1; i < data.length; i++) {
+            if (data[i][OUTPUT_COLUMNS.ID] == familyId) {
+                const comment = data[i][OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
+                // Check if there's a confirmation timestamp in comments
+                return comment.includes('✅ Informations confirmées à jour par email le');
+            }
+        }
+
+        return false;
+    } catch (error) {
+        logError('Error checking confirmation status', error);
+        return false;
+    }
+}
+
+/**
+ * Handle confirmation from email (UPDATED)
  */
 function confirmFamilyInfo(familyId) {
     try {
         const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
         if (!sheet) {
             return { success: false, error: 'Sheet not found' };
+        }
+
+        // Check if already confirmed
+        if (hasAlreadyConfirmed(familyId)) {
+            return {
+                success: false,
+                error: 'already_confirmed',
+                message: 'Ces informations ont déjà été confirmées'
+            };
         }
 
         const data = sheet.getDataRange().getValues();
@@ -295,21 +368,32 @@ function confirmFamilyInfo(familyId) {
             return { success: false, error: 'Family not found' };
         }
 
+        // Add confirmation with timestamp
+        const now = new Date();
+        const timestamp = now.toLocaleString('fr-FR', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
         const existingComment = data[targetRow - 1][OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
         const newComment = addComment(
             existingComment,
-            formatComment('✅', 'Informations confirmées à jour par email')
+            formatComment('✅', `Informations confirmées à jour par email le ${timestamp}`)
         );
 
         sheet.getRange(targetRow, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
 
-        logInfo(`✅ Family ${familyId} confirmed information via email`);
+        logInfo(`✅ Family ${familyId} confirmed information via email at ${timestamp}`);
 
         return {
             success: true,
             message: 'Information confirmed successfully',
             familyId: familyId,
-            familyData: familyData
+            familyData: familyData,
+            timestamp: timestamp
         };
 
     } catch (error) {
