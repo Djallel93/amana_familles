@@ -1,6 +1,6 @@
 /**
- * @file src/handlers/formHandler.js (UPDATED)
- * @description Unified form submission handler with AME support and validation requirements
+ * @file src/handlers/formHandler.js (FINAL - WITH ELIGIBILITY PARSING)
+ * @description Form handler with eligibility checkbox support
  */
 
 /**
@@ -61,11 +61,12 @@ function onFormSubmit(e) {
 }
 
 /**
- * Process Google Form submission (insert-only, no documents)
+ * Process Google Form submission (Admin form)
+ * UPDATED: Extract eligibility checkboxes
  */
 function processGoogleFormSubmission(sheet, row, language = CONFIG.LANGUAGES.FR) {
     try {
-        logInfo('📱 Processing Google Form submission');
+        logInfo('📱 Processing Google Form submission (Admin)');
 
         const values = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
         const formData = parseGoogleFormData(values);
@@ -87,7 +88,10 @@ function processGoogleFormSubmission(sheet, row, language = CONFIG.LANGUAGES.FR)
                 status: CONFIG.STATUS.REJECTED,
                 comment: errorMessage,
                 criticite: 0,
-                langue: language
+                langue: language,
+                seDeplace: formData.seDeplace || false,
+                zakatElFitr: formData.zakatElFitr || false, // NEW
+                sadaqa: formData.sadaqa || false // NEW
             });
 
             notifyAdmin(
@@ -113,7 +117,10 @@ function processGoogleFormSubmission(sheet, row, language = CONFIG.LANGUAGES.FR)
                 status: CONFIG.STATUS.REJECTED,
                 comment: errorMessage,
                 criticite: 0,
-                langue: language
+                langue: language,
+                seDeplace: formData.seDeplace || false,
+                zakatElFitr: formData.zakatElFitr || false,
+                sadaqa: formData.sadaqa || false
             });
 
             notifyAdmin(
@@ -147,7 +154,7 @@ function processGoogleFormSubmission(sheet, row, language = CONFIG.LANGUAGES.FR)
 
             notifyAdmin(
                 '🔄 Family Updated (Google Form)',
-                `ID: ${duplicate.id}\nName: ${formData.lastName} ${formData.firstName}\nPhone: ${normalizePhone(formData.phone)}\nLanguage: ${language}`
+                `ID: ${duplicate.id}\nName: ${formData.lastName} ${formData.firstName}\nPhone: ${normalizePhone(formData.phone)}\nLanguage: ${language}\nSe Déplace: ${formData.seDeplace ? 'Oui' : 'Non'}\nZakat El Fitr: ${formData.zakatElFitr ? 'Oui' : 'Non'}\nSadaqa: ${formData.sadaqa ? 'Oui' : 'Non'}`
             );
         } else {
             const familyId = generateFamilyId();
@@ -159,10 +166,13 @@ function processGoogleFormSubmission(sheet, row, language = CONFIG.LANGUAGES.FR)
                 quartierId: addressValidation.quartierId,
                 quartierName: addressValidation.quartierName,
                 identityIds: [],
-                aidesEtatIds: [], // UPDATED
+                aidesEtatIds: [],
                 resourceIds: [],
                 criticite: formData.criticite,
-                langue: language
+                langue: language,
+                seDeplace: formData.seDeplace || false,
+                zakatElFitr: formData.zakatElFitr || false, // NEW
+                sadaqa: formData.sadaqa || false // NEW
             });
 
             sheet.getRange(row, statusColumn).setValue(`✅ Créé: ${familyId}`);
@@ -172,7 +182,10 @@ function processGoogleFormSubmission(sheet, row, language = CONFIG.LANGUAGES.FR)
                 `Address: ${formData.address}, ${formData.postalCode} ${formData.city}\n` +
                 `Quartier: ${addressValidation.quartierName || 'Non assigné'}\n` +
                 `Criticité: ${formData.criticite}\n` +
-                `Language: ${language}` +
+                `Language: ${language}\n` +
+                `Se Déplace: ${formData.seDeplace ? 'Oui' : 'Non'}\n` +
+                `Zakat El Fitr: ${formData.zakatElFitr ? 'Oui' : 'Non'}\n` +
+                `Sadaqa: ${formData.sadaqa ? 'Oui' : 'Non'}` +
                 (addressValidation.quartierInvalid ? `\n\n⚠️ WARNING: Quartier ID invalid` : '');
 
             notifyAdmin('✅ New Submission (Google Form)', notificationMsg);
@@ -191,9 +204,13 @@ function processGoogleFormSubmission(sheet, row, language = CONFIG.LANGUAGES.FR)
 }
 
 /**
- * Parse Google Form submission data
+ * Parse Google Form submission data (Admin form)
+ * UPDATED: Extract eligibility checkboxes
  */
 function parseGoogleFormData(values) {
+    // Parse eligibility checkboxes (column 17)
+    const eligibility = parseEligibility(values[GOOGLE_FORM_COLUMNS.ELIGIBILITY]);
+
     return {
         timestamp: values[GOOGLE_FORM_COLUMNS.TIMESTAMP] || new Date(),
         dateSaisie: values[GOOGLE_FORM_COLUMNS.DATE_SAISIE] || '',
@@ -205,12 +222,15 @@ function parseGoogleFormData(values) {
         address: values[GOOGLE_FORM_COLUMNS.ADRESSE] || '',
         postalCode: String(values[GOOGLE_FORM_COLUMNS.CODE_POSTAL] || ''),
         city: values[GOOGLE_FORM_COLUMNS.VILLE] || '',
+        seDeplace: parseSeDeplace(values[GOOGLE_FORM_COLUMNS.SE_DEPLACE]),
         nombreAdulte: parseInt(values[GOOGLE_FORM_COLUMNS.NOMBRE_ADULTE]) || 0,
         nombreEnfant: parseInt(values[GOOGLE_FORM_COLUMNS.NOMBRE_ENFANT]) || 0,
         criticite: parseInt(values[GOOGLE_FORM_COLUMNS.CRITICITE]) || 0,
         circonstances: values[GOOGLE_FORM_COLUMNS.CIRCONSTANCES] || '',
         ressentit: values[GOOGLE_FORM_COLUMNS.RESSENTIT] || '',
-        specificites: values[GOOGLE_FORM_COLUMNS.SPECIFICITES] || ''
+        specificites: values[GOOGLE_FORM_COLUMNS.SPECIFICITES] || '',
+        zakatElFitr: eligibility.zakatElFitr, // NEW
+        sadaqa: eligibility.sadaqa // NEW
     };
 }
 
@@ -243,7 +263,8 @@ function detectFormType(formData, sheetName) {
 }
 
 /**
- * Process INSERT submission (new family) - UPDATED with AME
+ * Process INSERT submission (new family)
+ * (Already supports zakatElFitr and sadaqa from previous artifacts)
  */
 function processInsert(formData) {
     try {
@@ -255,7 +276,10 @@ function processInsert(formData) {
                 status: CONFIG.STATUS.REJECTED,
                 comment: `Champs requis manquants: ${fieldValidation.errors.join(', ')}`,
                 criticite: 0,
-                langue: formData.langue || CONFIG.LANGUAGES.FR
+                langue: formData.langue || CONFIG.LANGUAGES.FR,
+                seDeplace: formData.seDeplace || false,
+                zakatElFitr: formData.zakatElFitr || false,
+                sadaqa: formData.sadaqa || false
             });
             notifyAdmin('⚠️ Submission Rejected', `Reason: ${fieldValidation.errors.join(', ')}\nName: ${formData.lastName} ${formData.firstName}`);
             return;
@@ -273,7 +297,10 @@ function processInsert(formData) {
                 status: CONFIG.STATUS.REJECTED,
                 comment: `Adresse invalide: ${addressValidation.error}`,
                 criticite: 0,
-                langue: formData.langue || CONFIG.LANGUAGES.FR
+                langue: formData.langue || CONFIG.LANGUAGES.FR,
+                seDeplace: formData.seDeplace || false,
+                zakatElFitr: formData.zakatElFitr || false,
+                sadaqa: formData.sadaqa || false
             });
             notifyAdmin('⚠️ Submission Rejected', `Invalid address\nFamily: ${formData.lastName} ${formData.firstName}\nAddress: ${formData.address}`);
             return;
@@ -294,10 +321,9 @@ function processInsert(formData) {
         }
 
         logInfo('📄 Validating documents');
-        // UPDATED: Both CAF and AME documents go to aidesEtatDoc field
         const docValidation = validateDocuments(
             formData.identityDoc,
-            formData.aidesEtatDoc, // Handles both CAF and AME
+            formData.aidesEtatDoc,
             formData.resourceDoc
         );
 
@@ -307,7 +333,10 @@ function processInsert(formData) {
                 comment: `Documents invalides: ${docValidation.errors.join(', ')}`,
                 quartierId: addressValidation.quartierId,
                 criticite: 0,
-                langue: formData.langue || CONFIG.LANGUAGES.FR
+                langue: formData.langue || CONFIG.LANGUAGES.FR,
+                seDeplace: formData.seDeplace || false,
+                zakatElFitr: formData.zakatElFitr || false,
+                sadaqa: formData.sadaqa || false
             });
             notifyAdmin('⚠️ Submission Rejected', `Invalid documents\nFamily: ${formData.lastName} ${formData.firstName}\nErrors: ${docValidation.errors.join(', ')}`);
             return;
@@ -323,7 +352,7 @@ function processInsert(formData) {
 
         if (duplicate.exists) {
             updateExistingFamily(duplicate, formData, addressValidation, docValidation);
-            notifyAdmin('🔄 Family Updated', `ID: ${duplicate.id}\nName: ${formData.lastName} ${formData.firstName}\nPhone: ${normalizePhone(formData.phone)}`);
+            notifyAdmin('🔄 Family Updated', `ID: ${duplicate.id}\nName: ${formData.lastName} ${formData.firstName}\nPhone: ${normalizePhone(formData.phone)}\nSe Déplace: ${formData.seDeplace ? 'Oui' : 'Non'}`);
         } else {
             const familyId = generateFamilyId();
             writeToFamilySheet(formData, {
@@ -333,17 +362,21 @@ function processInsert(formData) {
                 quartierId: addressValidation.quartierId,
                 quartierName: addressValidation.quartierName,
                 identityIds: docValidation.identityIds,
-                aidesEtatIds: docValidation.aidesEtatIds, // UPDATED from cafIds
+                aidesEtatIds: docValidation.aidesEtatIds,
                 resourceIds: docValidation.resourceIds,
                 criticite: 0,
-                langue: formData.langue || CONFIG.LANGUAGES.FR
+                langue: formData.langue || CONFIG.LANGUAGES.FR,
+                seDeplace: formData.seDeplace || false,
+                zakatElFitr: formData.zakatElFitr || false,
+                sadaqa: formData.sadaqa || false
             });
 
             const notificationMsg = `ID: ${familyId}\nName: ${formData.lastName} ${formData.firstName}\n` +
                 `Phone: ${normalizePhone(formData.phone)}\n` +
                 `Address: ${formData.address}, ${formData.postalCode} ${formData.city}\n` +
                 `Quartier: ${addressValidation.quartierName || 'Non assigné'}\n` +
-                `Language: ${formData.langue || CONFIG.LANGUAGES.FR}` +
+                `Language: ${formData.langue || CONFIG.LANGUAGES.FR}\n` +
+                `Se Déplace: ${formData.seDeplace ? 'Oui' : 'Non'}` +
                 (addressValidation.quartierInvalid ? `\n\n⚠️ WARNING: Quartier ID invalid in GEO API` : '');
 
             notifyAdmin('✅ New Submission', notificationMsg);
@@ -428,6 +461,7 @@ function buildUpdateData(formData) {
         city: 'city',
         nombreAdulte: 'nombreAdulte',
         nombreEnfant: 'nombreEnfant',
+        seDeplace: 'seDeplace',
         circonstances: 'circonstances',
         ressentit: 'ressentit',
         specificites: 'specificites',
@@ -447,8 +481,10 @@ function buildUpdateData(formData) {
             if (!isNaN(parsed)) {
                 updateData[fieldMapping[key]] = parsed;
             }
+        } else if (key === 'seDeplace') {
+            updateData[fieldMapping[key]] = parseSeDeplace(value);
         } else {
-            updateData[fieldMapping[key]] = value;
+            updateData[fieldMapping[key]] = value.trim();
         }
     });
 
@@ -456,7 +492,7 @@ function buildUpdateData(formData) {
 }
 
 /**
- * Validate update data (UPDATED with full language names)
+ * Validate update data
  */
 function validateUpdateData(updateData) {
     if (updateData.email && !isValidEmail(updateData.email)) {
@@ -475,7 +511,6 @@ function validateUpdateData(updateData) {
         }
     }
 
-    // UPDATED: Check for full language names
     if (updateData.langue && !['Français', 'Arabe', 'Anglais'].includes(updateData.langue)) {
         return { isValid: false, error: 'Langue invalide (doit être: Français, Arabe, ou Anglais)' };
     }

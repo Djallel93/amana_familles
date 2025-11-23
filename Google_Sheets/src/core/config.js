@@ -1,6 +1,6 @@
 /**
- * @file src/core/config.js (UPDATED WITH FAMILLE_API_KEY)
- * @description Configuration with full language names and API key
+ * @file src/core/config.js (FINAL - WITH ELIGIBILITY CHECKBOXES)
+ * @description Complete configuration with eligibility tracking
  */
 
 const CONFIG = {
@@ -57,7 +57,7 @@ const CONFIG = {
         SKIPPED: 'Ignoré'
     },
 
-    // 📄 Types de documents (UPDATED)
+    // 📄 Types de documents
     DOC_TYPES: {
         IDENTITY: 'identity',
         AIDES_ETAT: 'aides_etat',
@@ -105,12 +105,13 @@ const BULK_COLUMNS = {
     TELEPHONE: 7,
     TELEPHONE_BIS: 8,
     EMAIL: 9,
-    CIRCONSTANCES: 10,
-    RESSENTIT: 11,
-    SPECIFICITES: 12,
-    CRITICITE: 13,
-    LANGUE: 14,
-    COMMENTAIRE: 15
+    SE_DEPLACE: 10,
+    CIRCONSTANCES: 11,
+    RESSENTIT: 12,
+    SPECIFICITES: 13,
+    CRITICITE: 14,
+    LANGUE: 15,
+    COMMENTAIRE: 16
 };
 
 // 🗂️ Indices de colonnes pour Bulk Update (0-based)
@@ -126,15 +127,16 @@ const BULK_UPDATE_COLUMNS = {
     TELEPHONE: 8,
     TELEPHONE_BIS: 9,
     EMAIL: 10,
-    CIRCONSTANCES: 11,
-    RESSENTIT: 12,
-    SPECIFICITES: 13,
-    CRITICITE: 14,
-    LANGUE: 15,
-    COMMENTAIRE: 16
+    SE_DEPLACE: 11,
+    CIRCONSTANCES: 12,
+    RESSENTIT: 13,
+    SPECIFICITES: 14,
+    CRITICITE: 15,
+    LANGUE: 16,
+    COMMENTAIRE: 17
 };
 
-// 🗂️ Indices de colonnes pour Google Form (0-based)
+// 🗂️ Indices de colonnes pour Google Form (0-based) - ADMIN FORM
 const GOOGLE_FORM_COLUMNS = {
     TIMESTAMP: 0,
     DATE_SAISIE: 1,
@@ -146,15 +148,17 @@ const GOOGLE_FORM_COLUMNS = {
     ADRESSE: 7,
     CODE_POSTAL: 8,
     VILLE: 9,
-    NOMBRE_ADULTE: 10,
-    NOMBRE_ENFANT: 11,
-    CRITICITE: 12,
-    CIRCONSTANCES: 13,
-    RESSENTIT: 14,
-    SPECIFICITES: 15
+    SE_DEPLACE: 10,
+    NOMBRE_ADULTE: 11,
+    NOMBRE_ENFANT: 12,
+    CRITICITE: 13,
+    CIRCONSTANCES: 14,
+    RESSENTIT: 15,
+    SPECIFICITES: 16,
+    ELIGIBILITY: 17 // NEW: "Cette famille est éligible pour ?"
 };
 
-// 🌐 Mappage multilingue des colonnes (UPDATED)
+// 🌐 Mappage multilingue des colonnes
 const COLUMN_MAP = {
     'Timestamp': 'timestamp',
     'Email address': 'email',
@@ -188,6 +192,10 @@ const COLUMN_MAP = {
     'Ville': 'city',
     'المدينة': 'city',
     'City': 'city',
+    'Pouvez-vous vous déplacer pour récupérer votre colis alimentaire si aucun bénévole n\'est disponible pour vous le livrer ?': 'seDeplace',
+    'هل تستطيعون الانتقال لاستلام الطرد الغذائي إذا لم يتوفر أي متطوّع لإيصاله إليكم؟': 'seDeplace',
+    'Are you able to travel to pick up your food package if no volunteer is available to deliver it to you?': 'seDeplace',
+    'La famille peut se déplacer pour venir récupérer le colis alimentaire': 'seDeplace',
     'Combien d\'adultes vivent actuellement dans votre foyer ?': 'nombreAdulte',
     'كم عدد البالغين الذين يعيشون حاليًا في منزلك؟': 'nombreAdulte',
     'How many adults currently live in your household?': 'nombreAdulte',
@@ -279,7 +287,7 @@ function getProperty(key) {
 }
 
 /**
- * ⚙️ Récupérer toutes les propriétés de script requises (UPDATED)
+ * ⚙️ Récupérer toutes les propriétés de script requises
  */
 function getScriptConfig() {
     return {
@@ -292,7 +300,7 @@ function getScriptConfig() {
         formUrlAr: getProperty('FORM_URL_AR'),
         formUrlEn: getProperty('FORM_URL_EN'),
         webAppUrl: getProperty('WEB_APP_URL'),
-        familleApiKey: getProperty('FAMILLE_API_KEY') // NEW: Added API key
+        familleApiKey: getProperty('FAMILLE_API_KEY')
     };
 }
 
@@ -344,4 +352,60 @@ function getLanguageCode(languageName) {
         'Anglais': 'en'
     };
     return mapping[languageName] || 'fr';
+}
+
+/**
+ * Parse boolean from form answer (Oui/Non, Yes/No, نعم/لا)
+ */
+function parseSeDeplace(value) {
+    if (typeof value === 'boolean') {
+        return value;
+    }
+
+    const strValue = String(value).trim().toLowerCase();
+
+    // French
+    if (strValue === 'oui') return true;
+    if (strValue === 'non') return false;
+
+    // English
+    if (strValue === 'yes') return true;
+    if (strValue === 'no') return false;
+
+    // Arabic
+    if (strValue === 'نعم') return true;
+    if (strValue === 'لا') return false;
+
+    // Default to false if unrecognized
+    return false;
+}
+
+/**
+ * NEW: Parse eligibility checkboxes from Admin form
+ * Input: "Sadaqa, Zakat El Fitr" or "Sadaqa" or "Zakat El Fitr" or empty
+ * Output: { zakatElFitr: boolean, sadaqa: boolean }
+ */
+function parseEligibility(value) {
+    const result = {
+        zakatElFitr: false,
+        sadaqa: false
+    };
+
+    if (!value) {
+        return result;
+    }
+
+    const strValue = String(value).toLowerCase().trim();
+
+    // Check for Sadaqa
+    if (strValue.includes('sadaqa') || strValue.includes('sadaka')) {
+        result.sadaqa = true;
+    }
+
+    // Check for Zakat El Fitr
+    if (strValue.includes('zakat') || strValue.includes('fitr')) {
+        result.zakatElFitr = true;
+    }
+
+    return result;
 }

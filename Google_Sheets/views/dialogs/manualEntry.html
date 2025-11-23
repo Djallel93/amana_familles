@@ -54,6 +54,68 @@
             padding: 15px 0;
             margin-top: 15px;
         }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .checkbox-group label {
+            margin: 0;
+            cursor: pointer;
+            font-weight: normal;
+        }
+
+        .eligibility-container {
+            background: #e3f2fd;
+            border: 2px solid #1a73e8;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .eligibility-title {
+            font-weight: 700;
+            color: #1a73e8;
+            margin-bottom: 12px;
+            font-size: 15px;
+        }
+
+        .eligibility-checkboxes {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .eligibility-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .eligibility-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .eligibility-item label {
+            margin: 0;
+            cursor: pointer;
+            font-weight: 500;
+            color: #333;
+        }
     </style>
 </head>
 
@@ -146,8 +208,36 @@
                 <input type="number" id="nombreEnfant" name="nombreEnfant" min="0" required value="0">
             </div>
 
-            <!-- Criticité et Langue -->
-            <div class="section-title">Priorité et Langue</div>
+            <!-- Se Déplace Checkbox -->
+            <div class="checkbox-group">
+                <input type="checkbox" id="seDeplace" name="seDeplace">
+                <label for="seDeplace">
+                    🚗 La famille peut se déplacer pour venir récupérer le colis alimentaire
+                </label>
+            </div>
+            <small style="color: #666; display: block; margin-top: -10px; margin-bottom: 15px; padding-left: 12px;">
+                💡 Cocher si la famille peut venir chercher son colis si aucun bénévole n'est disponible
+            </small>
+
+            <!-- NEW: Eligibility Section -->
+            <div class="section-title">Priorité et Éligibilité</div>
+
+            <div class="eligibility-container">
+                <div class="eligibility-title">Cette famille est éligible pour :</div>
+                <div class="eligibility-checkboxes">
+                    <div class="eligibility-item">
+                        <input type="checkbox" id="zakatElFitr" name="zakatElFitr">
+                        <label for="zakatElFitr">🌙 Zakat El Fitr</label>
+                    </div>
+                    <div class="eligibility-item">
+                        <input type="checkbox" id="sadaqa" name="sadaqa">
+                        <label for="sadaqa">💝 Sadaqa</label>
+                    </div>
+                </div>
+                <small style="color: #666; display: block; margin-top: 10px;">
+                    💡 Vous pouvez cocher les deux options si la famille est éligible aux deux types d'aide
+                </small>
+            </div>
 
             <div class="form-group">
                 <label id="labelCriticite" class="required">Criticité (0-5)</label>
@@ -161,19 +251,19 @@
                     <option value="5">5 - Urgente</option>
                 </select>
                 <small style="color: #666; display: block; margin-top: 5px;">
-                    💡 La criticité permet de prioriser les familles lors des livraisons.
+                    💡 La criticité permet de prioriser les familles lors des livraisons
                 </small>
             </div>
 
             <div class="form-group">
                 <label id="labelLangue">Langue préférée</label>
                 <select id="langue" name="langue">
-                    <option value="fr">🇫🇷 Français</option>
-                    <option value="ar">🇸🇦 العربية (Arabe)</option>
-                    <option value="en">🇬🇧 English</option>
+                    <option value="Français">🇫🇷 Français</option>
+                    <option value="Arabe">🇸🇦 العربية (Arabe)</option>
+                    <option value="Anglais">🇬🇧 English</option>
                 </select>
                 <small style="color: #666; display: block; margin-top: 5px;">
-                    💡 Utilisé pour les communications futures (emails, formulaires).
+                    💡 Utilisé pour les communications futures (emails, formulaires)
                 </small>
             </div>
 
@@ -215,7 +305,6 @@
         let currentMode = 'insert';
         let allFamilies = [];
 
-        // Load families based on mode
         function loadFamiliesForMode(filterValidated) {
             google.script.run
                 .withSuccessHandler(function (families) {
@@ -228,7 +317,6 @@
                 .getAllFamilyIds(filterValidated);
         }
 
-        // Populate the dropdown with families
         function populateFamilyDropdown() {
             const select = document.getElementById('familyId');
             select.innerHTML = '<option value="">-- Choisir une famille --</option>';
@@ -242,7 +330,6 @@
             });
         }
 
-        // Load selected family data
         function loadFamilyData() {
             const select = document.getElementById('familyId');
             const selectedOption = select.options[select.selectedIndex];
@@ -260,8 +347,11 @@
             document.getElementById('email').value = family.email || '';
             document.getElementById('nombreAdulte').value = family.nombreAdulte || 0;
             document.getElementById('nombreEnfant').value = family.nombreEnfant || 0;
+            document.getElementById('seDeplace').checked = family.seDeplace || false;
+            document.getElementById('zakatElFitr').checked = family.zakatElFitr || false;
+            document.getElementById('sadaqa').checked = family.sadaqa || false;
             document.getElementById('criticite').value = family.criticite || '';
-            document.getElementById('langue').value = family.langue || 'fr';
+            document.getElementById('langue').value = family.langue || 'Français';
             document.getElementById('circonstances').value = family.circonstances || '';
             document.getElementById('ressentit').value = family.ressentit || '';
             document.getElementById('specificites').value = family.specificites || '';
@@ -280,15 +370,16 @@
             showAlert('success', '✅ Données de la famille chargées');
         }
 
-        // Clear the form
         function clearForm() {
             document.getElementById('familyForm').reset();
             document.getElementById('nombreAdulte').value = '1';
             document.getElementById('nombreEnfant').value = '0';
-            document.getElementById('langue').value = 'fr';
+            document.getElementById('seDeplace').checked = false;
+            document.getElementById('zakatElFitr').checked = false;
+            document.getElementById('sadaqa').checked = false;
+            document.getElementById('langue').value = 'Français';
         }
 
-        // Set mode (INSERT/UPDATE)
         function setMode(mode) {
             currentMode = mode;
 
@@ -344,7 +435,6 @@
             document.getElementById('alertBox').style.display = 'none';
         }
 
-        // Submit the form
         document.getElementById('familyForm').addEventListener('submit', function (e) {
             e.preventDefault();
 
@@ -355,7 +445,6 @@
             }
         });
 
-        // Handle insertion
         function handleInsert() {
             const criticite = parseInt(document.getElementById('criticite').value);
 
@@ -378,6 +467,9 @@
                 city: document.getElementById('city').value.trim(),
                 nombreAdulte: parseInt(document.getElementById('nombreAdulte').value),
                 nombreEnfant: parseInt(document.getElementById('nombreEnfant').value),
+                seDeplace: document.getElementById('seDeplace').checked,
+                zakatElFitr: document.getElementById('zakatElFitr').checked,
+                sadaqa: document.getElementById('sadaqa').checked,
                 criticite: criticite,
                 circonstances: document.getElementById('circonstances').value.trim(),
                 ressentit: document.getElementById('ressentit').value.trim(),
@@ -391,7 +483,6 @@
                 .processManualEntry(formData);
         }
 
-        // Handle update
         function handleUpdate() {
             const familyId = document.getElementById('familyId').value;
 
@@ -433,6 +524,12 @@
                 }
             });
 
+
+            updateData.seDeplace = document.getElementById('seDeplace').checked;
+            updateData.zakatElFitr = document.getElementById('zakatElFitr').checked;
+            updateData.sadaqa = document.getElementById('sadaqa').checked;
+            hasData = true;
+
             if (!hasData) {
                 showAlert('error', 'Au moins un champ doit être renseigné pour la mise à jour');
                 return;
@@ -454,7 +551,6 @@
                 .processManualUpdate(familyId, updateData);
         }
 
-        // Success insertion
         function onInsertSuccess(result) {
             document.getElementById('loadingBox').style.display = 'none';
             const alertBox = document.getElementById('alertBox');
@@ -462,7 +558,7 @@
             if (result.success) {
                 alertBox.className = 'alert alert-success';
                 alertBox.style.display = 'block';
-                alertBox.innerHTML = `<strong>✅ Succès!</strong><br>Famille enregistrée avec succès.<br>ID: <strong>${result.familyId}</strong><br>${result.quartierName ? 'Quartier: ' + result.quartierName : ''}<br>Criticité: ${result.criticite}<br>Langue: ${result.langue}`;
+                alertBox.innerHTML = `<strong>✅ Succès!</strong><br>Famille enregistrée avec succès.<br>ID: <strong>${result.familyId}</strong><br>${result.quartierName ? 'Quartier: ' + result.quartierName : ''}<br>Criticité: ${result.criticite}<br>Langue: ${result.langue}<br>Zakat El Fitr: ${result.zakatElFitr ? 'Oui' : 'Non'}<br>Sadaqa: ${result.sadaqa ? 'Oui' : 'Non'}<br>Se Déplace: ${result.seDeplace ? 'Oui' : 'Non'}`;
                 clearForm();
 
                 setTimeout(() => {
@@ -480,7 +576,6 @@
             }
         }
 
-        // Success update
         function onUpdateSuccess(result) {
             document.getElementById('loadingBox').style.display = 'none';
             const alertBox = document.getElementById('alertBox');
@@ -502,7 +597,6 @@
             }
         }
 
-        // Failure
         function onFailure(error) {
             document.getElementById('loadingBox').style.display = 'none';
             const alertBox = document.getElementById('alertBox');
@@ -511,7 +605,6 @@
             alertBox.innerHTML = `<strong>❌ Erreur Système</strong><br>${error.message}`;
         }
 
-        // Show alert
         function showAlert(type, message) {
             const alertBox = document.getElementById('alertBox');
             alertBox.className = `alert alert-${type}`;

@@ -1,10 +1,46 @@
 /**
- * @file src/ui/helpers.js (UPDATED)
- * @description UI helper functions with validation requirements and updated language handling
+ * @file src/ui/helpers.js (FINAL - WITH AUTO-FORMATTING)
+ * @description UI helpers with eligibility and auto-formatting
  */
 
 /**
- * Process manual entry (IMPROVED: Check duplicates FIRST, validate zakat/sadaqa)
+ * NEW: Auto-format row in Famille sheet (resize columns and rows)
+ * @param {Sheet} sheet - The sheet object
+ * @param {number} row - Row number to format
+ */
+function autoFormatFamilleRow(sheet, row) {
+    try {
+        // Auto-resize all columns to fit content
+        const numColumns = sheet.getLastColumn();
+
+        for (let col = 1; col <= numColumns; col++) {
+            sheet.autoResizeColumn(col);
+
+            // Set minimum width
+            const currentWidth = sheet.getColumnWidth(col);
+            if (currentWidth < 80) {
+                sheet.setColumnWidth(col, 80);
+            }
+
+            // Set maximum width for readability
+            if (currentWidth > 400) {
+                sheet.setColumnWidth(col, 400);
+            }
+        }
+
+        // Auto-resize row height for wrapped text
+        sheet.autoResizeRows(row, 1);
+
+        logInfo(`✨ Formatted row ${row} in ${sheet.getName()}`);
+
+    } catch (error) {
+        logWarning(`Failed to auto-format row ${row}`, error);
+    }
+}
+
+/**
+ * Process manual entry with eligibility checkboxes
+ * UPDATED: Extract zakatElFitr and sadaqa from form
  */
 function processManualEntry(formData) {
     try {
@@ -26,7 +62,7 @@ function processManualEntry(formData) {
             };
         }
 
-        // IMPROVED: Check duplicates BEFORE address validation
+        // Check duplicates BEFORE address validation
         const duplicate = findDuplicateFamily(
             formData.phone,
             formData.lastName,
@@ -38,7 +74,7 @@ function processManualEntry(formData) {
             const comment = formatComment('🚫', `Doublon détecté - Famille existante ID: ${duplicate.id}`);
             const langue = formData.langue || CONFIG.LANGUAGES.FR;
 
-            writeToFamilySheet(formData, {
+            const rowNumber = writeToFamilySheet(formData, {
                 status: CONFIG.STATUS.REJECTED,
                 comment: comment,
                 familyId: familyId,
@@ -47,8 +83,15 @@ function processManualEntry(formData) {
                 criticite: criticite,
                 langue: langue,
                 zakatElFitr: formData.zakatElFitr || false,
-                sadaqa: formData.sadaqa || false
+                sadaqa: formData.sadaqa || false,
+                seDeplace: formData.seDeplace || false
             });
+
+            // Auto-format the row
+            const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
+            if (sheet) {
+                autoFormatFamilleRow(sheet, rowNumber);
+            }
 
             notifyAdmin(
                 '🚫 Doublon détecté',
@@ -65,7 +108,7 @@ function processManualEntry(formData) {
             };
         }
 
-        // Continue with address validation
+        // Validate address
         const addressValidation = validateAddressAndGetQuartier(
             formData.address,
             formData.postalCode,
@@ -83,14 +126,14 @@ function processManualEntry(formData) {
         let status = CONFIG.STATUS.IN_PROGRESS;
         const langue = formData.langue || CONFIG.LANGUAGES.FR;
 
-        // Build comment with formatted entries
+        // Build comment
         let comment = formatComment('➕', 'Créé manuellement');
 
         if (addressValidation.quartierInvalid) {
             comment = addComment(comment, formatComment('⚠️', addressValidation.warning));
         }
 
-        writeToFamilySheet(formData, {
+        const rowNumber = writeToFamilySheet(formData, {
             status: status,
             comment: comment,
             familyId: familyId,
@@ -98,13 +141,20 @@ function processManualEntry(formData) {
             quartierName: addressValidation.quartierName,
             criticite: criticite,
             langue: langue,
-            zakatElFitr: formData.zakatElFitr || false,
-            sadaqa: formData.sadaqa || false
+            zakatElFitr: formData.zakatElFitr || false, // NEW
+            sadaqa: formData.sadaqa || false, // NEW
+            seDeplace: formData.seDeplace || false
         });
+
+        // Auto-format the row
+        const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
+        if (sheet) {
+            autoFormatFamilleRow(sheet, rowNumber);
+        }
 
         notifyAdmin(
             '✅ Nouvelle famille ajoutée manuellement',
-            `ID: ${familyId}\nNom: ${formData.lastName} ${formData.firstName}\nTéléphone: ${normalizePhone(formData.phone)}\nAdresse: ${formData.address}, ${formData.postalCode} ${formData.city}\nQuartier: ${addressValidation.quartierName || 'Non assigné'}\nCriticité: ${criticite}\nLangue: ${langue}\nZakat El Fitr: ${formData.zakatElFitr ? 'Oui' : 'Non'}\nSadaqa: ${formData.sadaqa ? 'Oui' : 'Non'}\n\n⚠️ Statut: En cours (nécessite validation manuelle)`
+            `ID: ${familyId}\nNom: ${formData.lastName} ${formData.firstName}\nTéléphone: ${normalizePhone(formData.phone)}\nAdresse: ${formData.address}, ${formData.postalCode} ${formData.city}\nQuartier: ${addressValidation.quartierName || 'Non assigné'}\nCriticité: ${criticite}\nLangue: ${langue}\nZakat El Fitr: ${formData.zakatElFitr ? 'Oui' : 'Non'}\nSadaqa: ${formData.sadaqa ? 'Oui' : 'Non'}\nSe Déplace: ${formData.seDeplace ? 'Oui' : 'Non'}\n\n⚠️ Statut: En cours (nécessite validation manuelle)`
         );
 
         logInfo('✅ Entrée manuelle traitée avec succès', { familyId, criticite, status, langue });
@@ -116,6 +166,9 @@ function processManualEntry(formData) {
             quartierName: addressValidation.quartierName,
             criticite: criticite,
             langue: langue,
+            zakatElFitr: formData.zakatElFitr || false,
+            sadaqa: formData.sadaqa || false,
+            seDeplace: formData.seDeplace || false,
             status: status,
             message: `Famille créée avec succès. Changez le statut à "Validé" pour créer le contact Google.`
         };
@@ -131,7 +184,7 @@ function processManualEntry(formData) {
 }
 
 /**
- * Update manual entry if form is submitted later with documents (UPDATED)
+ * Update manual entry if form is submitted later with documents
  */
 function updateManualEntryWithFormData(manualFamilyId, formData, docValidation) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -158,7 +211,6 @@ function updateManualEntryWithFormData(manualFamilyId, formData, docValidation) 
         );
     }
 
-    // UPDATED: Changed from cafIds to aidesEtatIds
     if (docValidation.aidesEtatIds.length > 0) {
         sheet.getRange(targetRow, OUTPUT_COLUMNS.AIDES_ETAT + 1).setValue(
             formatDocumentLinks(docValidation.aidesEtatIds)
@@ -168,13 +220,16 @@ function updateManualEntryWithFormData(manualFamilyId, formData, docValidation) 
     organizeDocuments(
         manualFamilyId,
         docValidation.identityIds,
-        docValidation.aidesEtatIds, // UPDATED
+        docValidation.aidesEtatIds,
         docValidation.resourceIds
     );
 
     const existingComment = data[targetRow - 1][OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
     const newComment = addComment(existingComment, formatComment('📄', 'Documents ajoutés via formulaire'));
     sheet.getRange(targetRow, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
+
+    // Auto-format after update
+    autoFormatFamilleRow(sheet, targetRow);
 
     logInfo('✅ Entrée manuelle mise à jour avec les documents du formulaire', manualFamilyId);
     return true;
@@ -188,7 +243,7 @@ function include(filename) {
 }
 
 /**
- * Calculate statistics from Famille sheet (UPDATED)
+ * Calculate statistics from Famille sheet
  */
 function calculateStatistics() {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -200,6 +255,9 @@ function calculateStatistics() {
             rejected: 0,
             totalAdults: 0,
             totalChildren: 0,
+            seDeplace: 0,
+            zakatElFitr: 0, // NEW
+            sadaqa: 0, // NEW
             byCriticite: {},
             byQuartier: {},
             byLangue: {}
@@ -214,9 +272,11 @@ function calculateStatistics() {
         rejected: 0,
         totalAdults: 0,
         totalChildren: 0,
+        seDeplace: 0,
+        zakatElFitr: 0, // NEW
+        sadaqa: 0, // NEW
         byCriticite: { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
         byQuartier: {},
-        // UPDATED: Full language names
         byLangue: { 'Français': 0, 'Arabe': 0, 'Anglais': 0, 'unknown': 0 }
     };
 
@@ -226,6 +286,9 @@ function calculateStatistics() {
         const criticite = parseInt(row[OUTPUT_COLUMNS.CRITICITE]) || 0;
         const quartierId = row[OUTPUT_COLUMNS.ID_QUARTIER];
         const langue = row[OUTPUT_COLUMNS.LANGUE] || 'unknown';
+        const seDeplace = row[OUTPUT_COLUMNS.SE_DEPLACE];
+        const zakatElFitr = row[OUTPUT_COLUMNS.ZAKAT_EL_FITR]; // NEW
+        const sadaqa = row[OUTPUT_COLUMNS.SADAQA]; // NEW
 
         if (status === CONFIG.STATUS.VALIDATED) stats.validated++;
         if (status === CONFIG.STATUS.IN_PROGRESS) stats.inProgress++;
@@ -233,6 +296,10 @@ function calculateStatistics() {
 
         stats.totalAdults += parseInt(row[OUTPUT_COLUMNS.NOMBRE_ADULTE]) || 0;
         stats.totalChildren += parseInt(row[OUTPUT_COLUMNS.NOMBRE_ENFANT]) || 0;
+
+        if (seDeplace === true) stats.seDeplace++;
+        if (zakatElFitr === true) stats.zakatElFitr++; // NEW
+        if (sadaqa === true) stats.sadaqa++; // NEW
 
         if (criticite >= 0 && criticite <= 5) {
             stats.byCriticite[criticite]++;
@@ -242,7 +309,6 @@ function calculateStatistics() {
             stats.byQuartier[quartierId] = (stats.byQuartier[quartierId] || 0) + 1;
         }
 
-        // UPDATED: Check for full language names
         if (['Français', 'Arabe', 'Anglais'].includes(langue)) {
             stats.byLangue[langue]++;
         } else {
@@ -262,7 +328,8 @@ function clearAllCaches() {
 }
 
 /**
- * Write data to Famille sheet (UPDATED with zakat/sadaqa validation)
+ * Write data to Famille sheet
+ * UPDATED: Returns row number for auto-formatting
  */
 function writeToFamilySheet(formData, options = {}) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -277,12 +344,13 @@ function writeToFamilySheet(formData, options = {}) {
         quartierId = null,
         quartierName = '',
         identityIds = [],
-        aidesEtatIds = [], // UPDATED from cafIds
+        aidesEtatIds = [],
         resourceIds = [],
         criticite = 0,
         langue = CONFIG.LANGUAGES.FR,
-        zakatElFitr = false, // NEW
-        sadaqa = false // NEW
+        zakatElFitr = false,
+        sadaqa = false,
+        seDeplace = false
     } = options;
 
     const normalizedPhone = normalizePhone(formData.phone);
@@ -292,18 +360,18 @@ function writeToFamilySheet(formData, options = {}) {
     row[OUTPUT_COLUMNS.ID] = familyId;
     row[OUTPUT_COLUMNS.NOM] = formData.lastName || '';
     row[OUTPUT_COLUMNS.PRENOM] = formData.firstName || '';
-    row[OUTPUT_COLUMNS.ZAKAT_EL_FITR] = zakatElFitr; // NEW
-    row[OUTPUT_COLUMNS.SADAQA] = sadaqa; // NEW
+    row[OUTPUT_COLUMNS.ZAKAT_EL_FITR] = zakatElFitr;
+    row[OUTPUT_COLUMNS.SADAQA] = sadaqa;
     row[OUTPUT_COLUMNS.NOMBRE_ADULTE] = parseInt(formData.nombreAdulte) || 0;
     row[OUTPUT_COLUMNS.NOMBRE_ENFANT] = parseInt(formData.nombreEnfant) || 0;
     row[OUTPUT_COLUMNS.ADRESSE] = `${formData.address}, ${formData.postalCode} ${formData.city}`;
     row[OUTPUT_COLUMNS.ID_QUARTIER] = quartierId || '';
-    row[OUTPUT_COLUMNS.SE_DEPLACE] = false;
+    row[OUTPUT_COLUMNS.SE_DEPLACE] = seDeplace;
     row[OUTPUT_COLUMNS.EMAIL] = formData.email || '';
     row[OUTPUT_COLUMNS.TELEPHONE] = normalizedPhone;
     row[OUTPUT_COLUMNS.TELEPHONE_BIS] = normalizedPhoneBis;
     row[OUTPUT_COLUMNS.IDENTITE] = formatDocumentLinks(identityIds);
-    row[OUTPUT_COLUMNS.AIDES_ETAT] = formatDocumentLinks(aidesEtatIds); // UPDATED
+    row[OUTPUT_COLUMNS.AIDES_ETAT] = formatDocumentLinks(aidesEtatIds);
     row[OUTPUT_COLUMNS.CIRCONSTANCES] = formData.circonstances || '';
     row[OUTPUT_COLUMNS.RESSENTIT] = '';
     row[OUTPUT_COLUMNS.SPECIFICITES] = '';
@@ -321,11 +389,11 @@ function writeToFamilySheet(formData, options = {}) {
 
     logInfo(`💾 Famille écrite dans la feuille à la ligne ${lastEmptyRow}`, { familyId, status, langue });
 
-    return familyId;
+    return lastEmptyRow; // RETURN ROW NUMBER for auto-formatting
 }
 
 /**
- * Update existing family (UPDATED)
+ * Update existing family
  */
 function updateExistingFamily(duplicate, formData, addressValidation, docValidation) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -336,7 +404,7 @@ function updateExistingFamily(duplicate, formData, addressValidation, docValidat
     const changes = [];
 
     const newPhone = normalizePhone(formData.phone);
-    const oldPhone = normalizePhone(String(existingData[OUTPUT_COLUMNS.TELEPHONE]));
+    const oldPhone = normalizePhone(String(existingData[OUTPUT_COLUMNS.TELEPHONE] || '')).replace(/[\s\(\)]/g, '');
     if (newPhone !== oldPhone) {
         sheet.getRange(row, OUTPUT_COLUMNS.TELEPHONE + 1).setValue(newPhone);
         changes.push('téléphone');
@@ -350,12 +418,19 @@ function updateExistingFamily(duplicate, formData, addressValidation, docValidat
         changes.push('adresse');
     }
 
+    if (formData.seDeplace !== undefined) {
+        const oldSeDeplace = existingData[OUTPUT_COLUMNS.SE_DEPLACE] || false;
+        if (formData.seDeplace !== oldSeDeplace) {
+            sheet.getRange(row, OUTPUT_COLUMNS.SE_DEPLACE + 1).setValue(formData.seDeplace);
+            changes.push('se_deplace');
+        }
+    }
+
     if (docValidation.identityIds.length > 0) {
         sheet.getRange(row, OUTPUT_COLUMNS.IDENTITE + 1).setValue(formatDocumentLinks(docValidation.identityIds));
         changes.push('documents d\'identité');
     }
 
-    // UPDATED: Changed from cafIds to aidesEtatIds
     if (docValidation.aidesEtatIds.length > 0) {
         sheet.getRange(row, OUTPUT_COLUMNS.AIDES_ETAT + 1).setValue(formatDocumentLinks(docValidation.aidesEtatIds));
         changes.push('documents aides d\'état');
@@ -387,11 +462,15 @@ function updateExistingFamily(duplicate, formData, addressValidation, docValidat
 
     sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(CONFIG.STATUS.IN_PROGRESS);
 
+    // Auto-format after update
+    autoFormatFamilleRow(sheet, row);
+
     logInfo(`🔄 Famille mise à jour`, { id: duplicate.id, changes });
 }
 
 /**
  * Get all family IDs (for dropdown UI)
+ * UPDATED: Include zakatElFitr and sadaqa
  */
 function getAllFamilyIds(filterValidated = false) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -418,6 +497,9 @@ function getAllFamilyIds(filterValidated = false) {
                 adresse: row[OUTPUT_COLUMNS.ADRESSE],
                 nombreAdulte: row[OUTPUT_COLUMNS.NOMBRE_ADULTE],
                 nombreEnfant: row[OUTPUT_COLUMNS.NOMBRE_ENFANT],
+                seDeplace: row[OUTPUT_COLUMNS.SE_DEPLACE] || false,
+                zakatElFitr: row[OUTPUT_COLUMNS.ZAKAT_EL_FITR] || false, // NEW
+                sadaqa: row[OUTPUT_COLUMNS.SADAQA] || false, // NEW
                 criticite: row[OUTPUT_COLUMNS.CRITICITE],
                 langue: row[OUTPUT_COLUMNS.LANGUE] || CONFIG.LANGUAGES.FR,
                 circonstances: row[OUTPUT_COLUMNS.CIRCONSTANCES],
