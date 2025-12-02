@@ -1,6 +1,6 @@
 /**
- * @file src/ui/menu.js (UPDATED - Removed Debug Functions)
- * @description Updated menu with email verification and fixed UI flow
+ * @file src/ui/menu.js (UPDATED - With Reverse Sync)
+ * @description Updated menu with reverse sync functionality
  */
 
 /**
@@ -10,6 +10,10 @@ function onOpen() {
     const ui = SpreadsheetApp.getUi();
     ui.createMenu('📦 Gestion Familles')
         .addItem('➕ Nouvelle Famille / ✏️ Mise à Jour', 'showManualEntryDialog')
+        .addSeparator()
+        .addSubMenu(ui.createMenu('🔄 Synchronisation Contacts')
+            .addItem('📥 Sync Contact → Feuille', 'showReverseContactSyncDialog')
+            .addItem('📤 Sync Feuille → Contact (Auto)', 'showSyncInfo'))
         .addSeparator()
         .addSubMenu(ui.createMenu('📧 Vérification Email')
             .addItem('✉️ Envoyer Emails de Vérification', 'sendVerificationEmailsWithConfirm')
@@ -73,16 +77,47 @@ function showBulkUpdateDialog() {
 }
 
 // ============================================
-// EMAIL VERIFICATION MENU FUNCTIONS (FIXED UI FLOW)
+// REVERSE CONTACT SYNC MENU FUNCTIONS (NEW)
 // ============================================
 
 /**
- * Send verification emails with confirmation (FIXED)
+ * Show reverse contact sync dialog
+ */
+function showReverseContactSyncDialog() {
+    showDialog('views/dialogs/reverseContactSync', 'Sync Contact → Feuille', 600, 700);
+}
+
+/**
+ * Show info about automatic Sheet → Contact sync
+ */
+function showSyncInfo() {
+    const ui = SpreadsheetApp.getUi();
+    ui.alert(
+        '📤 Sync Feuille → Contact (Automatique)',
+        'La synchronisation Feuille → Contact se fait automatiquement :\n\n' +
+        '✅ Lorsqu\'une famille passe au statut "Validé"\n' +
+        '✅ Lorsqu\'une famille validée est modifiée\n\n' +
+        '📝 Le contact Google est créé/mis à jour avec :\n' +
+        '• Nom, prénom, téléphone(s), email\n' +
+        '• Adresse structurée\n' +
+        '• Criticité, composition du foyer\n' +
+        '• Éligibilité Zakat/Sadaqa\n' +
+        '• Langue préférée\n\n' +
+        '💡 Ces informations sont stockées dans les notes du contact.',
+        ui.ButtonSet.OK
+    );
+}
+
+// ============================================
+// EMAIL VERIFICATION MENU FUNCTIONS
+// ============================================
+
+/**
+ * Send verification emails with confirmation
  */
 function sendVerificationEmailsWithConfirm() {
     const ui = SpreadsheetApp.getUi();
 
-    // Get count first
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
     if (!sheet) {
         ui.alert('❌ Erreur', 'Feuille Famille introuvable', ui.ButtonSet.OK);
@@ -124,12 +159,11 @@ function sendVerificationEmailsWithConfirm() {
         return;
     }
 
-    // Show modal dialog with dynamic content
     showEmailSendingDialog(eligibleCount);
 }
 
 /**
- * Show email sending dialog with live updates (NEW)
+ * Show email sending dialog with live updates
  */
 function showEmailSendingDialog(totalCount) {
     const html = HtmlService.createHtmlOutputFromFile('views/dialogs/emailSending')
@@ -137,9 +171,6 @@ function showEmailSendingDialog(totalCount) {
         .setHeight(700);
 
     SpreadsheetApp.getUi().showModalDialog(html, 'Envoi d\'emails de vérification');
-
-    // Start sending in background
-    // Note: This will be called from the HTML dialog
 }
 
 /**
@@ -180,7 +211,6 @@ function showEmailPreview() {
         return;
     }
 
-    // Build preview list
     let previewText = `📧 Aperçu des destinataires (${eligible.length} famille(s))\n\n`;
 
     eligible.slice(0, 20).forEach(f => {

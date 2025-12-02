@@ -1,11 +1,11 @@
 /**
- * @file src/services/contactService.js (FIXED - Correct Delete Method)
- * @description Manage Google Contacts synchronization with groups and archiving
+ * @file src/services/contactService.js (ENHANCED)
+ * @description Manage Google Contacts with custom fields and reverse sync support
  */
 
 /**
  * Create or update Google Contact for a family
- * SIMPLIFIED: Delete and recreate instead of update to avoid 404 errors
+ * ENHANCED: Now stores criticité, household composition, and eligibility in notes
  */
 function syncFamilyContact(familyData) {
     try {
@@ -14,12 +14,11 @@ function syncFamilyContact(familyData) {
         const existingContact = findContactByFamilyId(id);
 
         if (existingContact) {
-            // SIMPLIFIED: Delete the old contact and create a new one
-            // This avoids etag/404 issues with updates
+            // Delete and recreate to avoid etag/404 issues
             logInfo(`Deleting existing contact for family: ${id}`);
             People.People.deleteContact(existingContact.resourceName);
 
-            // Wait a moment for deletion to propagate
+            // Wait for deletion to propagate
             Utilities.sleep(500);
 
             logInfo(`Creating fresh contact for family: ${id}`);
@@ -38,7 +37,6 @@ function syncFamilyContact(familyData) {
 
 /**
  * Delete contact when family is archived
- * FIXED: Use deleteContact method with resource name
  */
 function deleteContactForArchivedFamily(familyId) {
     try {
@@ -49,7 +47,6 @@ function deleteContactForArchivedFamily(familyId) {
             return { success: true, message: 'No contact to delete' };
         }
 
-        // CORRECT: Use deleteContact method
         People.People.deleteContact(contact.resourceName);
 
         logInfo(`Contact deleted for archived family: ${familyId}`);
@@ -70,7 +67,6 @@ function findContactByFamilyId(familyId) {
 
         logInfo(`Searching for contact with family ID: ${searchId}`);
 
-        // List all connections and search manually
         const response = People.People.Connections.list('people/me', {
             pageSize: 2000,
             personFields: 'names,emailAddresses,phoneNumbers,addresses,biographies,memberships'
@@ -194,7 +190,87 @@ function parseAddress(fullAddress) {
 }
 
 /**
- * Create new contact with groups and structured address
+ * Build comprehensive notes field with all family metadata
+ * ENHANCED: Now includes criticité, household composition, and eligibility
+ */
+function buildFamilyNotes(familyData) {
+    const {
+        id,
+        criticite = 0,
+        nombreAdulte = 0,
+        nombreEnfant = 0,
+        zakatElFitr = false,
+        sadaqa = false,
+        langue = CONFIG.LANGUAGES.FR
+    } = familyData;
+
+    const eligibilityList = [];
+    if (zakatElFitr) eligibilityList.push('Zakat El Fitr');
+    if (sadaqa) eligibilityList.push('Sadaqa');
+    const eligibilityText = eligibilityList.length > 0 ? eligibilityList.join(', ') : 'Aucune';
+
+    // Build structured notes (one line per field for easy parsing)
+    const notes = [
+        `Family ID: ${id}`,
+        `Criticité: ${criticite}`,
+        `Adultes: ${nombreAdulte}`,
+        `Enfants: ${nombreEnfant}`,
+        `Éligibilité: ${eligibilityText}`,
+        `Langue: ${langue}`
+    ].join('\n');
+
+    return notes;
+}
+
+/**
+ * Parse family metadata from contact notes
+ * Returns structured object with all custom fields
+ */
+function parseFamilyNotesFromContact(biographies) {
+    const metadata = {
+        familyId: null,
+        criticite: 0,
+        nombreAdulte: 0,
+        nombreEnfant: 0,
+        zakatElFitr: false,
+        sadaqa: false,
+        langue: CONFIG.LANGUAGES.FR
+    };
+
+    if (!biographies || biographies.length === 0) {
+        return metadata;
+    }
+
+    const notes = biographies[0].value;
+    if (!notes) return metadata;
+
+    // Parse each line
+    const lines = notes.split('\n');
+    lines.forEach(line => {
+        const [key, value] = line.split(':').map(s => s.trim());
+
+        if (key === 'Family ID') {
+            metadata.familyId = value;
+        } else if (key === 'Criticité') {
+            metadata.criticite = parseInt(value) || 0;
+        } else if (key === 'Adultes') {
+            metadata.nombreAdulte = parseInt(value) || 0;
+        } else if (key === 'Enfants') {
+            metadata.nombreEnfant = parseInt(value) || 0;
+        } else if (key === 'Éligibilité') {
+            metadata.zakatElFitr = value.includes('Zakat El Fitr');
+            metadata.sadaqa = value.includes('Sadaqa');
+        } else if (key === 'Langue') {
+            metadata.langue = value;
+        }
+    });
+
+    return metadata;
+}
+
+/**
+ * Create new contact with groups, structured address, and custom fields
+ * ENHANCED: Now stores criticité, household, and eligibility in notes
  */
 function createContact(familyData) {
     const { id, nom, prenom, email, telephone, phoneBis, adresse, idQuartier } = familyData;
@@ -206,7 +282,7 @@ function createContact(familyData) {
             displayName: `${prenom} ${nom}`
         }],
         biographies: [{
-            value: `Family ID: ${id}`,
+            value: buildFamilyNotes(familyData),
             contentType: 'TEXT_PLAIN'
         }]
     };
@@ -284,106 +360,13 @@ function createContact(familyData) {
     logInfo(`Creating contact for family ${id}`, {
         name: `${prenom} ${nom}`,
         phone: contactResource.phoneNumbers ? contactResource.phoneNumbers[0].value : 'none',
-        email: email || 'none'
+        email: email || 'none',
+        criticite: familyData.criticite,
+        household: `${familyData.nombreAdulte}A/${familyData.nombreEnfant}E`
     });
 
     People.People.createContact(contactResource);
-    logInfo(`Contact created with groups for family: ${id}`);
-}
-
-/**
- * Update existing contact with groups and structured address
- * FIXED: Use correct updatePeopleContact method signature
- */
-function updateContact(contact, familyData) {
-    const { id, nom, prenom, email, telephone, phoneBis, adresse, idQuartier } = familyData;
-
-    try {
-        // IMPORTANT: Refetch the contact to get the latest etag
-        const freshContact = People.People.get({
-            resourceName: contact.resourceName,
-            personFields: 'names,emailAddresses,phoneNumbers,addresses,biographies,etags'
-        });
-
-        const updateResource = {
-            resourceName: freshContact.resourceName,
-            etag: freshContact.etag,
-            names: [{
-                givenName: prenom || '',
-                familyName: nom || '',
-                displayName: `${prenom} ${nom}`
-            }],
-            biographies: freshContact.biographies || contact.biographies
-        };
-
-        if (telephone) {
-            const normalizedPhone = normalizePhone(telephone);
-
-            if (!normalizedPhone) {
-                logWarning(`Invalid phone number for family ${id}: ${telephone}`);
-            } else {
-                updateResource.phoneNumbers = [{
-                    value: normalizedPhone,
-                    type: 'mobile'
-                }];
-
-                if (phoneBis) {
-                    const normalizedPhoneBis = normalizePhone(phoneBis);
-                    if (normalizedPhoneBis) {
-                        updateResource.phoneNumbers.push({
-                            value: normalizedPhoneBis,
-                            type: 'home'
-                        });
-                    }
-                }
-            }
-        }
-
-        if (email && isValidEmail(email)) {
-            updateResource.emailAddresses = [{
-                value: email,
-                type: 'home'
-            }];
-        }
-
-        if (adresse) {
-            const parsedAddress = parseAddress(adresse);
-            updateResource.addresses = [{
-                streetAddress: parsedAddress.street,
-                city: parsedAddress.city,
-                postalCode: parsedAddress.postalCode,
-                country: parsedAddress.country,
-                type: 'home'
-            }];
-        }
-
-        logInfo(`Updating contact for family ${id}`, {
-            name: `${prenom} ${nom}`,
-            phone: updateResource.phoneNumbers ? updateResource.phoneNumbers[0].value : 'none',
-            email: email || 'none',
-            resourceName: freshContact.resourceName
-        });
-
-        // FIXED: Correct signature according to Google Apps Script Advanced Service
-        // https://developers.google.com/apps-script/advanced/people
-        const updatedContact = People.People.updateContact(
-            freshContact.resourceName,
-            updateResource,
-            {
-                updatePersonFields: 'names,emailAddresses,phoneNumbers,addresses'
-            }
-        );
-
-        logInfo(`Contact updated successfully: ${updatedContact.resourceName}`);
-
-        updateContactGroups(freshContact.resourceName, idQuartier);
-
-        logInfo(`Contact groups updated for family: ${id}`);
-
-    } catch (e) {
-        logError(`Failed to update contact for family ${id}`, e);
-        throw e;
-    }
+    logInfo(`Contact created with metadata for family: ${id}`);
 }
 
 /**
