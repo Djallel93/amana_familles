@@ -278,9 +278,13 @@ function getLocationHierarchyFromQuartier(quartierId) {
  * Returns same structure as before, but checks if quartier exists
  */
 function validateAddressAndGetQuartier(address, postalCode, city) {
-    const fullAddress = formatAddressForGeocoding(address, postalCode, city);
+    if (!address || !postalCode || !city) {
+        return {
+            isValid: false,
+            error: 'Adresse complète requise (adresse, code postal, ville)'
+        };
+    }
 
-    // Step 1: Geocode the address
     const geocodeResult = geocodeAddress(address, city, postalCode);
 
     if (geocodeResult.error || !geocodeResult.isValid) {
@@ -290,7 +294,6 @@ function validateAddressAndGetQuartier(address, postalCode, city) {
         };
     }
 
-    // Step 2: Resolve location hierarchy (Ville > Secteur > Quartier)
     const locationResult = resolveLocation(
         geocodeResult.coordinates.latitude,
         geocodeResult.coordinates.longitude
@@ -311,7 +314,6 @@ function validateAddressAndGetQuartier(address, postalCode, city) {
     const quartierId = locationResult.quartier ? locationResult.quartier.id : null;
     const quartierName = locationResult.quartier ? locationResult.quartier.nom : null;
 
-    // Step 3: Validate quartier exists in GEO API
     let quartierInvalid = false;
     let warning = null;
 
@@ -333,7 +335,7 @@ function validateAddressAndGetQuartier(address, postalCode, city) {
         quartierName: quartierName,
         quartierInvalid: quartierInvalid,
         warning: warning,
-        location: locationResult // Full hierarchy for reference
+        location: locationResult
     };
 }
 
