@@ -1,0 +1,712 @@
+openapi: 3.0.3
+info:
+  title: 🏠 Family Management REST API
+  description: |
+    ## 📖 Overview
+    Complete REST API for managing family records with geographic location support, document management, and email verification.
+    
+    ## 🔐 Authentication
+    Most endpoints require an API key: `?apiKey=YOUR_API_KEY`
+    
+    Public endpoints: `confirmfamilyinfo`, `ping`
+    
+    ## 📍 Geographic Hierarchy
+    Ville (City) → Secteur (Sector) → Quartier (Neighborhood)
+    
+    ## 🎯 Eligibility & Priority
+    - 🌙 Zakat El Fitr - Ramadan charity
+    - 💝 Sadaqa - General charity
+    - Criticité: 0-5 (priority level)
+    
+    ## 🌐 Languages
+    🇫🇷 Français | 🇸🇦 العربية | 🇬🇧 English
+  version: 2.1.0
+  contact:
+    name: Family Management System
+
+servers:
+  - url: "https: //script.google.com/macros/s/{SCRIPT_ID}/exec"
+    description: Production server
+    variables:
+      SCRIPT_ID:
+        default: YOUR_SCRIPT_ID
+
+tags:
+  - name: 🏠 All Families
+    description: Retrieve all validated families
+  - name: 🆔 By ID
+    description: Get specific family info
+  - name: 🌍 By Location
+    description: Filter by Ville/Secteur/Quartier
+  - name: 🎯 By Criteria
+    description: Filter by eligibility/priority
+  - name: 📧 Email Verification
+    description: Send and confirm emails
+  - name: 🔧 System
+    description: Health check
+
+paths:
+  /exec?action=allfamilies:
+    get:
+      tags: [🏠 All Families]
+      summary: 📋 Get all validated families
+      description: |
+        Retrieve all families with "Validé" status. Supports sorting by priority or distance.
+        **Cached:** 5 minutes
+      operationId: getAllFamilies
+      parameters:
+        - name: action
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [allfamilies]
+        - name: apiKey
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Your API key
+        - name: orderBy
+          in: query
+          schema:
+            type: string
+            enum: [criticite, distance]
+          description: Sort by priority or distance
+        - name: lat
+          in: query
+          schema:
+            type: number
+          description: Reference latitude (for distance sorting)
+        - name: lng
+          in: query
+          schema:
+            type: number
+          description: Reference longitude (for distance sorting)
+        - name: includeHierarchy
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include idVille, idSecteur
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    example: 42
+                  orderBy:
+                    type: string
+                    example: criticite
+                  includeHierarchy:
+                    type: boolean
+                  families:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Family'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /exec?action=familybyid:
+    get:
+      tags: [🆔 By ID]
+      summary: 🔍 Get family by ID
+      operationId: getFamilyById
+      parameters:
+        - name: action
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [familybyid]
+        - name: apiKey
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "123"
+        - name: includeHierarchy
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Family'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /exec?action=familyaddressbyid:
+    get:
+      tags: [🆔 By ID]
+      summary: 📍 Get family address by ID
+      operationId: getFamilyAddressById
+      parameters:
+        - name: action
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [familyaddressbyid]
+        - name: apiKey
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: includeHierarchy
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  nom:
+                    type: string
+                  prenom:
+                    type: string
+                  adresse:
+                    type: string
+                  idQuartier:
+                    type: string
+                  criticite:
+                    type: integer
+                  langue:
+                    type: string
+
+  /exec?action=familiesbyquartier:
+    get:
+      tags: [🌍 By Location]
+      summary: 🏘️ Get families by Quartier
+      operationId: getFamiliesByQuartier
+      parameters:
+        - name: action
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [familiesbyquartier]
+        - name: apiKey
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: quartierId
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "QRT_001"
+        - name: includeHierarchy
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  quartierId:
+                    type: string
+                  count:
+                    type: integer
+                  families:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Family'
+
+  /exec?action=familiesbysecteur:
+    get:
+      tags: [🌍 By Location]
+      summary: 🗺️ Get families by Secteur
+      operationId: getFamiliesBySecteur
+      parameters:
+        - name: action
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [familiesbysecteur]
+        - name: apiKey
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: secteurId
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "SEC_001"
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  secteurId:
+                    type: string
+                  count:
+                    type: integer
+                  families:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FamilyWithHierarchy'
+
+  /exec?action=familiesbyville:
+    get:
+      tags: [🌍 By Location]
+      summary: 🏙️ Get families by Ville
+      operationId: getFamiliesByVille
+      parameters:
+        - name: action
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [familiesbyville]
+        - name: apiKey
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: villeId
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "VIL_001"
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  villeId:
+                    type: string
+                  count:
+                    type: integer
+                  families:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FamilyWithHierarchy'
+
+  /exec?action=familieszakatfitr:
+    get:
+      tags: [🎯 By Criteria]
+      summary: 🌙 Get families eligible for Zakat El Fitr
+      operationId: getFamiliesZakatFitr
+      parameters:
+        - name: action
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [familieszakatfitr]
+        - name: apiKey
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: includeHierarchy
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  families:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Family'
+
+  /exec?action=familiessadaka:
+    get:
+      tags: [🎯 By Criteria]
+      summary: 💝 Get families eligible for Sadaqa
+      operationId: getFamiliesSadaka
+      parameters:
+        - name: action
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [familiessadaka]
+        - name: apiKey
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: includeHierarchy
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  families:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Family'
+
+  /exec?action=familiessedeplace:
+    get:
+      tags: [🎯 By Criteria]
+      summary: 🚗 Get families who can travel
+      operationId: getFamiliesSeDeplace
+      parameters:
+        - name: action
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [familiessedeplace]
+        - name: apiKey
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: includeHierarchy
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  families:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Family'
+
+  /exec?action=familiesbycriticite:
+    get:
+      tags: [🎯 By Criteria]
+      summary: ⚠️ Get families by priority level
+      operationId: getFamiliesByCriticite
+      parameters:
+        - name: action
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [familiesbycriticite]
+        - name: apiKey
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: criticite
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 5
+          example: 4
+        - name: includeHierarchy
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  criticite:
+                    type: integer
+                  count:
+                    type: integer
+                  families:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Family'
+
+  /exec?action=sendverificationemails:
+    get:
+      tags: [📧 Email Verification]
+      summary: ✉️ Send verification emails to all validated families
+      operationId: sendVerificationEmails
+      parameters:
+        - name: action
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [sendverificationemails]
+        - name: apiKey
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  results:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      sent:
+                        type: integer
+                      skipped:
+                        type: integer
+                      failed:
+                        type: integer
+                      reasons:
+                        type: object
+                        properties:
+                          no_email:
+                            type: integer
+                          not_validated:
+                            type: integer
+                          error:
+                            type: integer
+
+  /exec?action=confirmfamilyinfo:
+    get:
+      tags: [📧 Email Verification]
+      summary: ✅ Confirm family information (public endpoint)
+      description: |
+        This endpoint is called when families click the confirmation link in their verification email.
+        **No API key required** - uses token for authentication.
+      operationId: confirmFamilyInfo
+      parameters:
+        - name: action
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [confirmfamilyinfo]
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Family ID
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Verification token
+      responses:
+        '200':
+          description: HTML confirmation page
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /exec?action=ping:
+    get:
+      tags: [🔧 System]
+      summary: 🏓 Health check (public endpoint)
+      operationId: ping
+      parameters:
+        - name: action
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [ping]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  message:
+                    type: string
+                    example: Famille API operational
+                  version:
+                    type: string
+                    example: "2.1"
+                  geoApiVersion:
+                    type: string
+                    example: "5.0"
+                  timestamp:
+                    type: string
+                    format: date-time
+
+components:
+  schemas:
+    Family:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "123"
+        nom:
+          type: string
+          example: "Dupont"
+        prenom:
+          type: string
+          example: "Jean"
+        zakatElFitr:
+          type: boolean
+          description: Eligible for Zakat El Fitr
+        sadaqa:
+          type: boolean
+          description: Eligible for Sadaqa
+        nombreAdulte:
+          type: integer
+          example: 2
+        nombreEnfant:
+          type: integer
+          example: 3
+        adresse:
+          type: string
+          example: "123 Rue de la Paix, 44000 Nantes"
+        idQuartier:
+          type: string
+          example: "QRT_001"
+        seDeplace:
+          type: boolean
+          description: Can travel to pick up package
+        email:
+          type: string
+          format: email
+        telephone:
+          type: string
+          example: "+33 6 12 34 56 78"
+        telephoneBis:
+          type: string
+        circonstances:
+          type: string
+          description: Current situation description
+        ressentit:
+          type: string
+          description: Notes/observations
+        specificites:
+          type: string
+          description: Special needs
+        criticite:
+          type: integer
+          minimum: 0
+          maximum: 5
+          description: Priority level
+        langue:
+          type: string
+          enum: [Français, Arabe, Anglais]
+          description: Preferred language
+
+    FamilyWithHierarchy:
+      allOf:
+        - $ref: '#/components/schemas/Family'
+        - type: object
+          properties:
+            idVille:
+              type: string
+            idSecteur:
+              type: string
+
+  responses:
+    Unauthorized:
+      description: Unauthorized - Invalid or missing API key
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Invalid API key
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Family not found
+
+    BadRequest:
+      description: Bad request - Invalid parameters
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Missing required parameter
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: query
+      name: apiKey
+
+security:
+  - ApiKeyAuth: []
