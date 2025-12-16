@@ -1,11 +1,11 @@
 /**
- * @file src/services/contactService.js (ENHANCED)
- * @description Manage Google Contacts with custom fields and reverse sync support
+ * @file src/services/contactService.js (ENHANCED WITH CUSTOM FIELDS)
+ * @description Manage Google Contacts with custom fields instead of notes
  */
 
 /**
  * Create or update Google Contact for a family
- * ENHANCED: Now stores criticité, household composition, and eligibility in notes
+ * ENHANCED: Uses custom fields instead of notes
  */
 function syncFamilyContact(familyData) {
     try {
@@ -59,7 +59,10 @@ function deleteContactForArchivedFamily(familyId) {
 }
 
 /**
- * Find contact by family ID stored in notes
+ * Find contact by family ID stored in custom field
+ * UPDATED: Search in userDefined fields instead of biographies
+ * 
+ * 🔧 UPDATE SEARCH KEY IF YOU RENAMED 'ID':
  */
 function findContactByFamilyId(familyId) {
     try {
@@ -69,16 +72,17 @@ function findContactByFamilyId(familyId) {
 
         const response = People.People.Connections.list('people/me', {
             pageSize: 2000,
-            personFields: 'names,emailAddresses,phoneNumbers,addresses,biographies,memberships'
+            personFields: 'names,emailAddresses,phoneNumbers,addresses,userDefined,memberships'
         });
 
         if (response.connections && response.connections.length > 0) {
             logInfo(`Scanning ${response.connections.length} total contacts...`);
 
             for (const contact of response.connections) {
-                if (contact.biographies) {
-                    for (const bio of contact.biographies) {
-                        if (bio.value && bio.value.includes(`Family ID: ${searchId}`)) {
+                if (contact.userDefined) {
+                    for (const field of contact.userDefined) {
+                        // 🔧 IMPORTANT: Update 'ID' if you renamed it in buildCustomFields()
+                        if (field.key === 'ID' && field.value === searchId) {
                             logInfo(`Found match in connections list for family ${searchId}`);
                             return contact;
                         }
@@ -190,10 +194,13 @@ function parseAddress(fullAddress) {
 }
 
 /**
- * Build comprehensive notes field with all family metadata
- * ENHANCED: Now includes criticité, household composition, and eligibility
+ * Build custom fields array for contact
+ * ENHANCED: All metadata now in custom fields
+ * 
+ * 🔧 CUSTOMIZE FIELD NAMES HERE:
+ * Change the 'key' values to rename custom fields in Google Contacts
  */
-function buildFamilyNotes(familyData) {
+function buildCustomFields(familyData) {
     const {
         id,
         criticite = 0,
@@ -201,7 +208,8 @@ function buildFamilyNotes(familyData) {
         nombreEnfant = 0,
         zakatElFitr = false,
         sadaqa = false,
-        langue = CONFIG.LANGUAGES.FR
+        langue = CONFIG.LANGUAGES.FR,
+        seDeplace = false
     } = familyData;
 
     const eligibilityList = [];
@@ -209,24 +217,32 @@ function buildFamilyNotes(familyData) {
     if (sadaqa) eligibilityList.push('Sadaqa');
     const eligibilityText = eligibilityList.length > 0 ? eligibilityList.join(', ') : 'Aucune';
 
-    // Build structured notes (one line per field for easy parsing)
-    const notes = [
-        `Family ID: ${id}`,
-        `Criticité: ${criticite}`,
-        `Adultes: ${nombreAdulte}`,
-        `Enfants: ${nombreEnfant}`,
-        `Éligibilité: ${eligibilityText}`,
-        `Langue: ${langue}`
-    ].join('\n');
+    // ⚠️ IMPORTANT: If you change field names here, you MUST also update:
+    //    1. parseFamilyMetadataFromContact() function below
+    //    2. findContactByFamilyId() function (search key)
 
-    return notes;
+    // Build custom fields array
+    const customFields = [
+        { key: 'ID', value: String(id) },              // 🔧 Rename: e.g., 'ID Famille'
+        { key: 'Criticité', value: String(criticite) },       // 🔧 Rename: e.g., 'Priorité'
+        { key: 'Adultes', value: String(nombreAdulte) },      // 🔧 Rename: e.g., 'Nb Adultes'
+        { key: 'Enfants', value: String(nombreEnfant) },      // 🔧 Rename: e.g., 'Nb Enfants'
+        { key: 'Éligibilité', value: eligibilityText },       // 🔧 Rename: e.g., 'Aide Éligible'
+        { key: 'Langue', value: langue },                     // 🔧 Rename: e.g., 'Langue Préférée'
+        { key: 'Se Déplace', value: seDeplace ? 'Oui' : 'Non' } // 🔧 Rename: e.g., 'Mobilité'
+    ];
+
+    return customFields;
 }
 
 /**
- * Parse family metadata from contact notes
- * Returns structured object with all custom fields
+ * Parse family metadata from contact custom fields
+ * UPDATED: Read from userDefined fields instead of biographies
+ * 
+ * 🔧 UPDATE FIELD NAMES HERE IF YOU RENAMED THEM:
+ * Must match the keys used in buildCustomFields()
  */
-function parseFamilyNotesFromContact(biographies) {
+function parseFamilyMetadataFromContact(userDefined) {
     const metadata = {
         familyId: null,
         criticite: 0,
@@ -234,34 +250,34 @@ function parseFamilyNotesFromContact(biographies) {
         nombreEnfant: 0,
         zakatElFitr: false,
         sadaqa: false,
-        langue: CONFIG.LANGUAGES.FR
+        langue: CONFIG.LANGUAGES.FR,
+        seDeplace: false
     };
 
-    if (!biographies || biographies.length === 0) {
+    if (!userDefined || userDefined.length === 0) {
         return metadata;
     }
 
-    const notes = biographies[0].value;
-    if (!notes) return metadata;
+    // 🔧 IMPORTANT: Update these key names if you renamed them in buildCustomFields()
+    userDefined.forEach(field => {
+        const key = field.key;
+        const value = field.value;
 
-    // Parse each line
-    const lines = notes.split('\n');
-    lines.forEach(line => {
-        const [key, value] = line.split(':').map(s => s.trim());
-
-        if (key === 'Family ID') {
+        if (key === 'ID') {           // 🔧 Must match buildCustomFields()
             metadata.familyId = value;
-        } else if (key === 'Criticité') {
+        } else if (key === 'Criticité') {    // 🔧 Must match buildCustomFields()
             metadata.criticite = parseInt(value) || 0;
-        } else if (key === 'Adultes') {
+        } else if (key === 'Adultes') {      // 🔧 Must match buildCustomFields()
             metadata.nombreAdulte = parseInt(value) || 0;
-        } else if (key === 'Enfants') {
+        } else if (key === 'Enfants') {      // 🔧 Must match buildCustomFields()
             metadata.nombreEnfant = parseInt(value) || 0;
-        } else if (key === 'Éligibilité') {
+        } else if (key === 'Éligibilité') {  // 🔧 Must match buildCustomFields()
             metadata.zakatElFitr = value.includes('Zakat El Fitr');
             metadata.sadaqa = value.includes('Sadaqa');
-        } else if (key === 'Langue') {
+        } else if (key === 'Langue') {       // 🔧 Must match buildCustomFields()
             metadata.langue = value;
+        } else if (key === 'Se Déplace') {   // 🔧 Must match buildCustomFields()
+            metadata.seDeplace = value === 'Oui';
         }
     });
 
@@ -269,8 +285,8 @@ function parseFamilyNotesFromContact(biographies) {
 }
 
 /**
- * Create new contact with groups, structured address, and custom fields
- * ENHANCED: Now stores criticité, household, and eligibility in notes
+ * Create new contact with custom fields
+ * ENHANCED: Uses userDefined fields instead of biographies
  */
 function createContact(familyData) {
     const { id, nom, prenom, email, telephone, phoneBis, adresse, idQuartier } = familyData;
@@ -281,10 +297,7 @@ function createContact(familyData) {
             familyName: nom || '',
             displayName: `${prenom} ${nom}`
         }],
-        biographies: [{
-            value: buildFamilyNotes(familyData),
-            contentType: 'TEXT_PLAIN'
-        }]
+        userDefined: buildCustomFields(familyData)
     };
 
     if (telephone) {
@@ -362,11 +375,12 @@ function createContact(familyData) {
         phone: contactResource.phoneNumbers ? contactResource.phoneNumbers[0].value : 'none',
         email: email || 'none',
         criticite: familyData.criticite,
-        household: `${familyData.nombreAdulte}A/${familyData.nombreEnfant}E`
+        household: `${familyData.nombreAdulte}A/${familyData.nombreEnfant}E`,
+        customFieldsCount: contactResource.userDefined.length
     });
 
     People.People.createContact(contactResource);
-    logInfo(`Contact created with metadata for family: ${id}`);
+    logInfo(`Contact created with custom fields for family: ${id}`);
 }
 
 /**

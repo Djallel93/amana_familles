@@ -1,11 +1,11 @@
 /**
- * @file src/services/reverseContactSyncService.js (NEW)
- * @description Reverse sync from Google Contacts to Sheets
+ * @file src/services/reverseContactSyncService.js (ENHANCED FOR CUSTOM FIELDS)
+ * @description Reverse sync from Google Contacts to Sheets using custom fields
  */
 
 /**
  * Main reverse sync function - fetch all contacts and sync to sheet
- * Can be triggered manually or via time-driven trigger
+ * UPDATED: Read from custom fields instead of notes
  */
 function reverseContactSync() {
     try {
@@ -105,6 +105,7 @@ function reverseContactSync() {
 
 /**
  * Fetch all family contacts from main group
+ * UPDATED: Request userDefined fields instead of biographies
  */
 function fetchAllFamilyContacts() {
     try {
@@ -115,10 +116,10 @@ function fetchAllFamilyContacts() {
             return [];
         }
 
-        // Fetch all contacts
+        // Fetch all contacts with userDefined fields
         const response = People.People.Connections.list('people/me', {
             pageSize: 2000,
-            personFields: 'names,emailAddresses,phoneNumbers,addresses,biographies,memberships'
+            personFields: 'names,emailAddresses,phoneNumbers,addresses,userDefined,memberships'
         });
 
         if (!response.connections || response.connections.length === 0) {
@@ -145,10 +146,10 @@ function fetchAllFamilyContacts() {
 
 /**
  * Sync single contact to sheet
- * Returns { updated: boolean, familyId: string, changes: array }
+ * UPDATED: Parse from custom fields instead of notes
  */
 function syncContactToSheet(contact) {
-    const metadata = parseFamilyNotesFromContact(contact.biographies);
+    const metadata = parseFamilyMetadataFromContact(contact.userDefined);
     const familyId = metadata.familyId;
 
     if (!familyId) {
@@ -249,6 +250,7 @@ function extractContactData(contact) {
 
 /**
  * Detect changes between sheet data and contact data
+ * UPDATED: Include household validation
  */
 function detectChanges(existingData, contactData, metadata) {
     const changes = [];
@@ -393,13 +395,65 @@ function detectChanges(existingData, contactData, metadata) {
         });
     }
 
+    // Compare se déplace
+    const sheetSeDeplace = existingData[OUTPUT_COLUMNS.SE_DEPLACE] === true;
+    if (metadata.seDeplace !== sheetSeDeplace) {
+        changes.push({
+            field: 'se_deplace',
+            column: OUTPUT_COLUMNS.SE_DEPLACE,
+            oldValue: sheetSeDeplace,
+            newValue: metadata.seDeplace
+        });
+    }
+
     return changes;
 }
 
 /**
  * Apply detected changes to sheet
+ * ENHANCED: Validate household composition before applying
  */
 function applyChangesToSheet(sheet, row, existingData, contactData, metadata, changes) {
+    // Check if household composition changes would result in zero persons
+    const householdChanges = changes.filter(c => c.field === 'nombre_adulte' || c.field === 'nombre_enfant');
+
+    if (householdChanges.length > 0) {
+        // Calculate new totals
+        let newAdultes = parseInt(existingData[OUTPUT_COLUMNS.NOMBRE_ADULTE]) || 0;
+        let newEnfants = parseInt(existingData[OUTPUT_COLUMNS.NOMBRE_ENFANT]) || 0;
+
+        householdChanges.forEach(change => {
+            if (change.field === 'nombre_adulte') {
+                newAdultes = change.newValue;
+            } else if (change.field === 'nombre_enfant') {
+                newEnfants = change.newValue;
+            }
+        });
+
+        // Validate household composition
+        const validation = validateHouseholdComposition(newAdultes, newEnfants);
+
+        if (!validation.isValid) {
+            logWarning(`Skipping household update for family at row ${row}: ${validation.error}`);
+
+            // Remove household changes from the changes array
+            changes = changes.filter(c => c.field !== 'nombre_adulte' && c.field !== 'nombre_enfant');
+
+            // Add warning comment
+            const existingComment = existingData[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
+            const warningComment = addComment(
+                existingComment,
+                formatComment('⚠️', `Sync Contact ignoré: ${validation.error}`)
+            );
+            sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(warningComment);
+
+            // If no other changes, return early
+            if (changes.length === 0) {
+                return;
+            }
+        }
+    }
+
     // Apply each change
     changes.forEach(change => {
         sheet.getRange(row, change.column + 1).setValue(change.newValue);

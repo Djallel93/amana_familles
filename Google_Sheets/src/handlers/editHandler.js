@@ -1,10 +1,11 @@
 /**
- * @file src/handlers/editHandler.js (UPDATED)
- * @description Handle onEdit triggers with zakat/sadaqa validation requirements
+ * @file src/handlers/editHandler.js (ENHANCED WITH HOUSEHOLD VALIDATION)
+ * @description Handle onEdit triggers with household validation
  */
 
 /**
  * Handle edit events on Famille sheet
+ * ENHANCED: Validate household composition
  */
 function handleEdit(e) {
     try {
@@ -19,6 +20,12 @@ function handleEdit(e) {
 
         if (row === 1) return;
 
+        // Handle household composition changes (columns NOMBRE_ADULTE or NOMBRE_ENFANT)
+        if (col === OUTPUT_COLUMNS.NOMBRE_ADULTE + 1 || col === OUTPUT_COLUMNS.NOMBRE_ENFANT + 1) {
+            handleHouseholdCompositionEdit(sheet, row, col, e);
+            return;
+        }
+
         if (col === OUTPUT_COLUMNS.ETAT_DOSSIER + 1) {
             const newStatus = e.value;
             const oldStatus = e.oldValue;
@@ -32,11 +39,32 @@ function handleEdit(e) {
                 const criticite = sheet.getRange(row, OUTPUT_COLUMNS.CRITICITE + 1).getValue();
                 let quartierId = sheet.getRange(row, OUTPUT_COLUMNS.ID_QUARTIER + 1).getValue();
 
-                // NEW: Get zakat and sadaqa values
+                // Get zakat and sadaqa values
                 const zakatElFitr = sheet.getRange(row, OUTPUT_COLUMNS.ZAKAT_EL_FITR + 1).getValue();
                 const sadaqa = sheet.getRange(row, OUTPUT_COLUMNS.SADAQA + 1).getValue();
 
-                // VALIDATION 1: Check criticite
+                // Get household composition
+                const nombreAdulte = parseInt(sheet.getRange(row, OUTPUT_COLUMNS.NOMBRE_ADULTE + 1).getValue()) || 0;
+                const nombreEnfant = parseInt(sheet.getRange(row, OUTPUT_COLUMNS.NOMBRE_ENFANT + 1).getValue()) || 0;
+
+                // VALIDATION 1: Check household composition
+                const householdValidation = validateHouseholdComposition(nombreAdulte, nombreEnfant);
+                if (!householdValidation.isValid) {
+                    const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
+                    sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatusValue);
+
+                    SpreadsheetApp.getUi().alert(
+                        '⚠️ Composition du foyer invalide',
+                        householdValidation.error + '\n\n' +
+                        'Le statut a été rétabli à: ' + oldStatusValue,
+                        SpreadsheetApp.getUi().ButtonSet.OK
+                    );
+
+                    logInfo(`Validation blocked for row ${row}: ${householdValidation.error}`);
+                    return;
+                }
+
+                // VALIDATION 2: Check criticite
                 if (!criticite || criticite === 0) {
                     const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
                     sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatusValue);
@@ -68,7 +96,7 @@ function handleEdit(e) {
                     return;
                 }
 
-                // VALIDATION 2: Check zakat_el_fitr and sadaqa (NEW)
+                // VALIDATION 3: Check zakat_el_fitr and sadaqa
                 if (zakatElFitr !== true && sadaqa !== true) {
                     const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
                     sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatusValue);
@@ -86,7 +114,7 @@ function handleEdit(e) {
                     return;
                 }
 
-                // VALIDATION 3: Check quartier (auto-resolve if missing)
+                // VALIDATION 4: Check quartier (auto-resolve if missing)
                 if (!quartierId) {
                     logInfo(`Attempting to auto-resolve quartier for row ${row}`);
 
@@ -222,6 +250,58 @@ function handleEdit(e) {
 }
 
 /**
+ * NEW: Handle household composition edits
+ */
+function handleHouseholdCompositionEdit(sheet, row, col, e) {
+    try {
+        const newValue = parseInt(e.value) || 0;
+
+        // Get the other household value
+        let nombreAdulte, nombreEnfant;
+
+        if (col === OUTPUT_COLUMNS.NOMBRE_ADULTE + 1) {
+            nombreAdulte = newValue;
+            nombreEnfant = parseInt(sheet.getRange(row, OUTPUT_COLUMNS.NOMBRE_ENFANT + 1).getValue()) || 0;
+        } else {
+            nombreAdulte = parseInt(sheet.getRange(row, OUTPUT_COLUMNS.NOMBRE_ADULTE + 1).getValue()) || 0;
+            nombreEnfant = newValue;
+        }
+
+        // Validate household composition
+        const validation = validateHouseholdComposition(nombreAdulte, nombreEnfant);
+
+        if (!validation.isValid) {
+            // Revert to old value
+            sheet.getRange(row, col).setValue(parseInt(e.oldValue) || 0);
+
+            SpreadsheetApp.getUi().alert(
+                '⚠️ Composition du foyer invalide',
+                validation.error + '\n\n' +
+                'La valeur a été rétablie à: ' + (parseInt(e.oldValue) || 0),
+                SpreadsheetApp.getUi().ButtonSet.OK
+            );
+
+            logInfo(`Household composition edit blocked for row ${row}: ${validation.error}`);
+            return;
+        }
+
+        // Add comment about household update
+        const existingComment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
+        const fieldName = col === OUTPUT_COLUMNS.NOMBRE_ADULTE + 1 ? 'Adultes' : 'Enfants';
+        const newComment = addComment(
+            existingComment,
+            formatComment('👥', `${fieldName}: ${e.oldValue || 0} → ${newValue} (Total: ${validation.total})`)
+        );
+        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
+
+        logInfo(`Household composition updated for row ${row}: ${fieldName} = ${newValue}, Total = ${validation.total}`);
+
+    } catch (error) {
+        logError('Household composition edit handler failed', error);
+    }
+}
+
+/**
  * Handle archive status - delete contact
  */
 function handleArchiveStatus(sheet, row) {
@@ -272,10 +352,10 @@ function processValidatedFamily(sheet, row) {
 
         const familyId = data[OUTPUT_COLUMNS.ID];
         const identityUrls = data[OUTPUT_COLUMNS.IDENTITE];
-        const aidesEtatUrls = data[OUTPUT_COLUMNS.AIDES_ETAT]; // UPDATED
+        const aidesEtatUrls = data[OUTPUT_COLUMNS.AIDES_ETAT];
 
         const identityIds = extractFileIds(identityUrls);
-        const aidesEtatIds = extractFileIds(aidesEtatUrls); // UPDATED
+        const aidesEtatIds = extractFileIds(aidesEtatUrls);
 
         if (identityIds.length > 0 || aidesEtatIds.length > 0) {
             const organized = organizeDocuments(familyId, identityIds, aidesEtatIds, []);
@@ -285,7 +365,7 @@ function processValidatedFamily(sheet, row) {
                     formatDocumentLinks(organized.identity)
                 );
             }
-            if (organized.aidesEtat.length > 0) { // UPDATED
+            if (organized.aidesEtat.length > 0) {
                 sheet.getRange(row, OUTPUT_COLUMNS.AIDES_ETAT + 1).setValue(
                     formatDocumentLinks(organized.aidesEtat)
                 );
@@ -305,7 +385,14 @@ function processValidatedFamily(sheet, row) {
             telephone: rawPhone,
             phoneBis: rawPhoneBis,
             adresse: data[OUTPUT_COLUMNS.ADRESSE],
-            idQuartier: data[OUTPUT_COLUMNS.ID_QUARTIER]
+            idQuartier: data[OUTPUT_COLUMNS.ID_QUARTIER],
+            nombreAdulte: parseInt(data[OUTPUT_COLUMNS.NOMBRE_ADULTE]) || 0,
+            nombreEnfant: parseInt(data[OUTPUT_COLUMNS.NOMBRE_ENFANT]) || 0,
+            criticite: parseInt(data[OUTPUT_COLUMNS.CRITICITE]) || 0,
+            zakatElFitr: data[OUTPUT_COLUMNS.ZAKAT_EL_FITR] === true,
+            sadaqa: data[OUTPUT_COLUMNS.SADAQA] === true,
+            langue: data[OUTPUT_COLUMNS.LANGUE] || CONFIG.LANGUAGES.FR,
+            seDeplace: data[OUTPUT_COLUMNS.SE_DEPLACE] === true
         };
 
         const contactResult = syncFamilyContact(familyData);

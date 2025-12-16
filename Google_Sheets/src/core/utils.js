@@ -225,6 +225,7 @@ function getOrCreateFolder(parentFolder, folderName) {
 
 /**
  * ✅ Valider les champs requis
+ * ENHANCED: Check that household has at least one person
  */
 function validateRequiredFields(data) {
     const errors = [];
@@ -240,11 +241,55 @@ function validateRequiredFields(data) {
     if (data.nombreAdulte == null || isNaN(data.nombreAdulte)) errors.push('Nombre d\'adultes requis');
     if (data.nombreEnfant == null || isNaN(data.nombreEnfant)) errors.push('Nombre d\'enfants requis');
 
+    // NEW: Validate household composition
+    const totalPersons = parseInt(data.nombreAdulte || 0) + parseInt(data.nombreEnfant || 0);
+    if (totalPersons === 0) {
+        errors.push('Le foyer doit contenir au moins une personne (adulte ou enfant)');
+    }
+
     return {
         isValid: errors.length === 0,
         errors: errors
     };
 }
+
+/**
+ * NEW: Validate household composition separately (for updates)
+ */
+function validateHouseholdComposition(nombreAdulte, nombreEnfant) {
+    const adultes = parseInt(nombreAdulte) || 0;
+    const enfants = parseInt(nombreEnfant) || 0;
+    
+    if (adultes < 0) {
+        return {
+            isValid: false,
+            error: 'Le nombre d\'adultes ne peut pas être négatif'
+        };
+    }
+    
+    if (enfants < 0) {
+        return {
+            isValid: false,
+            error: 'Le nombre d\'enfants ne peut pas être négatif'
+        };
+    }
+    
+    const total = adultes + enfants;
+    if (total === 0) {
+        return {
+            isValid: false,
+            error: 'Le foyer doit contenir au moins une personne (adulte ou enfant)'
+        };
+    }
+    
+    return {
+        isValid: true,
+        adultes: adultes,
+        enfants: enfants,
+        total: total
+    };
+}
+
 
 /**
  * 🔗 Extraire les IDs de fichier depuis les URLs Drive
