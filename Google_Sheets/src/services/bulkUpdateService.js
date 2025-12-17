@@ -1,10 +1,13 @@
 /**
- * @file src/services/bulkUpdateService.js (ENHANCED)
- * @description Handle bulk updates with "En cours" status after update
+ * @file src/services/bulkUpdateService.js (FIXED)
+ * @description Handle bulk updates with proper row tracking
  */
 
 /**
  * Process single bulk update row
+ * @param {Array} row - Row data
+ * @param {Sheet} sheet - Bulk Update sheet
+ * @param {number} rowNumber - ACTUAL row number in sheet (1-based)
  */
 function processBulkUpdateRow(row, sheet, rowNumber) {
     const familyId = row[BULK_UPDATE_COLUMNS.ID];
@@ -29,11 +32,11 @@ function processBulkUpdateRow(row, sheet, rowNumber) {
         updatedFields.push('prenom');
     }
     if (row[BULK_UPDATE_COLUMNS.NOMBRE_ADULTE] !== '' && row[BULK_UPDATE_COLUMNS.NOMBRE_ADULTE] !== null) {
-        updateData.nombreAdulte = row[BULK_UPDATE_COLUMNS.NOMBRE_ADULTE];
+        updateData.nombreAdulte = parseInt(row[BULK_UPDATE_COLUMNS.NOMBRE_ADULTE]);
         updatedFields.push('nombre_adulte');
     }
     if (row[BULK_UPDATE_COLUMNS.NOMBRE_ENFANT] !== '' && row[BULK_UPDATE_COLUMNS.NOMBRE_ENFANT] !== null) {
-        updateData.nombreEnfant = row[BULK_UPDATE_COLUMNS.NOMBRE_ENFANT];
+        updateData.nombreEnfant = parseInt(row[BULK_UPDATE_COLUMNS.NOMBRE_ENFANT]);
         updatedFields.push('nombre_enfant');
     }
     if (row[BULK_UPDATE_COLUMNS.ADRESSE]) {
@@ -60,6 +63,10 @@ function processBulkUpdateRow(row, sheet, rowNumber) {
         updateData.email = row[BULK_UPDATE_COLUMNS.EMAIL];
         updatedFields.push('email');
     }
+    if (row[BULK_UPDATE_COLUMNS.SE_DEPLACE] !== '' && row[BULK_UPDATE_COLUMNS.SE_DEPLACE] !== null) {
+        updateData.seDeplace = parseSeDeplace(row[BULK_UPDATE_COLUMNS.SE_DEPLACE]);
+        updatedFields.push('se_deplace');
+    }
     if (row[BULK_UPDATE_COLUMNS.CIRCONSTANCES]) {
         updateData.circonstances = row[BULK_UPDATE_COLUMNS.CIRCONSTANCES];
         updatedFields.push('circonstances');
@@ -73,8 +80,12 @@ function processBulkUpdateRow(row, sheet, rowNumber) {
         updatedFields.push('specificites');
     }
     if (row[BULK_UPDATE_COLUMNS.CRITICITE] !== '' && row[BULK_UPDATE_COLUMNS.CRITICITE] !== null) {
-        updateData.criticite = row[BULK_UPDATE_COLUMNS.CRITICITE];
+        updateData.criticite = parseInt(row[BULK_UPDATE_COLUMNS.CRITICITE]);
         updatedFields.push('criticite');
+    }
+    if (row[BULK_UPDATE_COLUMNS.LANGUE]) {
+        updateData.langue = row[BULK_UPDATE_COLUMNS.LANGUE];
+        updatedFields.push('langue');
     }
 
     if (updatedFields.length === 0) {
@@ -84,7 +95,7 @@ function processBulkUpdateRow(row, sheet, rowNumber) {
         };
     }
 
-    // CHANGED: Force status to "En cours" after bulk update
+    // Force status to "En cours" after bulk update
     updateData.forceInProgress = true;
 
     // Update family
@@ -105,7 +116,7 @@ function processBulkUpdateRow(row, sheet, rowNumber) {
 }
 
 /**
- * Process bulk updates with batch limit
+ * Process bulk updates with batch limit (FIXED ROW TRACKING)
  */
 function processBulkUpdate(batchSize = 10) {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BULK_UPDATE_SHEET_NAME);
@@ -119,21 +130,33 @@ function processBulkUpdate(batchSize = 10) {
 
     const lastRow = sheet.getLastRow();
 
+    // Row 1: Headers
+    // Row 2+: Data
     if (lastRow <= 1) {
         return {
             success: false,
-            message: '⚠️ No data to process. Paste your updates in "Bulk Update" sheet.'
+            message: '⚠️ No data to process. Paste your updates in "Bulk Update" sheet starting from row 2.'
         };
     }
 
-    const data = sheet.getRange(2, 1, lastRow - 1, 16).getValues();
+    // Get data starting from row 2
+    const dataStartRow = 2;
+    const numDataRows = lastRow - 1;
+    const data = sheet.getRange(dataStartRow, 1, numDataRows, 18).getValues();
+    const comments = sheet.getRange(dataStartRow, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1, numDataRows, 1).getValues();
 
     // Find pending rows
     const pendingRows = [];
     data.forEach((row, index) => {
-        const comment = row[BULK_UPDATE_COLUMNS.COMMENTAIRE];
-        if (!comment || comment === '' || comment === 'En attente') {
-            pendingRows.push({ row: row, index: index + 2 });
+        const comment = comments[index][0];
+        const actualRowNumber = dataStartRow + index;
+
+        if (!comment || comment === '' || comment === 'En attente' || comment.includes('En cours...')) {
+            pendingRows.push({
+                row: row,
+                sheetRowNumber: actualRowNumber,
+                dataIndex: index
+            });
         }
     });
 
@@ -142,7 +165,10 @@ function processBulkUpdate(batchSize = 10) {
             success: true,
             message: '✅ All rows already processed.',
             processed: 0,
-            remaining: 0
+            succeeded: 0,
+            failed: 0,
+            remaining: 0,
+            errors: []
         };
     }
 
@@ -160,39 +186,38 @@ function processBulkUpdate(batchSize = 10) {
     logInfo(`✏️ Processing ${rowsToProcess.length} updates (batch: ${batchSize})`);
 
     rowsToProcess.forEach(item => {
-        const { row, index } = item;
-        const rowNumber = index;
+        const { row, sheetRowNumber } = item;
 
         try {
-            sheet.getRange(rowNumber, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue('⚙️ En cours...');
+            sheet.getRange(sheetRowNumber, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue('⚙️ En cours...');
             SpreadsheetApp.flush();
 
-            const result = processBulkUpdateRow(row, sheet, rowNumber);
+            const result = processBulkUpdateRow(row, sheet, sheetRowNumber);
 
             if (result.success) {
                 results.succeeded++;
-                let comment = `✅ Mis à jour: ${result.updatedFields.join(', ')} (Statut: En cours)`;
+                let comment = `✅ Mis à jour: ${result.updatedFields.join(', ')}`;
                 if (result.quartierWarning) {
                     comment += `\n${result.quartierWarning}`;
                 }
-                sheet.getRange(rowNumber, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue(comment);
+                sheet.getRange(sheetRowNumber, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue(comment);
             } else {
                 results.failed++;
-                sheet.getRange(rowNumber, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue(
+                sheet.getRange(sheetRowNumber, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue(
                     `❌ Erreur: ${result.error}`
                 );
-                results.errors.push({ row: rowNumber, error: result.error });
+                results.errors.push({ row: sheetRowNumber, error: result.error });
             }
 
             results.processed++;
 
         } catch (error) {
-            logError(`❌ Error row ${rowNumber}`, error);
+            logError(`❌ Error row ${sheetRowNumber}`, error);
             results.failed++;
-            sheet.getRange(rowNumber, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue(
+            sheet.getRange(sheetRowNumber, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue(
                 `❌ System error: ${error.toString()}`
             );
-            results.errors.push({ row: rowNumber, error: error.toString() });
+            results.errors.push({ row: sheetRowNumber, error: error.toString() });
         }
     });
 
@@ -265,10 +290,12 @@ function getBulkUpdateStatistics() {
         };
     }
 
-    const data = sheet.getRange(2, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1, lastRow - 1, 1).getValues();
+    const dataStartRow = 2;
+    const numDataRows = lastRow - 1;
+    const data = sheet.getRange(dataStartRow, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1, numDataRows, 1).getValues();
 
     const stats = {
-        total: lastRow - 1,
+        total: numDataRows,
         pending: 0,
         processing: 0,
         success: 0,
@@ -301,12 +328,15 @@ function resetUpdateProcessingStatus() {
     const lastRow = sheet.getLastRow();
     if (lastRow <= 1) return;
 
-    const data = sheet.getRange(2, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1, lastRow - 1, 1).getValues();
+    const dataStartRow = 2;
+    const numDataRows = lastRow - 1;
+    const data = sheet.getRange(dataStartRow, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1, numDataRows, 1).getValues();
 
     let resetCount = 0;
     data.forEach((row, index) => {
         if (row[0] && row[0].includes('En cours')) {
-            sheet.getRange(index + 2, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue(
+            const actualRow = dataStartRow + index;
+            sheet.getRange(actualRow, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue(
                 'En attente (reset after timeout)'
             );
             resetCount++;
@@ -331,13 +361,34 @@ function getOrCreateBulkUpdateSheet() {
         const headers = [
             'id', 'nom', 'prenom', 'nombre_adulte', 'nombre_enfant',
             'adresse', 'code_postal', 'ville', 'telephone', 'telephone_bis',
-            'email', 'circonstances', 'ressentit', 'specificites',
-            'criticite', 'commentaire'
+            'email', 'se_deplace', 'circonstances', 'ressentit', 'specificites',
+            'criticite', 'langue', 'commentaire'
         ];
 
         sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-        sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+
+        // Format headers
+        const headerRange = sheet.getRange(1, 1, 1, headers.length);
+        headerRange.setBackground('#1a73e8');
+        headerRange.setFontColor('#ffffff');
+        headerRange.setFontWeight('bold');
+        headerRange.setHorizontalAlignment('center');
+
         sheet.setFrozenRows(1);
+
+        // Set column widths
+        sheet.setColumnWidth(1, 80); // id
+        sheet.setColumnWidths(2, 3, 150); // nom, prenom, nombre_adulte
+        sheet.setColumnWidth(4, 100); // nombre_enfant
+        sheet.setColumnWidth(5, 250); // adresse
+        sheet.setColumnWidths(6, 2, 100); // code_postal, ville
+        sheet.setColumnWidths(8, 2, 150); // telephone, telephone_bis
+        sheet.setColumnWidth(10, 150); // email
+        sheet.setColumnWidth(11, 80); // se_deplace
+        sheet.setColumnWidths(12, 3, 200); // circonstances, ressentit, specificites
+        sheet.setColumnWidth(15, 80); // criticite
+        sheet.setColumnWidth(16, 100); // langue
+        sheet.setColumnWidth(17, 300); // commentaire
 
         logInfo('📄 Bulk Update sheet created');
     }

@@ -1,10 +1,13 @@
 /**
- * @file src/services/bulkImportService.js (ENHANCED)
- * @description Complete bulk import service with "En cours" status after import
+ * @file src/services/bulkImportService.js (FIXED)
+ * @description Complete bulk import service with proper row tracking
  */
 
 /**
  * Process single bulk import row
+ * @param {Array} row - Row data
+ * @param {Sheet} sheet - Bulk Import sheet
+ * @param {number} rowNumber - ACTUAL row number in sheet (1-based)
  */
 function processBulkImportRow(row, sheet, rowNumber) {
     // Extract data from row
@@ -22,7 +25,9 @@ function processBulkImportRow(row, sheet, rowNumber) {
         circonstances: row[BULK_COLUMNS.CIRCONSTANCES] || '',
         ressentit: row[BULK_COLUMNS.RESSENTIT] || '',
         specificites: row[BULK_COLUMNS.SPECIFICITES] || '',
-        criticite: parseInt(row[BULK_COLUMNS.CRITICITE]) || 0
+        criticite: parseInt(row[BULK_COLUMNS.CRITICITE]) || 0,
+        langue: row[BULK_COLUMNS.LANGUE] || CONFIG.LANGUAGES.FR,
+        seDeplace: parseSeDeplace(row[BULK_COLUMNS.SE_DEPLACE])
     };
 
     // Validate required fields
@@ -72,6 +77,15 @@ function processBulkImportRow(row, sheet, rowNumber) {
         };
     }
 
+    // Validate household composition
+    const householdValidation = validateHouseholdComposition(formData.nombreAdulte, formData.nombreEnfant);
+    if (!householdValidation.isValid) {
+        return {
+            success: false,
+            error: householdValidation.error
+        };
+    }
+
     // Validate address and get quartier
     const addressValidation = validateAddressAndGetQuartier(
         formData.address,
@@ -108,9 +122,9 @@ function processBulkImportRow(row, sheet, rowNumber) {
     // Generate new family ID
     const familyId = generateFamilyId();
 
-    // CHANGED: Always set status to "En cours" after bulk import
+    // Set status to "En cours" after bulk import
     const status = CONFIG.STATUS.IN_PROGRESS;
-    let comment = `Importé en masse le ${new Date().toLocaleString('fr-FR')}`;
+    let comment = `📥 ${new Date().toLocaleString('fr-FR')} Importé en masse})`;
 
     if (quartierWarning) {
         comment += `\n⚠️ ${quartierWarning}`;
@@ -124,15 +138,16 @@ function processBulkImportRow(row, sheet, rowNumber) {
         quartierId: addressValidation.quartierId,
         quartierName: addressValidation.quartierName,
         identityIds: [],
-        cafIds: [],
+        aidesEtatIds: [],
         resourceIds: [],
-        criticite: criticite
+        criticite: criticite,
+        langue: formData.langue,
+        seDeplace: formData.seDeplace,
+        zakatElFitr: false,
+        sadaqa: false
     });
 
-    // Note: Contact will NOT be synced here because status is "En cours"
-    // Contact will be created only when status changes to "Validé"
-
-    logInfo(`✅ Famille importée avec statut "En cours": ${familyId}`, { criticite });
+    logInfo(`✅ Famille importée avec statut "En cours": ${familyId} (Ligne ${rowNumber})`, { criticite });
 
     return {
         success: true,
@@ -141,10 +156,8 @@ function processBulkImportRow(row, sheet, rowNumber) {
     };
 }
 
-// ... (rest of the bulk import service remains unchanged)
-
 /**
- * Process bulk import with batch limit
+ * Process bulk import with batch limit (FIXED ROW TRACKING)
  */
 function processBulkImport(batchSize = 10) {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BULK_IMPORT_SHEET_NAME);
@@ -158,6 +171,9 @@ function processBulkImport(batchSize = 10) {
 
     const lastRow = sheet.getLastRow();
 
+    // Row 1: Headers
+    // Row 2: Instructions
+    // Row 3+: Data
     if (lastRow <= 2) {
         return {
             success: false,
@@ -165,15 +181,25 @@ function processBulkImport(batchSize = 10) {
         };
     }
 
-    // Get data starting from row 3 (skip header and instructions)
-    const data = sheet.getRange(3, 1, lastRow - 2, 15).getValues();
+    // Get data starting from row 3 (skip header row 1 and instructions row 2)
+    const dataStartRow = 3;
+    const numDataRows = lastRow - 2; // Total data rows
+    const data = sheet.getRange(dataStartRow, 1, numDataRows, 17).getValues();
+    const comments = sheet.getRange(dataStartRow, BULK_COLUMNS.COMMENTAIRE + 1, numDataRows, 1).getValues();
 
-    // Find pending rows
+    // Find pending rows (not yet processed)
     const pendingRows = [];
     data.forEach((row, index) => {
-        const comment = row[BULK_COLUMNS.COMMENTAIRE];
-        if (!comment || comment === '' || comment === 'En attente') {
-            pendingRows.push({ row: row, index: index + 3 });
+        const comment = comments[index][0];
+        const actualRowNumber = dataStartRow + index; // Actual row number in sheet
+
+        // Only process if not already processed successfully
+        if (!comment || comment === '' || comment === 'En attente' || comment.includes('En cours...')) {
+            pendingRows.push({
+                row: row,
+                sheetRowNumber: actualRowNumber,
+                dataIndex: index
+            });
         }
     });
 
@@ -204,39 +230,38 @@ function processBulkImport(batchSize = 10) {
     logInfo(`📥 Processing ${rowsToProcess.length} imports (batch: ${batchSize})`);
 
     rowsToProcess.forEach(item => {
-        const { row, index } = item;
-        const rowNumber = index;
+        const { row, sheetRowNumber } = item;
 
         try {
-            sheet.getRange(rowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue('⚙️ En cours...');
+            sheet.getRange(sheetRowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue('⚙️ En cours...');
             SpreadsheetApp.flush();
 
-            const result = processBulkImportRow(row, sheet, rowNumber);
+            const result = processBulkImportRow(row, sheet, sheetRowNumber);
 
             if (result.success) {
                 results.succeeded++;
-                let comment = `✅ Importée: ${result.familyId} (Statut: En cours)`;
+                let comment = `✅ Importée avec ID ${result.familyId}`;
                 if (result.quartierWarning) {
                     comment += `\n${result.quartierWarning}`;
                 }
-                sheet.getRange(rowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue(comment);
+                sheet.getRange(sheetRowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue(comment);
             } else {
                 results.failed++;
-                sheet.getRange(rowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue(
+                sheet.getRange(sheetRowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue(
                     `❌ Erreur: ${result.error}`
                 );
-                results.errors.push({ row: rowNumber, error: result.error });
+                results.errors.push({ row: sheetRowNumber, error: result.error });
             }
 
             results.processed++;
 
         } catch (error) {
-            logError(`❌ Error row ${rowNumber}`, error);
+            logError(`❌ Error row ${sheetRowNumber}`, error);
             results.failed++;
-            sheet.getRange(rowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue(
+            sheet.getRange(sheetRowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue(
                 `❌ System error: ${error.toString()}`
             );
-            results.errors.push({ row: rowNumber, error: error.toString() });
+            results.errors.push({ row: sheetRowNumber, error: error.toString() });
         }
     });
 
@@ -279,10 +304,13 @@ function getBulkImportStatistics() {
         };
     }
 
-    const data = sheet.getRange(3, BULK_COLUMNS.COMMENTAIRE + 1, lastRow - 2, 1).getValues();
+    // Data starts at row 3
+    const dataStartRow = 3;
+    const numDataRows = lastRow - 2;
+    const data = sheet.getRange(dataStartRow, BULK_COLUMNS.COMMENTAIRE + 1, numDataRows, 1).getValues();
 
     const stats = {
-        total: lastRow - 2,
+        total: numDataRows,
         pending: 0,
         processing: 0,
         success: 0,
@@ -320,12 +348,13 @@ function clearBulkImportSheet() {
 
     const lastRow = sheet.getLastRow();
 
-    if (lastRow > 3) {
-        sheet.deleteRows(4, lastRow - 3);
+    // Keep rows 1 (header) and 2 (instructions), delete from row 3 onwards
+    if (lastRow > 2) {
+        sheet.deleteRows(3, lastRow - 2);
         logInfo('🗑️ Bulk Import sheet cleared');
         return {
             success: true,
-            message: `✅ ${lastRow - 3} rows deleted`
+            message: `✅ ${lastRow - 2} rows deleted`
         };
     }
 
@@ -345,12 +374,15 @@ function resetProcessingStatus() {
     const lastRow = sheet.getLastRow();
     if (lastRow <= 2) return;
 
-    const data = sheet.getRange(3, BULK_COLUMNS.COMMENTAIRE + 1, lastRow - 2, 1).getValues();
+    const dataStartRow = 3;
+    const numDataRows = lastRow - 2;
+    const data = sheet.getRange(dataStartRow, BULK_COLUMNS.COMMENTAIRE + 1, numDataRows, 1).getValues();
 
     let resetCount = 0;
     data.forEach((row, index) => {
         if (row[0] && row[0].includes('En cours')) {
-            sheet.getRange(index + 3, BULK_COLUMNS.COMMENTAIRE + 1).setValue(
+            const actualRow = dataStartRow + index;
+            sheet.getRange(actualRow, BULK_COLUMNS.COMMENTAIRE + 1).setValue(
                 'En attente (reset after timeout)'
             );
             resetCount++;
@@ -372,7 +404,7 @@ function getOrCreateBulkImportSheet() {
     if (!sheet) {
         sheet = ss.insertSheet(BULK_IMPORT_SHEET_NAME);
 
-        // Set headers
+        // Row 1: Set headers
         const headers = [
             'nom',
             'prenom',
@@ -384,10 +416,12 @@ function getOrCreateBulkImportSheet() {
             'telephone',
             'telephone_bis',
             'email',
+            'se_deplace',
             'circonstances',
             'ressentit',
             'specificites',
             'criticite',
+            'langue',
             'commentaire'
         ];
 
@@ -410,9 +444,11 @@ function getOrCreateBulkImportSheet() {
         sheet.setColumnWidths(6, 2, 100);
         sheet.setColumnWidths(8, 2, 150);
         sheet.setColumnWidth(10, 150);
-        sheet.setColumnWidths(11, 3, 200);
-        sheet.setColumnWidth(14, 80);
-        sheet.setColumnWidth(15, 300);
+        sheet.setColumnWidth(11, 80); // se_deplace
+        sheet.setColumnWidths(12, 3, 200);
+        sheet.setColumnWidth(15, 80);
+        sheet.setColumnWidth(16, 100);
+        sheet.setColumnWidth(17, 300);
 
         // Add data validation for criticite
         const criticiteRule = SpreadsheetApp.newDataValidation()
@@ -421,9 +457,27 @@ function getOrCreateBulkImportSheet() {
             .setHelpText('Criticité doit être entre 0 et 5')
             .build();
 
-        sheet.getRange('N3:N1000').setDataValidation(criticiteRule);
+        sheet.getRange('O3:O1000').setDataValidation(criticiteRule);
 
-        // Add instructions in row 2
+        // Add data validation for se_deplace
+        const seDeplacRule = SpreadsheetApp.newDataValidation()
+            .requireValueInList(['Oui', 'Non', 'Yes', 'No', 'نعم', 'لا'], true)
+            .setAllowInvalid(false)
+            .setHelpText('Sélectionner Oui/Non')
+            .build();
+
+        sheet.getRange('K3:K1000').setDataValidation(seDeplacRule);
+
+        // Add data validation for langue
+        const langueRule = SpreadsheetApp.newDataValidation()
+            .requireValueInList(['Français', 'Arabe', 'Anglais'], true)
+            .setAllowInvalid(false)
+            .setHelpText('Sélectionner une langue')
+            .build();
+
+        sheet.getRange('P3:P1000').setDataValidation(langueRule);
+
+        // Row 2: Add instructions
         const instructions = [
             'Nom de famille (requis)',
             'Prénom (requis)',
@@ -435,10 +489,12 @@ function getOrCreateBulkImportSheet() {
             'Téléphone (requis)',
             'Téléphone secondaire',
             'Email',
+            'Oui/Non',
             'Circonstances',
             'Ressentit',
             'Spécificités',
             'Criticité 0-5 (requis)',
+            'Français/Arabe/Anglais',
             'Commentaire/Statut (auto)'
         ];
 
@@ -447,6 +503,9 @@ function getOrCreateBulkImportSheet() {
             .setFontStyle('italic')
             .setFontColor('#666666')
             .setBackground('#f8f9fa');
+
+        // Freeze instruction row too
+        sheet.setFrozenRows(2);
 
         logInfo('✅ Feuille Bulk Import créée avec succès');
     }
