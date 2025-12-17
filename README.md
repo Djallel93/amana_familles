@@ -1,404 +1,354 @@
-# 📦 Family Delivery Management System
+# 📦 Système de Gestion des Familles - Google Apps Script
 
-Production-ready Google Apps Script system for managing family delivery registrations via multilingual Google Forms (FR/AR/EN) with automatic validation, geocoding, and document organization.
+## 📋 Table des matières
 
-## 📂 Project Structure
+- [Vue d'ensemble](#vue-densemble)
+- [Documentation complète](#documentation-complète)
+- [Démarrage rapide](#démarrage-rapide)
+- [Architecture](#architecture)
+- [Support](#support)
 
-```txt
-├── Google_app_script/
-│   ├── appsscript.json                 # Apps Script manifest
-│   ├── .claspignore                    # Files to ignore when pushing
-│   ├── assets/
-│   │   └── css/
-│   │       └── styles.html             # Shared CSS styles
-│   ├── src/
-│   │   ├── api/
-│   │   │   └── familyApiHandler.js     # REST API endpoints
-│   │   ├── core/
-│   │   │   ├── config.js               # Configuration & constants
-│   │   │   └── utils.js                # Utility functions
-│   │   ├── handlers/
-│   │   │   ├── editHandler.js          # OnEdit trigger handler
-│   │   │   └── formHandler.js          # Form submission handler
-│   │   ├── services/
-│   │   │   ├── contactService.js       # Google Contacts sync
-│   │   │   ├── driveService.js         # Document management
-│   │   │   └── geoService.js           # Geocoding & quartier API
-│   │   └── ui/
-│   │       ├── helpers.js              # UI helper functions
-│   │       └── menu.js                 # Spreadsheet menu
-│   ├── tests/
-│   │   └── tests.js                    # Unit tests
-│   └── views/
-│       └── dialogs/
-│           └── manualEntry.html        # Manual entry form
-└── README.md
-```
+---
 
-## 🚀 Features
+## 🎯 Vue d'ensemble
 
-✅ **Multilingual Form Support** - French, Arabic, English  
-✅ **Address Validation & Geocoding** - Via external GEO API  
-✅ **Automatic Document Organization** - Drive folder structure per family  
-✅ **Google Contacts Sync** - Auto-create/update contacts  
-✅ **Duplicate Detection** - Phone + last name matching  
-✅ **Smart Caching** - Minimized API calls (free tier optimized)  
-✅ **REST API** - 8 endpoints for external access  
-✅ **Manual Entry UI** - Admin dialog for direct family registration  
-✅ **Modular Architecture** - Clean separation of concerns
+Ce système de gestion des familles est une application complète développée en Google Apps Script qui permet de :
 
-## 🛠️ Installation
+- **Collecter** les demandes d'aide via des formulaires multilingues (FR, AR, EN)
+- **Valider** automatiquement les adresses et assigner des quartiers
+- **Gérer** les documents justificatifs dans Google Drive
+- **Synchroniser** les contacts dans Google Contacts
+- **Exposer** les données via une API REST sécurisée
+- **Organiser** les familles pour les distributions (Zakat El Fitr, Sadaqa)
 
-### Prerequisites
+Le système traite automatiquement les soumissions de formulaires, valide les données, organise les documents et maintient une base de données propre et structurée dans Google Sheets.
 
-1. **Google Account** with access to:
-   - Google Sheets
-   - Google Drive
-   - Google Forms
-   - Google Apps Script
-   - Google Contacts
+---
 
-2. **External GEO API** credentials:
-   - API URL
-   - API Key
+## 📚 Documentation complète
 
-3. **clasp** (Google Apps Script CLI):
+La documentation est organisée en plusieurs fichiers pour faciliter la navigation :
 
-   ```bash
-   npm install -g @google/clasp
-   clasp login
-   ```
+### Documents principaux
 
-### Step 1: Clone or Create Project
+| Document | Description | Lien |
+|----------|-------------|------|
+| **[INSTALLATION.md](docs/INSTALLATION.md)** | Guide d'installation complet avec clasp | [→ Voir](docs/INSTALLATION.md) |
+| **[CONFIGURATION.md](docs/CONFIGURATION.md)** | Configuration du système (propriétés, sheets, formulaires, triggers) | [→ Voir](docs/CONFIGURATION.md) |
+| **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** | Architecture technique et flux de données | [→ Voir](docs/ARCHITECTURE.md) |
+| **[API.md](docs/API.md)** | Documentation complète de l'API REST | [→ Voir](docs/API.md) |
+| **[USAGE.md](docs/USAGE.md)** | Guide d'utilisation et scénarios pratiques | [→ Voir](docs/USAGE.md) |
+
+### Documents de référence
+
+| Document | Description |
+|----------|-------------|
+| **[COLUMN_MAPPING.md](docs/COLUMN_MAPPING.md)** | Mapping des colonnes multilingues |
+| **[CODE_STRUCTURE.md](docs/CODE_STRUCTURE.md)** | Structure détaillée du code |
+| **[WORKFLOWS.md](docs/WORKFLOWS.md)** | Workflows et diagrammes de flux |
+
+---
+
+## 🚀 Démarrage rapide
+
+### Prérequis
+
+- Compte Google Workspace
+- Node.js 14+ (pour clasp)
+- Accès à Google Sheets, Drive, Forms, Contacts
+
+### Installation en 5 minutes
 
 ```bash
-# Create new Apps Script project
-clasp create --type sheets --title "Family Delivery Management"
+# 1. Installer clasp
+npm install -g @google/clasp
 
-# Or clone existing project
-clasp clone <SCRIPT_ID>
-```
+# 2. Se connecter
+clasp login
 
-### Step 2: Setup Project Structure
+# 3. Créer le projet
+clasp create --type sheets --title "Gestion Familles"
 
-```bash
-# Copy all files from this repository into your local folder
-# Make sure the structure matches the one shown above
-```
-
-### Step 3: Configure Script Properties
-
-1. Open your project in Apps Script editor:
-
-   ```bash
-   clasp open
-   ```
-
-2. Go to **Project Settings** → **Script Properties**
-
-3. Add the following properties:
-
-   ```
-   GESTION_FAMILLES_FOLDER_ID = [Your main Drive folder ID]
-   SPREADSHEET_ID = [Your Google Sheets ID]
-   GEO_API_URL = [Your GEO API endpoint URL]
-   ```
-
-### Step 4: Enable APIs
-
-In the Apps Script editor:
-
-1. Click **Services** (+)
-2. Add **People API** (Google Contacts)
-
-### Step 5: Push Code
-
-```bash
+# 4. Déployer le code
 cd Google_app_script
 clasp push
+
+# 5. Configurer les propriétés (voir CONFIGURATION.md)
 ```
 
-### Step 6: Setup Triggers
+➡️ **Guide complet** : [INSTALLATION.md](docs/INSTALLATION.md)
 
-In Apps Script editor → **Triggers**:
+### Configuration minimale
 
-1. **Form Submission Trigger**
-   - Function: `handleInsertFormSubmission`
-   - Event source: From spreadsheet
-   - Event type: On form submit
+Trois propriétés essentielles à configurer dans **Projet Settings** > **Script Properties** :
 
-2. **Edit Trigger**
-   - Function: `handleEdit`
-   - Event source: From spreadsheet
-   - Event type: On edit
-
-3. **Open Trigger** (Optional)
-   - Function: `onOpen`
-   - Event source: From spreadsheet
-   - Event type: On open
-
-### Step 7: Deploy Web App (for API)
-
-```bash
-# Deploy via command line
-clasp deploy --description "v1.0 - Initial release"
-
-# Or deploy via editor:
-# Click Deploy → New deployment → Web app
-# Execute as: Me
-# Who has access: Anyone (or as needed)
+```javascript
+SPREADSHEET_ID         = "1a2b3c4d..."  // ID de votre Google Sheet
+GESTION_FAMILLES_FOLDER_ID = "1x2y3z..."  // ID du dossier Drive
+GEO_API_URL           = "https://..."   // URL de l'API de géocodage
 ```
 
-## 📊 Google Sheets Structure
+➡️ **Guide complet** : [CONFIGURATION.md](docs/CONFIGURATION.md)
 
-### Form Response Sheets
+### Premier test
 
-Create three sheets for multilingual forms:
-
-- `Familles – FR` (French)
-- `Familles – AR` (Arabic)
-- `Familles – EN` (English)
-
-### Output Sheet
-
-`Famille` with columns:
-
-| Column              | Type     | Description         |
-| ------------------- | -------- | ------------------- |
-| id                  | Text     | Unique family ID    |
-| nom                 | Text     | Last name           |
-| prenom              | Text     | First name          |
-| zakat_el_fitr       | Checkbox | Eligible for Zakat  |
-| sadaqa              | Checkbox | Eligible for Sadaqa |
-| nombre_adulte       | Number   | Number of adults    |
-| nombre_enfant       | Number   | Number of children  |
-| adresse             | Text     | Full address        |
-| id_quartier         | Number   | Quartier ID         |
-| se_deplace          | Checkbox | Can travel          |
-| email               | Email    | Contact email       |
-| telephone           | Text     | Phone number        |
-| telephone_bis       | Text     | Secondary phone     |
-| identite            | Text     | Identity doc links  |
-| caf                 | Text     | CAF doc links       |
-| circonstances       | Text     | Current situation   |
-| ressentit           | Text     | Notes               |
-| specificites        | Text     | Special needs       |
-| etat_dossier        | Text     | Status              |
-| commentaire_dossier | Text     | Comments            |
-
-## 🔄 Workflows
-
-### Automatic Form Submission
-
-```
-User submits form (FR/AR/EN)
-    ↓
-Validate fields, address, documents
-    ↓
-Check for duplicates
-    ↓
-Write to "Famille" sheet (status: "En cours")
-    ↓
-Admin notified
-    ↓
-Admin reviews and sets status to "Validé"
-    ↓
-Documents organized + Contact synced
-```
-
-### Manual Entry
-
-```
-Admin opens: 📦 Gestion Familles → ➕ Inscription Manuelle
-    ↓
-Fills form with family data
-    ↓
-Validates address
-    ↓
-Checks for duplicates
-    ↓
-Saves with status "Validé"
-    ↓
-Contact created immediately
-```
-
-## 🌐 API Endpoints
-
-### Base URL
-
-```
-https://script.google.com/macros/s/{DEPLOYMENT_ID}/exec
-```
-
-### Available Endpoints
-
-| Action               | Parameters   | Description                  |
-| -------------------- | ------------ | ---------------------------- |
-| `ping`               | -            | Health check                 |
-| `allfamilies`        | -            | Get all validated families   |
-| `familybyid`         | `id`         | Get specific family          |
-| `familyaddressbyid`  | `id`         | Get family address only      |
-| `familieszakatfitr`  | -            | Get Zakat eligible families  |
-| `familiessadaka`     | -            | Get Sadaqa eligible families |
-| `familiesbyquartier` | `quartierId` | Get families by quartier     |
-| `familiessedeplace`  | -            | Get families who can travel  |
-
-### Example Request
-
-```bash
-curl "https://script.google.com/macros/s/DEPLOYMENT_ID/exec?action=allfamilies"
-```
-
-### Example Response
-
-```json
-{
-  "count": 25,
-  "families": [
-    {
-      "id": "FAM_1234567890_123",
-      "nom": "Dupont",
-      "prenom": "Jean",
-      "nombreAdulte": 2,
-      "nombreEnfant": 3,
-      "adresse": "1 Rue de la Paix, 44000 Nantes",
-      "idQuartier": 42,
-      "telephone": "0612345678",
-      "email": "jean.dupont@example.com"
-    }
-  ]
+```javascript
+// Dans l'éditeur Apps Script
+function test() {
+    logInfo('Test du système');
+    
+    // Tester la configuration
+    const config = getScriptConfig();
+    console.log(config);
+    
+    // Tester l'accès aux sheets
+    const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE_CLEANED);
+    console.log('Sheet trouvée:', sheet.getName());
 }
 ```
 
-## 🧪 Testing
+---
 
-Run tests in Apps Script editor:
+## 🏗️ Architecture
 
-```javascript
-runAllTests()
+### Schéma de flux simplifié
+
+```
+Formulaire (FR/AR/EN) → Validation → Géocodage → Vérification doublons
+                                                           ↓
+                                    API REST ← Cache ← Sheet "Famille"
+                                                           ↓
+                            Google Contacts ← Organisation ← Google Drive
 ```
 
-Or test individual functions:
+### Composants principaux
 
-```javascript
-testNormalizePhone()
-testIsValidEmail()
-testIsValidPhone()
+```
+src/
+├── core/              # Configuration et utilitaires
+│   ├── config.js      # CONFIG, COLUMN_MAP, OUTPUT_COLUMNS
+│   └── utils.js       # Fonctions réutilisables
+│
+├── handlers/          # Gestionnaires d'événements
+│   ├── formHandler.js # onFormSubmit
+│   └── editHandler.js # onEdit
+│
+├── services/          # Services externes
+│   ├── driveService.js    # Organisation documents
+│   ├── contactService.js  # Synchronisation contacts
+│   └── geoService.js      # Géocodage et quartiers
+│
+├── api/               # REST API
+│   └── familyApiHandler.js # doGet endpoints
+│
+└── ui/                # Interface utilisateur
+    ├── menu.js        # Menu personnalisé
+    └── helpers.js     # Inscription manuelle
 ```
 
-## ⚡ Performance Optimization
+➡️ **Documentation complète** : [ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
-### Caching Strategy
+---
 
-| Data Type         | Cache Duration |
-| ----------------- | -------------- |
-| Script Properties | 6 hours        |
-| GEO API Results   | 6 hours        |
-| Family Lookups    | 30 minutes     |
-| API Responses     | 5 minutes      |
+## 📊 Fonctionnalités clés
 
-### Best Practices
+### 1. Traitement automatique des formulaires
 
-✅ Batch operations when possible  
-✅ Cache everything that doesn't change often  
-✅ Lazy load data only when needed  
-✅ Minimize sheet access  
-✅ Use aggressive caching on free tier
+- Validation des champs obligatoires
+- Géocodage et attribution de quartier
+- Vérification des documents
+- Détection des doublons
+- Notification automatique
 
-## 🔧 Development
+### 2. Gestion des documents
 
-### Local Development with clasp
+- Organisation automatique dans Drive
+- Structure : `Gestion Familles/familles/FAM_ID/`
+- Renommage selon le type : `identity_1.pdf`, `CAF_1.pdf`
+
+### 3. Synchronisation Google Contacts
+
+- Création/mise à jour automatique
+- Stockage de l'ID famille dans les notes
+- Support multi-téléphones et adresses
+
+### 4. API REST
+
+8 endpoints disponibles pour l'intégration externe :
+
+- `/allfamilies` - Liste complète
+- `/familybyid` - Détails d'une famille
+- `/familieszakatfitr` - Éligibles Zakat El Fitr
+- `/familiesbyquartier` - Par quartier
+- Et plus...
+
+➡️ **Documentation API** : [API.md](docs/API.md)
+
+### 5. Cache multi-niveaux
+
+- SHORT (5 min) - Requêtes fréquentes
+- MEDIUM (30 min) - Données semi-statiques
+- LONG (1h) - Configuration
+- VERY_LONG (6h) - Données quasi-immuables
+
+---
+
+## 🎯 Utilisation rapide
+
+### Traiter une nouvelle demande
+
+1. La famille soumet le formulaire
+2. Le système valide et géocode automatiquement
+3. L'admin vérifie dans l'onglet "Famille"
+4. Changement du statut : `Recu` → `En cours` → `Validé`
+5. À la validation :
+   - Documents organisés
+   - Contact créé
+   - Cache actualisé
+
+### Inscription manuelle
+
+Menu : **📦 Gestion Familles** > **➕ Inscription Manuelle**
+
+Formulaire graphique avec :
+
+- Validation en temps réel
+- Vérification des doublons
+- Création immédiate avec statut "Validé"
+- Pas besoin de documents (optionnels)
+
+### API - Exemple rapide
 
 ```bash
-# Pull latest changes
-clasp pull
+# Liste toutes les familles validées
+curl "https://script.google.com/.../exec?action=allfamilies"
 
-# Make changes locally
+# Familles d'un quartier
+curl "https://script.google.com/.../exec?action=familiesbyquartier&quartierId=Q_001"
 
-# Push to Apps Script
-clasp push
-
-# Watch for changes (auto-push)
-clasp push --watch
+# Éligibles Zakat El Fitr
+curl "https://script.google.com/.../exec?action=familieszakatfitr"
 ```
 
-### File Organization
+➡️ **Guide complet** : [USAGE.md](docs/USAGE.md)
 
-- **Core** (`src/core/`) - Configuration and utilities (no dependencies)
-- **Services** (`src/services/`) - External integrations (Drive, Contacts, GEO API)
-- **Handlers** (`src/handlers/`) - Business logic (form processing, edits)
-- **API** (`src/api/`) - REST endpoints
-- **UI** (`src/ui/`) - Menu and dialogs
-- **Views** (`views/`) - HTML templates
-- **Assets** (`assets/`) - Shared CSS/JS
+---
 
-## 🐛 Debugging
+## 🧪 Tests
 
-### View Execution Logs
+### Tests unitaires
 
-In Apps Script editor:
+```javascript
+// Dans l'éditeur Apps Script
+runAllTests();  // Tous les tests
 
-1. Click **Executions**
-2. Find your execution
-3. View logs and errors
+// Ou individuellement
+testNormalizePhone();
+testIsValidEmail();
+testExtractFileIds();
+```
 
-### Common Issues
+### Tests d'intégration
 
-**"Sheet not found"**
+```javascript
+// Test du flux complet
+testFullSubmissionFlow();
 
-- Check sheet names match `CONFIG.SHEETS` in `config.js`
+// Test de l'API
+testApiEndpoints();
+```
 
-**"GEO API call failed"**
+➡️ **Guide des tests** : [TESTING.md](docs/TESTING.md)
 
-- Verify credentials in Script Properties
-- Check API endpoint URL
+---
 
-**"Contact sync failed"**
+## 🔧 Dépannage rapide
 
-- Enable People API in Services
-- Check OAuth scopes in `appsscript.json`
+| Problème | Solution rapide |
+|----------|----------------|
+| Trigger ne fonctionne pas | Vérifier dans Triggers (icône horloge), recréer si nécessaire |
+| Erreur "Service invoked too many times" | Ajouter `Utilities.sleep(100)` dans les boucles |
+| Documents non organisés | Vérifier l'ID du dossier Drive dans les propriétés |
+| API retourne 404 | Vérifier le déploiement Web App et l'URL |
+| Cache obsolète | Menu : **📦 Gestion Familles** > **🔄 Rafraîchir Cache** |
 
-**"Documents not organized"**
+➡️ **Guide complet** : [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 
-- Verify Drive folder permissions
-- Check `GESTION_FAMILLES_FOLDER_ID`
+---
 
-## 📝 Maintenance
+## 📈 Monitoring
 
-### Update Configuration
+### Vérifications quotidiennes
 
-Edit `src/core/config.js` to update:
+```javascript
+// Statistiques
+function dailyStats() {
+    const stats = calculateStatistics();
+    console.log(`Total: ${stats.total}`);
+    console.log(`Validées: ${stats.validated}`);
+    console.log(`En cours: ${stats.inProgress}`);
+}
+```
 
-- Sheet names
-- Column mappings
-- Cache durations
-- Status values
+### Logs
 
-### Clear Caches
+- **Executions** : Apps Script Editor > Executions
+- **Logs** : Afficher les logs de chaque exécution
+- **Erreurs** : Filtrer par "Failed" pour voir les échecs
 
-In spreadsheet: **📦 Gestion Familles** → **🔄 Rafraîchir Cache**
+➡️ **Guide maintenance** : [MAINTENANCE.md](docs/MAINTENANCE.md)
 
-### View Statistics
-
-In spreadsheet: **📦 Gestion Familles** → **📊 Statistiques**
-
-## 🔒 Security
-
-- Script properties store sensitive data (API keys)
-- API endpoints return only validated families
-- Document access controlled via Drive permissions
-- No authentication required for public forms
-- OAuth scopes defined in `appsscript.json`
-
-## 📄 License
-
-Internal use - AMANA Organization
+---
 
 ## 🤝 Support
 
-For issues:
+### Problème avec le système ?
 
-1. Check execution logs first
-2. Review common issues above
-3. Verify script properties
-4. Test with `runAllTests()`
+1. Consulter [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+2. Vérifier les logs dans Apps Script
+3. Tester avec les fonctions de test unitaire
+
+### Questions sur l'utilisation ?
+
+1. Consulter [USAGE.md](docs/USAGE.md) pour les scénarios courants
+2. Consulter [API.md](docs/API.md) pour l'intégration
+
+### Besoin d'aide pour l'installation ?
+
+1. Suivre [INSTALLATION.md](docs/INSTALLATION.md) pas-à-pas
+2. Vérifier [CONFIGURATION.md](docs/CONFIGURATION.md) pour la configuration
+
+---
+
+## 📝 Changelog
+
+### Version 1.0.0 (Décembre 2025)
+
+- ✅ Traitement automatique des formulaires multilingues
+- ✅ Validation d'adresses avec géocodage
+- ✅ Gestion des documents Drive
+- ✅ Synchronisation Google Contacts
+- ✅ API REST avec 8 endpoints
+- ✅ Cache multi-niveaux
+- ✅ Détection des doublons
+- ✅ Inscription manuelle via UI
+- ✅ Tests unitaires complets
+
+---
+
+## 📄 Licence
+
+Ce projet est destiné à un usage interne pour la gestion des familles bénéficiaires.
+
+---
+
+## 🔗 Liens rapides
+
+- [Installation](docs/INSTALLATION.md)
+- [Configuration](docs/CONFIGURATION.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [API](docs/API.md)
+- [Utilisation](docs/USAGE.md)
+- [Tests](docs/TESTING.md)
+- [Dépannage](docs/TROUBLESHOOTING.md)
+- [Maintenance](docs/MAINTENANCE.md)
