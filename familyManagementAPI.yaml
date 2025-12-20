@@ -4,28 +4,34 @@ info:
   description: |
     ## 📖 Overview
     Complete REST API for managing family records with geographic location support, document management, and email verification.
-    
+
     ## 🔐 Authentication
     Most endpoints require an API key: `?apiKey=YOUR_API_KEY`
-    
+
     Public endpoints: `confirmfamilyinfo`, `ping`
-    
+
     ## 📍 Geographic Hierarchy
     Ville (City) → Secteur (Sector) → Quartier (Neighborhood)
-    
+
     ## 🎯 Eligibility & Priority
     - 🌙 Zakat El Fitr - Ramadan charity
     - 💝 Sadaqa - General charity
     - Criticité: 0-5 (priority level)
-    
+
     ## 🌐 Languages
     🇫🇷 Français | 🇸🇦 العربية | 🇬🇧 English
-  version: 2.1.0
+
+    ## 🆕 What's New in v2.2
+    - ✅ Filter families by Zakat/Sadaqa eligibility
+    - ✅ Sort by criticité, lastUpdate, or distance
+    - ✅ Combine multiple sort criteria
+    - ✅ Last update timestamps included in responses
+  version: 2.2.0
   contact:
     name: Family Management System
 
 servers:
-  - url: "https: //script.google.com/macros/s/{SCRIPT_ID}/exec"
+  - url: "https://script.google.com/macros/s/{SCRIPT_ID}/exec"
     description: Production server
     variables:
       SCRIPT_ID:
@@ -33,7 +39,7 @@ servers:
 
 tags:
   - name: 🏠 All Families
-    description: Retrieve all validated families
+    description: Retrieve all validated families with advanced filtering
   - name: 🆔 By ID
     description: Get specific family info
   - name: 🌍 By Location
@@ -49,10 +55,26 @@ paths:
   /exec?action=allfamilies:
     get:
       tags: [🏠 All Families]
-      summary: 📋 Get all validated families
+      summary: 📋 Get all validated families (ENHANCED v2.2)
       description: |
-        Retrieve all families with "Validé" status. Supports sorting by priority or distance.
+        Retrieve all families with "Validé" status. Now supports:
+        - **Eligibility filtering** by Zakat El Fitr and/or Sadaqa
+        - **Advanced sorting** by criticité, lastUpdate, distance
+        - **Multi-criteria sorting** (e.g., criticité,lastUpdate)
+        - **Last update timestamps** included in response
+
         **Cached:** 5 minutes
+
+        ### Sorting Examples
+        - `orderBy=criticite` - Highest priority first
+        - `orderBy=lastUpdate` - Most recently updated first
+        - `orderBy=distance&lat=47.218&lng=-1.553` - Nearest first
+        - `orderBy=criticite,lastUpdate` - By priority, then by update date
+
+        ### Filtering Examples
+        - `zakatElFitr=true` - Only Zakat-eligible families
+        - `sadaqa=true` - Only Sadaqa-eligible families
+        - `zakatElFitr=true&sadaqa=true` - Families eligible for BOTH
       operationId: getAllFamilies
       parameters:
         - name: action
@@ -67,12 +89,41 @@ paths:
           schema:
             type: string
           description: Your API key
+
+        # NEW: Eligibility filters
+        - name: zakatElFitr
+          in: query
+          schema:
+            type: boolean
+          description: "🆕 Filter by Zakat El Fitr eligibility"
+          example: true
+        - name: sadaqa
+          in: query
+          schema:
+            type: boolean
+          description: "🆕 Filter by Sadaqa eligibility"
+          example: true
+
+        # Enhanced sorting
         - name: orderBy
           in: query
           schema:
             type: string
-            enum: [criticite, distance]
-          description: Sort by priority or distance
+            enum:
+              [
+                criticite,
+                lastUpdate,
+                distance,
+                "criticite,lastUpdate",
+                "criticite,distance",
+                "distance,criticite",
+              ]
+          description: |
+            🆕 Sort criteria (comma-separated for multiple)
+            - criticite: Highest priority first (5→0)
+            - lastUpdate: Most recently updated first
+            - distance: Nearest first (requires lat/lng)
+            - Combine: e.g., "criticite,lastUpdate"
         - name: lat
           in: query
           schema:
@@ -90,7 +141,7 @@ paths:
             default: false
           description: Include idVille, idSecteur
       responses:
-        '200':
+        "200":
           description: Success
           content:
             application/json:
@@ -102,15 +153,56 @@ paths:
                     example: 42
                   orderBy:
                     type: string
-                    example: criticite
+                    example: "criticite,lastUpdate"
                   includeHierarchy:
                     type: boolean
+                  filters:
+                    type: object
+                    description: "🆕 Applied filters"
+                    properties:
+                      zakatElFitr:
+                        type: boolean
+                      sadaqa:
+                        type: boolean
                   families:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Family'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+                      $ref: "#/components/schemas/FamilyWithLastUpdate"
+              examples:
+                filterByCriticite:
+                  summary: High priority families only
+                  value:
+                    count: 12
+                    orderBy: "criticite"
+                    includeHierarchy: false
+                    filters:
+                      zakatElFitr: false
+                      sadaqa: false
+                    families:
+                      - id: "123"
+                        nom: "Dupont"
+                        criticite: 5
+                        zakatElFitr: true
+                        sadaqa: true
+                        lastUpdate: "2025-12-15"
+
+                filterByEligibility:
+                  summary: Zakat-eligible families sorted by update
+                  value:
+                    count: 25
+                    orderBy: "lastUpdate"
+                    includeHierarchy: false
+                    filters:
+                      zakatElFitr: true
+                      sadaqa: false
+                    families:
+                      - id: "456"
+                        nom: "Martin"
+                        zakatElFitr: true
+                        sadaqa: false
+                        lastUpdate: "2025-12-18"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /exec?action=familybyid:
     get:
@@ -141,14 +233,14 @@ paths:
             type: boolean
             default: false
       responses:
-        '200':
+        "200":
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Family'
-        '404':
-          $ref: '#/components/responses/NotFound'
+                $ref: "#/components/schemas/Family"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /exec?action=familyaddressbyid:
     get:
@@ -177,7 +269,7 @@ paths:
           schema:
             type: boolean
       responses:
-        '200':
+        "200":
           description: Success
           content:
             application/json:
@@ -227,7 +319,7 @@ paths:
           schema:
             type: boolean
       responses:
-        '200':
+        "200":
           description: Success
           content:
             application/json:
@@ -241,7 +333,7 @@ paths:
                   families:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Family'
+                      $ref: "#/components/schemas/Family"
 
   /exec?action=familiesbysecteur:
     get:
@@ -267,7 +359,7 @@ paths:
             type: string
           example: "SEC_001"
       responses:
-        '200':
+        "200":
           description: Success
           content:
             application/json:
@@ -281,7 +373,7 @@ paths:
                   families:
                     type: array
                     items:
-                      $ref: '#/components/schemas/FamilyWithHierarchy'
+                      $ref: "#/components/schemas/FamilyWithHierarchy"
 
   /exec?action=familiesbyville:
     get:
@@ -307,7 +399,7 @@ paths:
             type: string
           example: "VIL_001"
       responses:
-        '200':
+        "200":
           description: Success
           content:
             application/json:
@@ -321,7 +413,7 @@ paths:
                   families:
                     type: array
                     items:
-                      $ref: '#/components/schemas/FamilyWithHierarchy'
+                      $ref: "#/components/schemas/FamilyWithHierarchy"
 
   /exec?action=familieszakatfitr:
     get:
@@ -345,7 +437,7 @@ paths:
           schema:
             type: boolean
       responses:
-        '200':
+        "200":
           description: Success
           content:
             application/json:
@@ -357,7 +449,7 @@ paths:
                   families:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Family'
+                      $ref: "#/components/schemas/Family"
 
   /exec?action=familiessadaka:
     get:
@@ -381,7 +473,7 @@ paths:
           schema:
             type: boolean
       responses:
-        '200':
+        "200":
           description: Success
           content:
             application/json:
@@ -393,7 +485,7 @@ paths:
                   families:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Family'
+                      $ref: "#/components/schemas/Family"
 
   /exec?action=familiessedeplace:
     get:
@@ -417,7 +509,7 @@ paths:
           schema:
             type: boolean
       responses:
-        '200':
+        "200":
           description: Success
           content:
             application/json:
@@ -429,7 +521,7 @@ paths:
                   families:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Family'
+                      $ref: "#/components/schemas/Family"
 
   /exec?action=familiesbycriticite:
     get:
@@ -461,7 +553,7 @@ paths:
           schema:
             type: boolean
       responses:
-        '200':
+        "200":
           description: Success
           content:
             application/json:
@@ -475,7 +567,7 @@ paths:
                   families:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Family'
+                      $ref: "#/components/schemas/Family"
 
   /exec?action=sendverificationemails:
     get:
@@ -495,7 +587,7 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        "200":
           description: Success
           content:
             application/json:
@@ -553,7 +645,7 @@ paths:
             type: string
           description: Verification token
       responses:
-        '200':
+        "200":
           description: HTML confirmation page
           content:
             text/html:
@@ -573,7 +665,7 @@ paths:
             type: string
             enum: [ping]
       responses:
-        '200':
+        "200":
           description: Success
           content:
             application/json:
@@ -588,7 +680,7 @@ paths:
                     example: Famille API operational
                   version:
                     type: string
-                    example: "2.1"
+                    example: "2.2"
                   geoApiVersion:
                     type: string
                     example: "5.0"
@@ -658,9 +750,20 @@ components:
           enum: [Français, Arabe, Anglais]
           description: Preferred language
 
+    FamilyWithLastUpdate:
+      allOf:
+        - $ref: "#/components/schemas/Family"
+        - type: object
+          properties:
+            lastUpdate:
+              type: string
+              nullable: true
+              description: "🆕 Date of last update (YYYY-MM-DD format, extracted from comments)"
+              example: "2025-12-18"
+
     FamilyWithHierarchy:
       allOf:
-        - $ref: '#/components/schemas/Family'
+        - $ref: "#/components/schemas/Family"
         - type: object
           properties:
             idVille:

@@ -1,6 +1,6 @@
 /**
- * @file src/api/familyApiHandler.js (UPDATED)
- * @description REST API with dynamic HTML confirmation pages that show family name
+ * @file src/api/familyApiHandler.js (ENHANCED v2.2)
+ * @description REST API with eligibility filtering and advanced sorting
  */
 
 /**
@@ -66,7 +66,7 @@ function doGet(e) {
                 return jsonResponse({
                     status: 'ok',
                     message: 'Famille API operational',
-                    version: '2.1',
+                    version: '2.2',
                     geoApiVersion: CONFIG.GEO_API.VERSION,
                     timestamp: new Date().toISOString()
                 });
@@ -111,7 +111,7 @@ function authenticateRequest(e) {
 }
 
 /**
- * Handle email confirmation from families (UPDATED - Dynamic HTML with name)
+ * Handle email confirmation from families
  */
 function handleConfirmFamilyInfo(e) {
     const id = e.parameter.id;
@@ -130,10 +130,8 @@ function handleConfirmFamilyInfo(e) {
     const result = confirmFamilyInfo(id);
 
     if (result.success) {
-        // Return dynamic success page with family name
         return createConfirmationSuccessPage(result.familyData);
     } else {
-        // Check if already confirmed
         if (result.error === 'already_confirmed') {
             return createConfirmationErrorPage('already_confirmed');
         }
@@ -142,12 +140,11 @@ function handleConfirmFamilyInfo(e) {
 }
 
 /**
- * Create dynamic confirmation success page (NEW)
+ * Create dynamic confirmation success page
  */
 function createConfirmationSuccessPage(familyData) {
     const template = HtmlService.createTemplateFromFile('views/email/confirmationSuccess');
 
-    // Pass data to template
     template.firstName = familyData.prenom || '';
     template.lastName = familyData.nom || '';
     template.langue = familyData.langue || 'Français';
@@ -158,12 +155,10 @@ function createConfirmationSuccessPage(familyData) {
 }
 
 /**
- * Create dynamic confirmation error page (NEW)
+ * Create dynamic confirmation error page
  */
 function createConfirmationErrorPage(errorType) {
     const template = HtmlService.createTemplateFromFile('views/email/confirmationError');
-
-    // Pass error type to template
     template.errorType = errorType;
 
     return template.evaluate()
@@ -180,7 +175,8 @@ function handleSendVerificationEmails(e) {
 }
 
 /**
- * Get all validated families with optional sorting
+ * Get all validated families with ENHANCED filtering and sorting
+ * NEW: Supports eligibility filters and multiple sort options
  */
 function getAllFamilies(e) {
     const orderBy = e.parameter.orderBy;
@@ -188,7 +184,11 @@ function getAllFamilies(e) {
     const lng = parseFloat(e.parameter.lng);
     const includeHierarchy = e.parameter.includeHierarchy === 'true';
 
-    const cacheKey = `api_all_families_${orderBy}_${lat}_${lng}_${includeHierarchy}`;
+    // NEW: Eligibility filters
+    const filterZakat = e.parameter.zakatElFitr === 'true';
+    const filterSadaqa = e.parameter.sadaqa === 'true';
+
+    const cacheKey = `api_all_families_${orderBy}_${lat}_${lng}_${includeHierarchy}_${filterZakat}_${filterSadaqa}`;
     const cache = CacheService.getScriptCache();
 
     const cached = cache.get(cacheKey);
@@ -205,28 +205,146 @@ function getAllFamilies(e) {
     const data = sheet.getDataRange().getValues();
     let families = [];
 
+    // Get last update timestamps from comments
+    const lastUpdateMap = buildLastUpdateMap(data);
+
     for (let i = 1; i < data.length; i++) {
         const row = data[i];
         if (row[OUTPUT_COLUMNS.ETAT_DOSSIER] === CONFIG.STATUS.VALIDATED) {
-            families.push(rowToFamilyObject(row, includeHierarchy));
+            // NEW: Apply eligibility filters
+            const zakatValue = row[OUTPUT_COLUMNS.ZAKAT_EL_FITR] === true;
+            const sadaqaValue = row[OUTPUT_COLUMNS.SADAQA] === true;
+
+            // If filters are set, check eligibility
+            if (filterZakat && !zakatValue) continue;
+            if (filterSadaqa && !sadaqaValue) continue;
+
+            const family = rowToFamilyObject(row, includeHierarchy);
+
+            // NEW: Add last update timestamp
+            const familyId = row[OUTPUT_COLUMNS.ID];
+            family.lastUpdate = lastUpdateMap[familyId] || null;
+
+            families.push(family);
         }
     }
 
-    if (orderBy === 'criticite') {
-        families.sort((a, b) => b.criticite - a.criticite);
-    } else if (orderBy === 'distance' && !isNaN(lat) && !isNaN(lng)) {
-        families = sortFamiliesByDistance(families, lat, lng);
-    }
+    // NEW: Enhanced sorting
+    families = applySorting(families, orderBy, lat, lng);
 
     const result = jsonResponse({
         count: families.length,
         orderBy: orderBy || 'none',
         includeHierarchy: includeHierarchy,
+        filters: {
+            zakatElFitr: filterZakat,
+            sadaqa: filterSadaqa
+        },
         families: families
     });
 
     cache.put(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
     return result;
+}
+
+/**
+ * NEW: Build map of family IDs to last update timestamps
+ */
+function buildLastUpdateMap(data) {
+    const lastUpdateMap = {};
+
+    for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        const familyId = row[OUTPUT_COLUMNS.ID];
+        const comment = row[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
+
+        // Extract most recent timestamp from comments
+        // Format: yyyy-MM-dd HH:mm:ss
+        const timestampRegex = /(\d{4}-\d{2}-\d{2})/g;
+        const matches = comment.match(timestampRegex);
+
+        if (matches && matches.length > 0) {
+            // Get the most recent date (first in comment due to addComment prepending)
+            const mostRecentDate = matches[0];
+            lastUpdateMap[familyId] = mostRecentDate;
+        }
+    }
+
+    return lastUpdateMap;
+}
+
+/**
+ * NEW: Apply sorting to families array
+ */
+function applySorting(families, orderBy, lat, lng) {
+    if (!orderBy) {
+        return families;
+    }
+
+    // Split orderBy for multiple sort criteria
+    const sortCriteria = orderBy.split(',').map(s => s.trim());
+
+    // Primary sort
+    const primarySort = sortCriteria[0];
+
+    if (primarySort === 'criticite') {
+        families.sort((a, b) => b.criticite - a.criticite);
+    } else if (primarySort === 'lastUpdate' || primarySort === 'lastupdate') {
+        families.sort((a, b) => {
+            // Sort by most recent first (descending)
+            if (!a.lastUpdate) return 1;
+            if (!b.lastUpdate) return -1;
+            return b.lastUpdate.localeCompare(a.lastUpdate);
+        });
+    } else if (primarySort === 'distance' && !isNaN(lat) && !isNaN(lng)) {
+        families = sortFamiliesByDistance(families, lat, lng);
+    }
+
+    // Secondary sort (if provided)
+    if (sortCriteria.length > 1) {
+        const secondarySort = sortCriteria[1];
+
+        if (secondarySort === 'criticite' && primarySort !== 'criticite') {
+            // Stable sort by criticite as secondary
+            families.sort((a, b) => {
+                const primaryValue = getPrimarySortValue(a, primarySort, lat, lng);
+                const primaryValueB = getPrimarySortValue(b, primarySort, lat, lng);
+
+                if (primaryValue === primaryValueB) {
+                    return b.criticite - a.criticite;
+                }
+                return 0; // Keep original order if different
+            });
+        } else if ((secondarySort === 'lastUpdate' || secondarySort === 'lastupdate') && primarySort !== 'lastUpdate') {
+            families.sort((a, b) => {
+                const primaryValue = getPrimarySortValue(a, primarySort, lat, lng);
+                const primaryValueB = getPrimarySortValue(b, primarySort, lat, lng);
+
+                if (primaryValue === primaryValueB) {
+                    if (!a.lastUpdate) return 1;
+                    if (!b.lastUpdate) return -1;
+                    return b.lastUpdate.localeCompare(a.lastUpdate);
+                }
+                return 0;
+            });
+        }
+    }
+
+    return families;
+}
+
+/**
+ * NEW: Helper to get primary sort value for secondary sorting
+ */
+function getPrimarySortValue(family, sortType, lat, lng) {
+    if (sortType === 'criticite') {
+        return family.criticite;
+    } else if (sortType === 'lastUpdate' || sortType === 'lastupdate') {
+        return family.lastUpdate || '';
+    } else if (sortType === 'distance') {
+        return family.distance || 999999;
+    }
+    return 0;
 }
 
 /**

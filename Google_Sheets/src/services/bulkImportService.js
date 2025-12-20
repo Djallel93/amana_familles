@@ -126,7 +126,7 @@ function processBulkImportRow(row, sheet, sheetRowNumber) {
 
     // Set status to "En cours" after bulk import
     const status = CONFIG.STATUS.IN_PROGRESS;
-    let comment = `📥 ${new Date().toLocaleString('fr-FR')} Importé en masse (ligne ${sheetRowNumber})`;
+    let comment = `📥 ${new Date().toLocaleString('fr-FR')} Importé en masse`;
 
     if (quartierWarning) {
         comment += `\n⚠️ ${quartierWarning}`;
