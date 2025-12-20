@@ -128,7 +128,7 @@ function processBulkImportRow(row, sheet, sheetRowNumber) {
 
     // Set status to "En cours" after bulk import
     const status = CONFIG.STATUS.IN_PROGRESS;
-    let comment = `📥 ${new Date().toLocaleString('fr-FR')} Importé en masse`;
+    let comment = formatComment('📥', 'Importé en masse');
 
     if (quartierWarning) {
         comment += `\n⚠️ ${quartierWarning}`;
@@ -176,8 +176,6 @@ function processBulkImport(batchSize = 10) {
 
     const lastRow = sheet.getLastRow();
 
-    // Row 1: Headers (never processed)
-    // Row 2: First data row
     const HEADER_ROW = 1;
     const FIRST_DATA_ROW = 2;
 
@@ -209,8 +207,6 @@ function processBulkImport(batchSize = 10) {
         const comment = comments[arrayIndex][0];
 
         // Calculate actual sheet row number
-        // arrayIndex=0 corresponds to sheet row 2 (first data row)
-        // arrayIndex=1 corresponds to sheet row 3, etc.
         const sheetRowNumber = FIRST_DATA_ROW + arrayIndex;
 
         // Debug first few rows
