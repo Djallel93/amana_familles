@@ -1,11 +1,15 @@
 /**
- * @file src/services/reverseContactSyncService.js (ENHANCED FOR CUSTOM FIELDS)
- * @description Reverse sync from Google Contacts to Sheets using custom fields
+ * @file src/services/reverseContactSyncService.js (FIXED v3.0)
+ * @description Reverse sync from Google Contacts to Sheets with proper name/address parsing
+ * 
+ * CHANGES:
+ * - Fixed name extraction from new structure (givenName has ID, middleName/familyName have real names)
+ * - Uses shared address parsing logic (no trailing comma)
+ * - Refactored contact data extraction
  */
 
 /**
  * Main reverse sync function - fetch all contacts and sync to sheet
- * UPDATED: Read from custom fields instead of notes
  */
 function reverseContactSync() {
     try {
@@ -21,7 +25,6 @@ function reverseContactSync() {
             details: []
         };
 
-        // Get all family contacts from main group
         const familyContacts = fetchAllFamilyContacts();
 
         if (!familyContacts || familyContacts.length === 0) {
@@ -36,7 +39,6 @@ function reverseContactSync() {
         logInfo(`Found ${familyContacts.length} family contacts to check`);
         results.total = familyContacts.length;
 
-        // Process each contact
         familyContacts.forEach(contact => {
             try {
                 const syncResult = syncContactToSheet(contact);
@@ -72,7 +74,6 @@ function reverseContactSync() {
         const duration = ((Date.now() - startTime) / 1000).toFixed(2);
         logInfo(`✅ Reverse sync completed in ${duration}s`, results);
 
-        // Send notification if updates were made
         if (results.updated > 0) {
             notifyAdmin(
                 '🔄 Reverse Contact Sync Completed',
@@ -105,7 +106,6 @@ function reverseContactSync() {
 
 /**
  * Fetch all family contacts from main group
- * UPDATED: Request userDefined fields instead of biographies
  */
 function fetchAllFamilyContacts() {
     try {
@@ -116,7 +116,6 @@ function fetchAllFamilyContacts() {
             return [];
         }
 
-        // Fetch all contacts with userDefined fields
         const response = People.People.Connections.list('people/me', {
             pageSize: 2000,
             personFields: 'names,emailAddresses,phoneNumbers,addresses,userDefined,memberships'
@@ -126,7 +125,6 @@ function fetchAllFamilyContacts() {
             return [];
         }
 
-        // Filter only contacts in main family group
         const familyContacts = response.connections.filter(contact => {
             if (!contact.memberships) return false;
 
@@ -146,7 +144,6 @@ function fetchAllFamilyContacts() {
 
 /**
  * Sync single contact to sheet
- * UPDATED: Parse from custom fields instead of notes
  */
 function syncContactToSheet(contact) {
     const metadata = parseFamilyMetadataFromContact(contact.userDefined);
@@ -157,7 +154,6 @@ function syncContactToSheet(contact) {
         return { updated: false, notFound: false };
     }
 
-    // Find family in sheet
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
     if (!sheet) {
         throw new Error('Famille sheet not found');
@@ -180,18 +176,14 @@ function syncContactToSheet(contact) {
         return { updated: false, notFound: true, familyId: familyId };
     }
 
-    // Extract contact data
     const contactData = extractContactData(contact);
 
-    // Compare and detect changes
     const changes = detectChanges(existingData, contactData, metadata);
 
     if (changes.length === 0) {
-        // No changes detected
         return { updated: false, familyId: familyId };
     }
 
-    // Apply changes to sheet
     applyChangesToSheet(sheet, targetRow, existingData, contactData, metadata, changes);
 
     logInfo(`✅ Contact synced to sheet for family ${familyId}`, { changes });
@@ -205,6 +197,8 @@ function syncContactToSheet(contact) {
 
 /**
  * Extract relevant data from contact
+ * FIXED: Extract names from new structure (middleName + familyName)
+ * FIXED: Use shared address parsing (no trailing comma)
  */
 function extractContactData(contact) {
     const data = {
@@ -218,9 +212,9 @@ function extractContactData(contact) {
         city: ''
     };
 
-    // Names
+    // FIXED: Extract from middleName and familyName (not givenName which has ID)
     if (contact.names && contact.names.length > 0) {
-        data.firstName = contact.names[0].givenName || '';
+        data.firstName = contact.names[0].middleName || '';
         data.lastName = contact.names[0].familyName || '';
     }
 
@@ -237,7 +231,7 @@ function extractContactData(contact) {
         data.email = contact.emailAddresses[0].value;
     }
 
-    // Address
+    // FIXED: Reconstruct clean address without trailing comma
     if (contact.addresses && contact.addresses.length > 0) {
         const addr = contact.addresses[0];
         data.address = addr.streetAddress || '';
@@ -250,7 +244,6 @@ function extractContactData(contact) {
 
 /**
  * Detect changes between sheet data and contact data
- * UPDATED: Include household validation
  */
 function detectChanges(existingData, contactData, metadata) {
     const changes = [];
@@ -316,12 +309,16 @@ function detectChanges(existingData, contactData, metadata) {
         });
     }
 
-    // Compare address (full address string)
+    // FIXED: Compare address properly (rebuild without trailing comma)
     if (contactData.address || contactData.postalCode || contactData.city) {
-        const contactFullAddress = `${contactData.address}, ${contactData.postalCode} ${contactData.city}`.trim();
+        // Rebuild full address from parts (clean, no trailing comma)
+        const parts = [contactData.address, contactData.postalCode, contactData.city]
+            .filter(p => p && p.trim().length > 0);
+        const contactFullAddress = parts.join(', ');
+
         const sheetAddress = (existingData[OUTPUT_COLUMNS.ADRESSE] || '').trim();
 
-        if (contactFullAddress !== sheetAddress && contactFullAddress !== ', ') {
+        if (contactFullAddress !== sheetAddress && contactFullAddress.length > 0) {
             changes.push({
                 field: 'adresse',
                 column: OUTPUT_COLUMNS.ADRESSE,
@@ -331,7 +328,7 @@ function detectChanges(existingData, contactData, metadata) {
         }
     }
 
-    // Compare criticité (from metadata)
+    // Compare criticité
     const sheetCriticite = parseInt(existingData[OUTPUT_COLUMNS.CRITICITE]) || 0;
     if (metadata.criticite !== sheetCriticite) {
         changes.push({
@@ -411,14 +408,12 @@ function detectChanges(existingData, contactData, metadata) {
 
 /**
  * Apply detected changes to sheet
- * ENHANCED: Validate household composition before applying
  */
 function applyChangesToSheet(sheet, row, existingData, contactData, metadata, changes) {
     // Check if household composition changes would result in zero persons
     const householdChanges = changes.filter(c => c.field === 'nombre_adulte' || c.field === 'nombre_enfant');
 
     if (householdChanges.length > 0) {
-        // Calculate new totals
         let newAdultes = parseInt(existingData[OUTPUT_COLUMNS.NOMBRE_ADULTE]) || 0;
         let newEnfants = parseInt(existingData[OUTPUT_COLUMNS.NOMBRE_ENFANT]) || 0;
 
@@ -430,16 +425,13 @@ function applyChangesToSheet(sheet, row, existingData, contactData, metadata, ch
             }
         });
 
-        // Validate household composition
         const validation = validateHouseholdComposition(newAdultes, newEnfants);
 
         if (!validation.isValid) {
             logWarning(`Skipping household update for family at row ${row}: ${validation.error}`);
 
-            // Remove household changes from the changes array
             changes = changes.filter(c => c.field !== 'nombre_adulte' && c.field !== 'nombre_enfant');
 
-            // Add warning comment
             const existingComment = existingData[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
             const warningComment = addComment(
                 existingComment,
@@ -447,7 +439,6 @@ function applyChangesToSheet(sheet, row, existingData, contactData, metadata, ch
             );
             sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(warningComment);
 
-            // If no other changes, return early
             if (changes.length === 0) {
                 return;
             }
@@ -469,7 +460,6 @@ function applyChangesToSheet(sheet, row, existingData, contactData, metadata, ch
         return `${c.field}: ${displayValue(c.oldValue)} → ${displayValue(c.newValue)}`;
     }).join(', ');
 
-    // Add comment
     const existingComment = existingData[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
     const newComment = addComment(
         existingComment,
@@ -482,10 +472,17 @@ function applyChangesToSheet(sheet, row, existingData, contactData, metadata, ch
 
 /**
  * Extract contact name for logging
+ * FIXED: Handle new name structure
  */
 function extractContactName(contact) {
     if (contact.names && contact.names.length > 0) {
-        return `${contact.names[0].givenName || ''} ${contact.names[0].familyName || ''}`.trim();
+        const name = contact.names[0];
+        // Try displayName first, fallback to building from parts
+        if (name.displayName) {
+            return name.displayName;
+        }
+        const parts = [name.middleName, name.familyName].filter(p => p);
+        return parts.join(' ') || 'Unknown';
     }
     return 'Unknown';
 }

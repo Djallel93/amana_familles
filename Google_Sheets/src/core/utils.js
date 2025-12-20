@@ -1,14 +1,16 @@
 /**
- * @file src/core/utils.js (IMPROVED)
- * @description Utility functions with improved comment management
+ * @file src/core/utils.js (REFACTORED v3.0)
+ * @description Utility functions with shared logic and improved address handling
+ * 
+ * CHANGES:
+ * - Added shared address parsing function (used by contacts and sheets)
+ * - Improved address formatting (no trailing commas)
+ * - Consolidated duplicate logic
  */
 
 /**
  * 📝 Format comment with timestamp and emoji
  * Format: yyyy-MM-dd emoji comment
- * @param {string} emoji - Emoji to prepend
- * @param {string} message - Comment message
- * @returns {string} - Formatted comment
  */
 function formatComment(emoji, message) {
     const now = new Date();
@@ -22,26 +24,90 @@ function formatComment(emoji, message) {
 
 /**
  * 📝 Add comment to existing comments (keeps only last 5)
- * @param {string} existingComments - Current comments
- * @param {string} newComment - New comment to add
- * @returns {string} - Updated comments string
  */
 function addComment(existingComments, newComment) {
-    // Split existing comments by newline
     const comments = existingComments ? existingComments.split('\n').filter(c => c.trim()) : [];
-
-    // Add new comment at the beginning (most recent first)
     comments.unshift(newComment);
-
-    // Keep only last 5 comments
     const recentComments = comments.slice(0, 5);
-
     return recentComments.join('\n');
 }
 
 /**
+ * 📍 SHARED: Parse address into components (used by contacts AND forms)
+ * Removes trailing commas and handles various formats
+ * 
+ * @param {string} fullAddress - Full address string (e.g., "1 Rue, 44000 Nantes, France")
+ * @returns {Object} - { street, postalCode, city, country }
+ */
+function parseAddressComponents(fullAddress) {
+    if (!fullAddress) {
+        return { street: '', postalCode: '', city: '', country: 'France' };
+    }
+
+    // Split by comma and remove empty parts and extra whitespace
+    const parts = fullAddress
+        .split(',')
+        .map(p => p.trim())
+        .filter(p => p.length > 0);
+
+    if (parts.length === 0) {
+        return { street: '', postalCode: '', city: '', country: 'France' };
+    }
+
+    if (parts.length === 1) {
+        return { street: parts[0], postalCode: '', city: '', country: 'France' };
+    }
+
+    // First part is always street
+    const street = parts[0];
+
+    // Second part may contain postal code and city
+    const secondPart = parts[1];
+    const postalCodeMatch = secondPart.match(/\b(\d{5})\b/);
+    const postalCode = postalCodeMatch ? postalCodeMatch[1] : '';
+    const city = postalCode ? secondPart.replace(postalCode, '').trim() : secondPart;
+
+    // Third part is country if exists, otherwise France
+    const country = parts.length >= 3 ? parts[parts.length - 1] : 'France';
+
+    return { street, postalCode, city, country };
+}
+
+/**
+ * 📍 SHARED: Format address components into clean string (NO trailing comma)
+ * 
+ * @param {string} street - Street address
+ * @param {string} postalCode - Postal code
+ * @param {string} city - City name
+ * @returns {string} - Formatted address "Street, PostalCode City" (no trailing comma)
+ */
+function formatAddressFromComponents(street, postalCode, city) {
+    const parts = [];
+
+    if (street && street.trim()) {
+        parts.push(street.trim());
+    }
+
+    // Combine postal code and city
+    const cityPart = [];
+    if (postalCode && postalCode.trim()) {
+        cityPart.push(postalCode.trim());
+    }
+    if (city && city.trim()) {
+        cityPart.push(city.trim());
+    }
+
+    if (cityPart.length > 0) {
+        parts.push(cityPart.join(' '));
+    }
+
+    // Join with comma and space, NO trailing comma
+    return parts.join(', ');
+}
+
+/**
  * 📞 Normaliser et formater un numéro de téléphone français
- * Format de sortie: +33 X XX XX XX XX (sans le 0 initial, sans parenthèses)
+ * Format de sortie: +33 X XX XX XX XX
  */
 function normalizePhone(phone) {
     if (!phone) return '';
@@ -74,7 +140,7 @@ function normalizePhone(phone) {
     }
 
     if (localNumber.length !== 9) {
-        logWarning(`⚠️ Numéro de téléphone invalide (doit avoir 9 chiffres après l'indicatif): ${phone} (extracted: ${localNumber})`);
+        logWarning(`⚠️ Numéro de téléphone invalide (doit avoir 9 chiffres): ${phone}`);
 
         if (localNumber.length > 9) {
             localNumber = localNumber.slice(-9);
@@ -153,10 +219,12 @@ function parseFormResponse(headers, values) {
 
 /**
  * 🏠 Formater une adresse pour le géocodage
+ * REFACTORED: Now uses shared address formatting
  */
 function formatAddressForGeocoding(address, postalCode, city) {
-    const parts = [address, postalCode, city, 'France'].filter(p => p);
-    return parts.join(', ');
+    const formatted = formatAddressFromComponents(address, postalCode, city);
+    // Add France if not empty
+    return formatted ? `${formatted}, France` : 'France';
 }
 
 /**
@@ -225,7 +293,6 @@ function getOrCreateFolder(parentFolder, folderName) {
 
 /**
  * ✅ Valider les champs requis
- * ENHANCED: Check that household has at least one person
  */
 function validateRequiredFields(data) {
     const errors = [];
@@ -241,7 +308,6 @@ function validateRequiredFields(data) {
     if (data.nombreAdulte == null || isNaN(data.nombreAdulte)) errors.push('Nombre d\'adultes requis');
     if (data.nombreEnfant == null || isNaN(data.nombreEnfant)) errors.push('Nombre d\'enfants requis');
 
-    // NEW: Validate household composition
     const totalPersons = parseInt(data.nombreAdulte || 0) + parseInt(data.nombreEnfant || 0);
     if (totalPersons === 0) {
         errors.push('Le foyer doit contenir au moins une personne (adulte ou enfant)');
@@ -254,26 +320,26 @@ function validateRequiredFields(data) {
 }
 
 /**
- * NEW: Validate household composition separately (for updates)
+ * Validate household composition separately (for updates)
  */
 function validateHouseholdComposition(nombreAdulte, nombreEnfant) {
     const adultes = parseInt(nombreAdulte) || 0;
     const enfants = parseInt(nombreEnfant) || 0;
-    
+
     if (adultes < 0) {
         return {
             isValid: false,
             error: 'Le nombre d\'adultes ne peut pas être négatif'
         };
     }
-    
+
     if (enfants < 0) {
         return {
             isValid: false,
             error: 'Le nombre d\'enfants ne peut pas être négatif'
         };
     }
-    
+
     const total = adultes + enfants;
     if (total === 0) {
         return {
@@ -281,7 +347,7 @@ function validateHouseholdComposition(nombreAdulte, nombreEnfant) {
             error: 'Le foyer doit contenir au moins une personne (adulte ou enfant)'
         };
     }
-    
+
     return {
         isValid: true,
         adultes: adultes,
@@ -289,7 +355,6 @@ function validateHouseholdComposition(nombreAdulte, nombreEnfant) {
         total: total
     };
 }
-
 
 /**
  * 🔗 Extraire les IDs de fichier depuis les URLs Drive
@@ -312,7 +377,6 @@ function extractFileIds(urlString) {
 
 /**
  * 🔍 Vérifier les doublons de famille (téléphone + nom)
- * IMPROVED: Check BEFORE inserting
  */
 function findDuplicateFamily(phone, lastName, email = null) {
     try {
@@ -415,7 +479,7 @@ function notifyAdmin(subject, message) {
         const adminEmail = config.adminEmail;
 
         if (!adminEmail) {
-            logWarning('⚠️ Email administrateur non configuré dans les propriétés du script');
+            logWarning('⚠️ Email administrateur non configuré');
             return;
         }
 

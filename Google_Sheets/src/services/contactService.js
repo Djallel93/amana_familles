@@ -1,11 +1,51 @@
 /**
- * @file src/services/contactService.js (ENHANCED WITH CUSTOM FIELDS)
- * @description Manage Google Contacts with custom fields instead of notes
+ * @file src/services/contactService.js (FIXED v3.0)
+ * @description Manage Google Contacts with proper name structure and clean addresses
+ * 
+ * CHANGES:
+ * - Fixed contact name structure: ID in givenName, real names in middleName/familyName
+ * - Removed trailing comma from addresses
+ * - Refactored common address parsing logic
  */
 
 /**
+ * HELPER: Parse and clean address (shared logic)
+ */
+function parseAndCleanAddress(fullAddress) {
+    if (!fullAddress) {
+        return { street: '', postalCode: '', city: '', country: 'France' };
+    }
+
+    // Split by comma and remove empty parts
+    const parts = fullAddress.split(',')
+        .map(p => p.trim())
+        .filter(p => p.length > 0);
+
+    if (parts.length === 0) {
+        return { street: '', postalCode: '', city: '', country: 'France' };
+    }
+
+    if (parts.length === 1) {
+        return { street: parts[0], postalCode: '', city: '', country: 'France' };
+    }
+
+    const street = parts[0];
+    const secondPart = parts[1];
+
+    // Extract postal code from second part
+    const postalCodeMatch = secondPart.match(/\b(\d{5})\b/);
+    const postalCode = postalCodeMatch ? postalCodeMatch[1] : '';
+    const city = postalCode ? secondPart.replace(postalCode, '').trim() : secondPart;
+
+    // Country is last part if exists, otherwise France
+    const country = parts.length >= 3 ? parts[parts.length - 1] : 'France';
+
+    return { street, postalCode, city, country };
+}
+
+/**
  * Create or update Google Contact for a family
- * ENHANCED: Uses custom fields instead of notes
+ * FIXED: Name structure and address formatting
  */
 function syncFamilyContact(familyData) {
     try {
@@ -60,9 +100,6 @@ function deleteContactForArchivedFamily(familyId) {
 
 /**
  * Find contact by family ID stored in custom field
- * UPDATED: Search in userDefined fields instead of biographies
- * 
- * 🔧 UPDATE SEARCH KEY IF YOU RENAMED 'ID':
  */
 function findContactByFamilyId(familyId) {
     try {
@@ -81,7 +118,6 @@ function findContactByFamilyId(familyId) {
             for (const contact of response.connections) {
                 if (contact.userDefined) {
                     for (const field of contact.userDefined) {
-                        // 🔧 IMPORTANT: Update 'ID' if you renamed it in buildCustomFields()
                         if (field.key === 'ID' && field.value === searchId) {
                             logInfo(`Found match in connections list for family ${searchId}`);
                             return contact;
@@ -168,41 +204,11 @@ function getLocationGroupName(quartierId) {
 }
 
 /**
- * Parse address from full address string
- */
-function parseAddress(fullAddress) {
-    if (!fullAddress) {
-        return { street: '', postalCode: '', city: '', country: 'France' };
-    }
-
-    const parts = fullAddress.split(',').map(p => p.trim());
-
-    if (parts.length < 2) {
-        return { street: fullAddress, postalCode: '', city: '', country: 'France' };
-    }
-
-    const street = parts[0];
-    const secondPart = parts[1];
-
-    const postalCodeMatch = secondPart.match(/\b(\d{5})\b/);
-    const postalCode = postalCodeMatch ? postalCodeMatch[1] : '';
-    const city = postalCode ? secondPart.replace(postalCode, '').trim() : secondPart;
-
-    const country = parts.length >= 3 ? parts[parts.length - 1] : 'France';
-
-    return { street, postalCode, city, country };
-}
-
-/**
  * Build custom fields array for contact
- * ENHANCED: All metadata now in custom fields
- * 
- * 🔧 CUSTOMIZE FIELD NAMES HERE:
- * Change the 'key' values to rename custom fields in Google Contacts
+ * UPDATED: Removed ID (now in contact name), added separate Sadaqa field
  */
 function buildCustomFields(familyData) {
     const {
-        id,
         criticite = 0,
         nombreAdulte = 0,
         nombreEnfant = 0,
@@ -212,24 +218,14 @@ function buildCustomFields(familyData) {
         seDeplace = false
     } = familyData;
 
-    const eligibilityList = [];
-    if (zakatElFitr) eligibilityList.push('Zakat El Fitr');
-    if (sadaqa) eligibilityList.push('Sadaqa');
-    const eligibilityText = eligibilityList.length > 0 ? eligibilityList.join(', ') : 'Aucune';
-
-    // ⚠️ IMPORTANT: If you change field names here, you MUST also update:
-    //    1. parseFamilyMetadataFromContact() function below
-    //    2. findContactByFamilyId() function (search key)
-
-    // Build custom fields array
     const customFields = [
-        { key: 'ID', value: String(id) },              // 🔧 Rename: e.g., 'ID Famille'
-        { key: 'Criticité', value: String(criticite) },       // 🔧 Rename: e.g., 'Priorité'
-        { key: 'Adultes', value: String(nombreAdulte) },      // 🔧 Rename: e.g., 'Nb Adultes'
-        { key: 'Enfants', value: String(nombreEnfant) },      // 🔧 Rename: e.g., 'Nb Enfants'
-        { key: 'Éligibilité', value: eligibilityText },       // 🔧 Rename: e.g., 'Aide Éligible'
-        { key: 'Langue', value: langue },                     // 🔧 Rename: e.g., 'Langue Préférée'
-        { key: 'Se Déplace', value: seDeplace ? 'Oui' : 'Non' } // 🔧 Rename: e.g., 'Mobilité'
+        { key: 'Criticité', value: String(criticite) },
+        { key: 'Adultes', value: String(nombreAdulte) },
+        { key: 'Enfants', value: String(nombreEnfant) },
+        { key: 'Zakat El Fitr', value: zakatElFitr ? 'Oui' : 'Non' },
+        { key: 'Sadaqa', value: sadaqa ? 'Oui' : 'Non' },
+        { key: 'Langue', value: langue },
+        { key: 'Se Déplace', value: seDeplace ? 'Oui' : 'Non' }
     ];
 
     return customFields;
@@ -237,10 +233,6 @@ function buildCustomFields(familyData) {
 
 /**
  * Parse family metadata from contact custom fields
- * UPDATED: Read from userDefined fields instead of biographies
- * 
- * 🔧 UPDATE FIELD NAMES HERE IF YOU RENAMED THEM:
- * Must match the keys used in buildCustomFields()
  */
 function parseFamilyMetadataFromContact(userDefined) {
     const metadata = {
@@ -258,25 +250,24 @@ function parseFamilyMetadataFromContact(userDefined) {
         return metadata;
     }
 
-    // 🔧 IMPORTANT: Update these key names if you renamed them in buildCustomFields()
     userDefined.forEach(field => {
         const key = field.key;
         const value = field.value;
 
-        if (key === 'ID') {           // 🔧 Must match buildCustomFields()
+        if (key === 'ID') {
             metadata.familyId = value;
-        } else if (key === 'Criticité') {    // 🔧 Must match buildCustomFields()
+        } else if (key === 'Criticité') {
             metadata.criticite = parseInt(value) || 0;
-        } else if (key === 'Adultes') {      // 🔧 Must match buildCustomFields()
+        } else if (key === 'Adultes') {
             metadata.nombreAdulte = parseInt(value) || 0;
-        } else if (key === 'Enfants') {      // 🔧 Must match buildCustomFields()
+        } else if (key === 'Enfants') {
             metadata.nombreEnfant = parseInt(value) || 0;
-        } else if (key === 'Éligibilité') {  // 🔧 Must match buildCustomFields()
+        } else if (key === 'Éligibilité') {
             metadata.zakatElFitr = value.includes('Zakat El Fitr');
             metadata.sadaqa = value.includes('Sadaqa');
-        } else if (key === 'Langue') {       // 🔧 Must match buildCustomFields()
+        } else if (key === 'Langue') {
             metadata.langue = value;
-        } else if (key === 'Se Déplace') {   // 🔧 Must match buildCustomFields()
+        } else if (key === 'Se Déplace') {
             metadata.seDeplace = value === 'Oui';
         }
     });
@@ -285,17 +276,19 @@ function parseFamilyMetadataFromContact(userDefined) {
 }
 
 /**
- * Create new contact with custom fields
- * ENHANCED: Uses userDefined fields instead of biographies
+ * Create new contact with proper name structure
+ * FIXED: Name structure = givenName: "ID -", middleName: "Prenom", familyName: "Nom"
  */
 function createContact(familyData) {
     const { id, nom, prenom, email, telephone, phoneBis, adresse, idQuartier } = familyData;
 
+    // FIXED: New name structure
     const contactResource = {
         names: [{
-            givenName: prenom || '',
-            familyName: nom || '',
-            displayName: `${prenom} ${nom}`
+            givenName: `${id} -`,           // ID with dash
+            middleName: prenom || '',       // Real first name
+            familyName: nom || '',          // Real last name
+            displayName: `${id} - ${prenom} ${nom}`  // Display as "ID - Prenom Nom"
         }],
         userDefined: buildCustomFields(familyData)
     };
@@ -330,8 +323,9 @@ function createContact(familyData) {
         }];
     }
 
+    // FIXED: Use shared address parsing logic (removes trailing comma)
     if (adresse) {
-        const parsedAddress = parseAddress(adresse);
+        const parsedAddress = parseAndCleanAddress(adresse);
         contactResource.addresses = [{
             streetAddress: parsedAddress.street,
             city: parsedAddress.city,
@@ -371,7 +365,7 @@ function createContact(familyData) {
     }
 
     logInfo(`Creating contact for family ${id}`, {
-        name: `${prenom} ${nom}`,
+        displayName: `${id} - ${prenom} ${nom}`,
         phone: contactResource.phoneNumbers ? contactResource.phoneNumbers[0].value : 'none',
         email: email || 'none',
         criticite: familyData.criticite,
