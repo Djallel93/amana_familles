@@ -1,15 +1,17 @@
 /**
- * @file src/services/bulkImportService.js (FIXED ROW TRACKING)
- * @description Complete bulk import service with correct row numbering
- * Row 1: Headers
- * Row 2+: Data (starts here)
+ * @file src/services/bulkImportService.js (FIXED ROW TRACKING - v2)
+ * @description Bulk import with corrected row numbering
+ * 
+ * SHEET STRUCTURE:
+ * Row 1: Headers (never processed)
+ * Row 2+: Data rows (processing starts here)
  */
 
 /**
  * Process single bulk import row
  * @param {Array} row - Row data
  * @param {Sheet} sheet - Bulk Import sheet
- * @param {number} sheetRowNumber - ACTUAL row number in sheet (1-based, should be >= 2)
+ * @param {number} sheetRowNumber - ACTUAL row number in sheet (1-based, >= 2)
  */
 function processBulkImportRow(row, sheet, sheetRowNumber) {
     // Extract data from row
@@ -149,7 +151,7 @@ function processBulkImportRow(row, sheet, sheetRowNumber) {
         sadaqa: false
     });
 
-    logInfo(`✅ Famille importée avec statut "En cours": ${familyId} (Ligne feuille: ${sheetRowNumber})`, { criticite });
+    logInfo(`✅ Famille importée avec statut "En cours": ${familyId} (Sheet row: ${sheetRowNumber})`, { criticite });
 
     return {
         success: true,
@@ -160,7 +162,7 @@ function processBulkImportRow(row, sheet, sheetRowNumber) {
 
 /**
  * Process bulk import with batch limit
- * FIXED: Correct row tracking starting from row 2
+ * FIXED: Correct row tracking - Row 1 is header, Row 2+ is data
  */
 function processBulkImport(batchSize = 10) {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BULK_IMPORT_SHEET_NAME);
@@ -174,38 +176,54 @@ function processBulkImport(batchSize = 10) {
 
     const lastRow = sheet.getLastRow();
 
-    // Row 1: Headers
-    // Row 2+: Data
-    const DATA_START_ROW = 2;
+    // Row 1: Headers (never processed)
+    // Row 2: First data row
+    const HEADER_ROW = 1;
+    const FIRST_DATA_ROW = 2;
 
-    if (lastRow < DATA_START_ROW) {
+    if (lastRow < FIRST_DATA_ROW) {
         return {
             success: false,
             message: '⚠️ No data to process. Paste your data in "Bulk Import" sheet starting from row 2.'
         };
     }
 
-    // Get data starting from row 2 (skip header row 1)
-    const numDataRows = lastRow - DATA_START_ROW + 1; // +1 because lastRow is inclusive
-    const dataRange = sheet.getRange(DATA_START_ROW, 1, numDataRows, 17);
+    // Calculate number of data rows (excluding header)
+    const numDataRows = lastRow - FIRST_DATA_ROW + 1;
+
+    // Get all data rows (starting from row 2)
+    const dataRange = sheet.getRange(FIRST_DATA_ROW, 1, numDataRows, 17);
     const data = dataRange.getValues();
 
     // Get comment column for all data rows
-    const commentRange = sheet.getRange(DATA_START_ROW, BULK_COLUMNS.COMMENTAIRE + 1, numDataRows, 1);
+    const commentRange = sheet.getRange(FIRST_DATA_ROW, BULK_COLUMNS.COMMENTAIRE + 1, numDataRows, 1);
     const comments = commentRange.getValues();
+
+    // Log for debugging
+    logInfo(`📊 Bulk Import Debug: lastRow=${lastRow}, numDataRows=${numDataRows}, firstDataRow=${FIRST_DATA_ROW}`);
+    logInfo(`📊 Data array length: ${data.length}, Comments array length: ${comments.length}`);
 
     // Find pending rows (not yet processed)
     const pendingRows = [];
-    data.forEach((row, dataIndex) => {
-        const comment = comments[dataIndex][0];
-        const actualRowNumber = DATA_START_ROW + dataIndex; // Calculate actual sheet row number
+    data.forEach((row, arrayIndex) => {
+        const comment = comments[arrayIndex][0];
+
+        // Calculate actual sheet row number
+        // arrayIndex=0 corresponds to sheet row 2 (first data row)
+        // arrayIndex=1 corresponds to sheet row 3, etc.
+        const sheetRowNumber = FIRST_DATA_ROW + arrayIndex;
+
+        // Debug first few rows
+        if (arrayIndex < 3) {
+            logInfo(`📊 Row ${sheetRowNumber}: arrayIndex=${arrayIndex}, comment="${comment}", firstName="${row[BULK_COLUMNS.PRENOM]}"`);
+        }
 
         // Only process if not already processed successfully
         if (!comment || comment === '' || comment === 'En attente' || comment.includes('En cours...')) {
             pendingRows.push({
                 row: row,
-                sheetRowNumber: actualRowNumber,
-                dataIndex: dataIndex
+                sheetRowNumber: sheetRowNumber,
+                arrayIndex: arrayIndex
             });
         }
     });
@@ -223,6 +241,11 @@ function processBulkImport(batchSize = 10) {
         };
     }
 
+    logInfo(`📊 Found ${pendingRows.length} pending rows to process`);
+    if (pendingRows.length > 0) {
+        logInfo(`📊 First pending row: sheetRowNumber=${pendingRows[0].sheetRowNumber}, arrayIndex=${pendingRows[0].arrayIndex}`);
+    }
+
     const rowsToProcess = pendingRows.slice(0, batchSize);
     const results = {
         success: true,
@@ -234,10 +257,12 @@ function processBulkImport(batchSize = 10) {
         errors: []
     };
 
-    logInfo(`📥 Processing ${rowsToProcess.length} imports (batch: ${batchSize}, starting from row 2)`);
+    logInfo(`📥 Processing ${rowsToProcess.length} imports (batch: ${batchSize})`);
 
-    rowsToProcess.forEach(item => {
+    rowsToProcess.forEach((item, processingIndex) => {
         const { row, sheetRowNumber } = item;
+
+        logInfo(`🔄 Processing item ${processingIndex}: sheetRowNumber=${sheetRowNumber}`);
 
         try {
             // Set processing status
@@ -253,18 +278,20 @@ function processBulkImport(batchSize = 10) {
                     comment += `\n${result.quartierWarning}`;
                 }
                 sheet.getRange(sheetRowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue(comment);
+                logInfo(`✅ Row ${sheetRowNumber} processed successfully: ID ${result.familyId}`);
             } else {
                 results.failed++;
                 sheet.getRange(sheetRowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue(
                     `❌ Erreur: ${result.error}`
                 );
                 results.errors.push({ row: sheetRowNumber, error: result.error });
+                logInfo(`❌ Row ${sheetRowNumber} failed: ${result.error}`);
             }
 
             results.processed++;
 
         } catch (error) {
-            logError(`❌ Error row ${sheetRowNumber}`, error);
+            logError(`❌ Error processing row ${sheetRowNumber}`, error);
             results.failed++;
             sheet.getRange(sheetRowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue(
                 `❌ System error: ${error.toString()}`
@@ -273,7 +300,7 @@ function processBulkImport(batchSize = 10) {
         }
     });
 
-    logInfo('✅ Bulk import completed', results);
+    logInfo('✅ Bulk import batch completed', results);
 
     if (results.succeeded > 0 || results.failed > 0) {
         notifyAdmin(
@@ -302,9 +329,9 @@ function getBulkImportStatistics() {
     }
 
     const lastRow = sheet.getLastRow();
-    const DATA_START_ROW = 2;
+    const FIRST_DATA_ROW = 2;
 
-    if (lastRow < DATA_START_ROW) {
+    if (lastRow < FIRST_DATA_ROW) {
         return {
             total: 0,
             pending: 0,
@@ -314,9 +341,8 @@ function getBulkImportStatistics() {
         };
     }
 
-    // Data starts at row 2
-    const numDataRows = lastRow - DATA_START_ROW + 1;
-    const data = sheet.getRange(DATA_START_ROW, BULK_COLUMNS.COMMENTAIRE + 1, numDataRows, 1).getValues();
+    const numDataRows = lastRow - FIRST_DATA_ROW + 1;
+    const data = sheet.getRange(FIRST_DATA_ROW, BULK_COLUMNS.COMMENTAIRE + 1, numDataRows, 1).getValues();
 
     const stats = {
         total: numDataRows,
@@ -356,12 +382,12 @@ function clearBulkImportSheet() {
     }
 
     const lastRow = sheet.getLastRow();
-    const DATA_START_ROW = 2;
+    const FIRST_DATA_ROW = 2;
 
     // Keep row 1 (header), delete from row 2 onwards
-    if (lastRow >= DATA_START_ROW) {
-        const rowsToDelete = lastRow - DATA_START_ROW + 1;
-        sheet.deleteRows(DATA_START_ROW, rowsToDelete);
+    if (lastRow >= FIRST_DATA_ROW) {
+        const rowsToDelete = lastRow - FIRST_DATA_ROW + 1;
+        sheet.deleteRows(FIRST_DATA_ROW, rowsToDelete);
         logInfo('🗑️ Bulk Import sheet cleared');
         return {
             success: true,
@@ -383,18 +409,18 @@ function resetProcessingStatus() {
     if (!sheet) return;
 
     const lastRow = sheet.getLastRow();
-    const DATA_START_ROW = 2;
+    const FIRST_DATA_ROW = 2;
 
-    if (lastRow < DATA_START_ROW) return;
+    if (lastRow < FIRST_DATA_ROW) return;
 
-    const numDataRows = lastRow - DATA_START_ROW + 1;
-    const data = sheet.getRange(DATA_START_ROW, BULK_COLUMNS.COMMENTAIRE + 1, numDataRows, 1).getValues();
+    const numDataRows = lastRow - FIRST_DATA_ROW + 1;
+    const data = sheet.getRange(FIRST_DATA_ROW, BULK_COLUMNS.COMMENTAIRE + 1, numDataRows, 1).getValues();
 
     let resetCount = 0;
-    data.forEach((row, index) => {
+    data.forEach((row, arrayIndex) => {
         if (row[0] && row[0].includes('En cours')) {
-            const actualRow = DATA_START_ROW + index;
-            sheet.getRange(actualRow, BULK_COLUMNS.COMMENTAIRE + 1).setValue(
+            const sheetRowNumber = FIRST_DATA_ROW + arrayIndex;
+            sheet.getRange(sheetRowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue(
                 'En attente (reset after timeout)'
             );
             resetCount++;
@@ -456,7 +482,7 @@ function getOrCreateBulkImportSheet() {
         sheet.setColumnWidths(6, 2, 100);
         sheet.setColumnWidths(8, 2, 150);
         sheet.setColumnWidth(10, 150);
-        sheet.setColumnWidth(11, 80); // se_deplace
+        sheet.setColumnWidth(11, 80);
         sheet.setColumnWidths(12, 3, 200);
         sheet.setColumnWidth(15, 80);
         sheet.setColumnWidth(16, 100);
@@ -489,7 +515,7 @@ function getOrCreateBulkImportSheet() {
 
         sheet.getRange('P2:P1000').setDataValidation(langueRule);
 
-        logInfo('✅ Feuille Bulk Import créée avec succès (données à partir de la ligne 2)');
+        logInfo('✅ Feuille Bulk Import créée avec succès (Row 1: Headers, Row 2+: Data)');
     }
 
     return sheet;

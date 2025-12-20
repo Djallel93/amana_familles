@@ -1,15 +1,17 @@
 /**
- * @file src/services/bulkUpdateService.js (FIXED ROW TRACKING)
+ * @file src/services/bulkUpdateService.js (FIXED ROW TRACKING - v2)
  * @description Handle bulk updates with correct row numbering
- * Row 1: Headers
- * Row 2+: Data (starts here)
+ * 
+ * SHEET STRUCTURE:
+ * Row 1: Headers (never processed)
+ * Row 2+: Data rows (processing starts here)
  */
 
 /**
  * Process single bulk update row
  * @param {Array} row - Row data
  * @param {Sheet} sheet - Bulk Update sheet
- * @param {number} sheetRowNumber - ACTUAL row number in sheet (1-based, should be >= 2)
+ * @param {number} sheetRowNumber - ACTUAL row number in sheet (1-based, >= 2)
  */
 function processBulkUpdateRow(row, sheet, sheetRowNumber) {
     const familyId = row[BULK_UPDATE_COLUMNS.ID];
@@ -119,7 +121,7 @@ function processBulkUpdateRow(row, sheet, sheetRowNumber) {
 
 /**
  * Process bulk updates with batch limit
- * FIXED: Correct row tracking starting from row 2
+ * FIXED: Correct row tracking - Row 1 is header, Row 2+ is data
  */
 function processBulkUpdate(batchSize = 10) {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BULK_UPDATE_SHEET_NAME);
@@ -133,37 +135,51 @@ function processBulkUpdate(batchSize = 10) {
 
     const lastRow = sheet.getLastRow();
 
-    // Row 1: Headers
-    // Row 2+: Data
-    const DATA_START_ROW = 2;
+    // Row 1: Headers (never processed)
+    // Row 2: First data row
+    const HEADER_ROW = 1;
+    const FIRST_DATA_ROW = 2;
 
-    if (lastRow < DATA_START_ROW) {
+    if (lastRow < FIRST_DATA_ROW) {
         return {
             success: false,
             message: '⚠️ No data to process. Paste your updates in "Bulk Update" sheet starting from row 2.'
         };
     }
 
-    // Get data starting from row 2
-    const numDataRows = lastRow - DATA_START_ROW + 1; // +1 because lastRow is inclusive
-    const dataRange = sheet.getRange(DATA_START_ROW, 1, numDataRows, 18);
+    // Calculate number of data rows (excluding header)
+    const numDataRows = lastRow - FIRST_DATA_ROW + 1;
+
+    // Get all data rows (starting from row 2)
+    const dataRange = sheet.getRange(FIRST_DATA_ROW, 1, numDataRows, 18);
     const data = dataRange.getValues();
 
     // Get comment column for all data rows
-    const commentRange = sheet.getRange(DATA_START_ROW, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1, numDataRows, 1);
+    const commentRange = sheet.getRange(FIRST_DATA_ROW, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1, numDataRows, 1);
     const comments = commentRange.getValues();
+
+    // Log for debugging
+    logInfo(`📊 Bulk Update Debug: lastRow=${lastRow}, numDataRows=${numDataRows}, firstDataRow=${FIRST_DATA_ROW}`);
 
     // Find pending rows
     const pendingRows = [];
-    data.forEach((row, dataIndex) => {
-        const comment = comments[dataIndex][0];
-        const actualRowNumber = DATA_START_ROW + dataIndex; // Calculate actual sheet row number
+    data.forEach((row, arrayIndex) => {
+        const comment = comments[arrayIndex][0];
+
+        // Calculate actual sheet row number
+        // arrayIndex=0 corresponds to sheet row 2 (first data row)
+        const sheetRowNumber = FIRST_DATA_ROW + arrayIndex;
+
+        // Debug first few rows
+        if (arrayIndex < 3) {
+            logInfo(`📊 Row ${sheetRowNumber}: arrayIndex=${arrayIndex}, comment="${comment}", ID="${row[BULK_UPDATE_COLUMNS.ID]}"`);
+        }
 
         if (!comment || comment === '' || comment === 'En attente' || comment.includes('En cours...')) {
             pendingRows.push({
                 row: row,
-                sheetRowNumber: actualRowNumber,
-                dataIndex: dataIndex
+                sheetRowNumber: sheetRowNumber,
+                arrayIndex: arrayIndex
             });
         }
     });
@@ -180,6 +196,8 @@ function processBulkUpdate(batchSize = 10) {
         };
     }
 
+    logInfo(`📊 Found ${pendingRows.length} pending rows to process`);
+
     const rowsToProcess = pendingRows.slice(0, batchSize);
     const results = {
         success: true,
@@ -191,10 +209,12 @@ function processBulkUpdate(batchSize = 10) {
         errors: []
     };
 
-    logInfo(`✏️ Processing ${rowsToProcess.length} updates (batch: ${batchSize}, starting from row 2)`);
+    logInfo(`✏️ Processing ${rowsToProcess.length} updates (batch: ${batchSize})`);
 
-    rowsToProcess.forEach(item => {
+    rowsToProcess.forEach((item, processingIndex) => {
         const { row, sheetRowNumber } = item;
+
+        logInfo(`🔄 Processing item ${processingIndex}: sheetRowNumber=${sheetRowNumber}`);
 
         try {
             sheet.getRange(sheetRowNumber, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue('⚙️ En cours...');
@@ -209,18 +229,20 @@ function processBulkUpdate(batchSize = 10) {
                     comment += `\n${result.quartierWarning}`;
                 }
                 sheet.getRange(sheetRowNumber, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue(comment);
+                logInfo(`✅ Row ${sheetRowNumber} updated successfully`);
             } else {
                 results.failed++;
                 sheet.getRange(sheetRowNumber, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue(
                     `❌ Erreur: ${result.error}`
                 );
                 results.errors.push({ row: sheetRowNumber, error: result.error });
+                logInfo(`❌ Row ${sheetRowNumber} failed: ${result.error}`);
             }
 
             results.processed++;
 
         } catch (error) {
-            logError(`❌ Error row ${sheetRowNumber}`, error);
+            logError(`❌ Error processing row ${sheetRowNumber}`, error);
             results.failed++;
             sheet.getRange(sheetRowNumber, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue(
                 `❌ System error: ${error.toString()}`
@@ -255,11 +277,11 @@ function clearBulkUpdateSheet() {
     }
 
     const lastRow = sheet.getLastRow();
-    const DATA_START_ROW = 2;
+    const FIRST_DATA_ROW = 2;
 
-    if (lastRow >= DATA_START_ROW) {
-        const rowsToDelete = lastRow - DATA_START_ROW + 1;
-        sheet.deleteRows(DATA_START_ROW, rowsToDelete);
+    if (lastRow >= FIRST_DATA_ROW) {
+        const rowsToDelete = lastRow - FIRST_DATA_ROW + 1;
+        sheet.deleteRows(FIRST_DATA_ROW, rowsToDelete);
         logInfo('🗑️ Bulk Update sheet cleared');
         return {
             success: true,
@@ -290,9 +312,9 @@ function getBulkUpdateStatistics() {
     }
 
     const lastRow = sheet.getLastRow();
-    const DATA_START_ROW = 2;
+    const FIRST_DATA_ROW = 2;
 
-    if (lastRow < DATA_START_ROW) {
+    if (lastRow < FIRST_DATA_ROW) {
         return {
             total: 0,
             pending: 0,
@@ -302,8 +324,8 @@ function getBulkUpdateStatistics() {
         };
     }
 
-    const numDataRows = lastRow - DATA_START_ROW + 1;
-    const data = sheet.getRange(DATA_START_ROW, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1, numDataRows, 1).getValues();
+    const numDataRows = lastRow - FIRST_DATA_ROW + 1;
+    const data = sheet.getRange(FIRST_DATA_ROW, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1, numDataRows, 1).getValues();
 
     const stats = {
         total: numDataRows,
@@ -337,18 +359,18 @@ function resetUpdateProcessingStatus() {
     if (!sheet) return;
 
     const lastRow = sheet.getLastRow();
-    const DATA_START_ROW = 2;
+    const FIRST_DATA_ROW = 2;
 
-    if (lastRow < DATA_START_ROW) return;
+    if (lastRow < FIRST_DATA_ROW) return;
 
-    const numDataRows = lastRow - DATA_START_ROW + 1;
-    const data = sheet.getRange(DATA_START_ROW, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1, numDataRows, 1).getValues();
+    const numDataRows = lastRow - FIRST_DATA_ROW + 1;
+    const data = sheet.getRange(FIRST_DATA_ROW, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1, numDataRows, 1).getValues();
 
     let resetCount = 0;
-    data.forEach((row, index) => {
+    data.forEach((row, arrayIndex) => {
         if (row[0] && row[0].includes('En cours')) {
-            const actualRow = DATA_START_ROW + index;
-            sheet.getRange(actualRow, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue(
+            const sheetRowNumber = FIRST_DATA_ROW + arrayIndex;
+            sheet.getRange(sheetRowNumber, BULK_UPDATE_COLUMNS.COMMENTAIRE + 1).setValue(
                 'En attente (reset after timeout)'
             );
             resetCount++;
@@ -390,19 +412,19 @@ function getOrCreateBulkUpdateSheet() {
 
         // Set column widths
         sheet.setColumnWidth(1, 80); // id
-        sheet.setColumnWidths(2, 3, 150); // nom, prenom, nombre_adulte
-        sheet.setColumnWidth(4, 100); // nombre_enfant
-        sheet.setColumnWidth(5, 250); // adresse
-        sheet.setColumnWidths(6, 2, 100); // code_postal, ville
-        sheet.setColumnWidths(8, 2, 150); // telephone, telephone_bis
-        sheet.setColumnWidth(10, 150); // email
-        sheet.setColumnWidth(11, 80); // se_deplace
-        sheet.setColumnWidths(12, 3, 200); // circonstances, ressentit, specificites
-        sheet.setColumnWidth(15, 80); // criticite
-        sheet.setColumnWidth(16, 100); // langue
-        sheet.setColumnWidth(17, 300); // commentaire
+        sheet.setColumnWidths(2, 3, 150);
+        sheet.setColumnWidth(4, 100);
+        sheet.setColumnWidth(5, 250);
+        sheet.setColumnWidths(6, 2, 100);
+        sheet.setColumnWidths(8, 2, 150);
+        sheet.setColumnWidth(10, 150);
+        sheet.setColumnWidth(11, 80);
+        sheet.setColumnWidths(12, 3, 200);
+        sheet.setColumnWidth(15, 80);
+        sheet.setColumnWidth(16, 100);
+        sheet.setColumnWidth(17, 300);
 
-        logInfo('📄 Bulk Update sheet created (données à partir de la ligne 2)');
+        logInfo('📄 Bulk Update sheet created (Row 1: Headers, Row 2+: Data)');
     }
 
     return sheet;
