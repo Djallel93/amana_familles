@@ -1,6 +1,6 @@
 /**
- * @file src/services/contactService.js (FIXED v5.0)
- * @description Contact management with complete sync support + last update tracking
+ * @file src/services/contactService.js (FIXED v6.0)
+ * @description Contact management - ID removed from custom fields, parsed from first name
  */
 
 /**
@@ -53,7 +53,8 @@ function deleteContactForArchivedFamily(familyId) {
 }
 
 /**
- * Find contact by family ID in custom field
+ * Find contact by family ID parsed from givenName (first name)
+ * Format: "{ID} -" in givenName field
  */
 function findContactByFamilyId(familyId) {
     try {
@@ -69,12 +70,14 @@ function findContactByFamilyId(familyId) {
             logInfo(`Scanning ${response.connections.length} contacts...`);
 
             for (const contact of response.connections) {
-                if (contact.userDefined) {
-                    for (const field of contact.userDefined) {
-                        if (field.key === 'ID' && field.value === searchId) {
-                            logInfo(`Contact found for family ${searchId}`);
-                            return contact;
-                        }
+                if (contact.names && contact.names.length > 0) {
+                    const givenName = contact.names[0].givenName || '';
+
+                    // Parse ID from givenName format: "{ID} -"
+                    const match = givenName.match(/^(\d+)\s*-/);
+                    if (match && match[1] === searchId) {
+                        logInfo(`Contact found for family ${searchId}`);
+                        return contact;
                     }
                 }
             }
@@ -157,7 +160,7 @@ function getLocationGroupName(quartierId) {
 }
 
 /**
- * Build custom fields for a contact (COMPLETE WITH LAST UPDATE)
+ * Build custom fields for a contact (WITHOUT ID - ID is in givenName)
  */
 function buildCustomFields(familyData) {
     const {
@@ -174,7 +177,7 @@ function buildCustomFields(familyData) {
     const lastUpdate = formatDateTime(new Date());
 
     const customFields = [
-        { key: 'ID', value: String(familyData.id) },
+        // ID REMOVED - now in givenName
         { key: 'Criticité', value: String(criticite) },
         { key: 'Adultes', value: String(nombreAdulte) },
         { key: 'Enfants', value: String(nombreEnfant) },
@@ -189,11 +192,11 @@ function buildCustomFields(familyData) {
 }
 
 /**
- * Parse family metadata from contact custom fields (COMPLETE PARSING)
+ * Parse family metadata from contact custom fields (ID parsed from givenName separately)
  */
 function parseFamilyMetadataFromContact(userDefined) {
     const metadata = {
-        familyId: null,
+        // familyId NOT parsed here - parsed from givenName instead
         criticite: 0,
         nombreAdulte: 0,
         nombreEnfant: 0,
@@ -213,9 +216,7 @@ function parseFamilyMetadataFromContact(userDefined) {
         const value = field.value;
 
         switch (key) {
-            case 'ID':
-                metadata.familyId = value;
-                break;
+            // ID REMOVED - no longer in custom fields
             case 'Criticité':
                 metadata.criticite = parseInt(value) || 0;
                 break;
@@ -247,19 +248,19 @@ function parseFamilyMetadataFromContact(userDefined) {
 }
 
 /**
- * Create new contact with complete structure
+ * Create new contact with complete structure (ID in givenName)
  */
 function createContact(familyData) {
     const { id, nom, prenom, email, telephone, phoneBis, adresse, idQuartier } = familyData;
 
     const contactResource = {
         names: [{
-            givenName: `${id} -`,
+            givenName: `${id} -`,  // ID in givenName
             middleName: prenom || '',
             familyName: nom || '',
             displayName: `${id} - ${prenom} ${nom}`
         }],
-        userDefined: buildCustomFields(familyData)
+        userDefined: buildCustomFields(familyData)  // No ID in custom fields
     };
 
     if (telephone) {

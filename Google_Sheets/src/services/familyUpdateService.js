@@ -169,26 +169,18 @@ function updateFamilyById(familyId, updateData) {
                 changes.push('statut (changé à En cours)');
             }
         }
-
-        // Add comment
-        const existingComment = existingData[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
         let updateComment = `Mis à jour: ${changes.join(', ')} - ${new Date().toLocaleString('fr-FR')}`;
-
+        
         if (forceInProgress) {
-            updateComment += `\n📝 Statut changé à "En cours" après mise à jour en masse`;
+            updateComment += `\n Statut changé à "En cours" après mise à jour en masse`;
+            appendSheetComment(sheet, row, '📝', updateComment);
         }
-
+        
         if (quartierWarning) {
-            updateComment += `\n⚠️ ${quartierWarning}`;
+            updateComment += `\n ${quartierWarning}`;
+            appendSheetComment(sheet, row, '⚠️', updateComment);
         }
 
-        const newComment = existingComment ?
-            `${existingComment}\n${updateComment}` :
-            updateComment;
-
-        sheet.getRange(targetRow, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
-
-        // Sync with Google Contacts ONLY if status is "Validé"
         const finalStatus = sheet.getRange(targetRow, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).getValue();
         if (finalStatus === CONFIG.STATUS.VALIDATED) {
             const contactData = {

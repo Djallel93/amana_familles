@@ -1,6 +1,6 @@
 /**
- * @file src/services/reverseContactSyncService.js (DEBUG v4.1)
- * @description Complete reverse sync with EXTENSIVE LOGGING
+ * @file src/services/reverseContactSyncService.js (FIXED v5.0)
+ * @description Complete reverse sync with ID parsed from givenName
  */
 
 /**
@@ -76,7 +76,7 @@ function reverseContactSync() {
         });
 
         const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-        
+
         console.log('\n═══════════════════════════════════════════════════════════');
         console.log('📊 REVERSE SYNC RESULTS');
         console.log('═══════════════════════════════════════════════════════════');
@@ -123,7 +123,7 @@ function reverseContactSync() {
 function fetchAllFamilyContacts() {
     try {
         console.log('📋 Fetching family contacts...');
-        
+
         const mainGroupId = getOrCreateContactGroup('Famille dans le besoin');
         console.log(`   Group ID: ${mainGroupId}`);
 
@@ -163,17 +163,29 @@ function fetchAllFamilyContacts() {
 }
 
 /**
- * Sync single contact to sheet
+ * Sync single contact to sheet (FIXED: ID from givenName)
  */
 function syncContactToSheet(contact) {
     console.log('\n🔍 Extracting contact data...');
-    
-    // Parse metadata
+
+    // FIXED: Parse family ID from givenName (format: "{ID} -")
+    let familyId = null;
+    if (contact.names && contact.names.length > 0) {
+        const givenName = contact.names[0].givenName || '';
+        const match = givenName.match(/^(\d+)\s*-/);
+        if (match) {
+            familyId = match[1];
+            console.log(`✅ Family ID parsed from givenName: ${familyId}`);
+        } else {
+            console.log(`⚠️ Could not parse Family ID from givenName: "${givenName}"`);
+        }
+    }
+
+    // Parse metadata from custom fields (NO ID - already parsed from givenName)
     const metadata = parseFamilyMetadataFromContact(contact.userDefined);
-    const familyId = metadata.familyId;
 
     console.log('📋 Contact Metadata:');
-    console.log(`   Family ID: ${familyId}`);
+    console.log(`   Family ID (from givenName): ${familyId}`);
     console.log(`   Criticité: ${metadata.criticite}`);
     console.log(`   Adultes: ${metadata.nombreAdulte}`);
     console.log(`   Enfants: ${metadata.nombreEnfant}`);
@@ -211,7 +223,7 @@ function syncContactToSheet(contact) {
     }
 
     console.log(`✅ Found family in sheet at row ${targetRow}`);
-    
+
     // Log existing sheet data
     console.log('\n📊 Current Sheet Data:');
     console.log(`   Nom: "${existingData[OUTPUT_COLUMNS.NOM]}"`);
@@ -229,7 +241,7 @@ function syncContactToSheet(contact) {
     console.log(`   Se Déplace: ${existingData[OUTPUT_COLUMNS.SE_DEPLACE]} (type: ${typeof existingData[OUTPUT_COLUMNS.SE_DEPLACE]})`);
 
     const contactData = extractContactData(contact);
-    
+
     console.log('\n📇 Contact Data (names, phones, email, address):');
     console.log(`   First Name: "${contactData.firstName}"`);
     console.log(`   Last Name: "${contactData.lastName}"`);
@@ -269,7 +281,7 @@ function syncContactToSheet(contact) {
 }
 
 /**
- * Extract relevant data from contact
+ * Extract relevant data from contact (FIXED: parse prenom from middleName)
  */
 function extractContactData(contact) {
     const data = {
@@ -283,7 +295,7 @@ function extractContactData(contact) {
         city: ''
     };
 
-    // Extract from middleName and familyName
+    // FIXED: Extract firstName from middleName and lastName from familyName
     if (contact.names && contact.names.length > 0) {
         data.firstName = contact.names[0].middleName || '';
         data.lastName = contact.names[0].familyName || '';
@@ -294,7 +306,7 @@ function extractContactData(contact) {
     if (contact.phoneNumbers && contact.phoneNumbers.length > 0) {
         data.phone = normalizePhone(contact.phoneNumbers[0].value);
         console.log(`   Raw phone[0]: "${contact.phoneNumbers[0].value}" → normalized: "${data.phone}"`);
-        
+
         if (contact.phoneNumbers.length > 1) {
             data.phoneBis = normalizePhone(contact.phoneNumbers[1].value);
             console.log(`   Raw phone[1]: "${contact.phoneNumbers[1].value}" → normalized: "${data.phoneBis}"`);
@@ -568,13 +580,7 @@ function applyChangesToSheet(sheet, row, existingData, contactData, metadata, ch
             console.log(`⚠️ Skipping household update: ${validation.error}`);
 
             changes = changes.filter(c => c.field !== 'nombre_adulte' && c.field !== 'nombre_enfant');
-
-            const existingComment = existingData[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
-            const warningComment = addComment(
-                existingComment,
-                formatComment('⚠️', `Sync Contact ignoré: ${validation.error}`)
-            );
-            sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(warningComment);
+            appendSheetComment(sheet, row, '⚠️', `Sync Contact ignoré: ${validation.error}`);
 
             if (changes.length === 0) {
                 console.log('⚠️ No valid changes remaining after validation');
@@ -589,24 +595,7 @@ function applyChangesToSheet(sheet, row, existingData, contactData, metadata, ch
         console.log(`   ${idx + 1}. Setting ${change.field} to "${change.newValue}" at column ${change.column + 1}`);
         sheet.getRange(row, change.column + 1).setValue(change.newValue);
     });
-
-    // Build change summary for comment
-    const changeSummary = changes.map(c => {
-        const displayValue = (val) => {
-            if (typeof val === 'boolean') return val ? 'Oui' : 'Non';
-            if (val === '') return '(vide)';
-            return val;
-        };
-        return `${c.field}: ${displayValue(c.oldValue)} → ${displayValue(c.newValue)}`;
-    }).join(', ');
-
-    const existingComment = existingData[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
-    const newComment = addComment(
-        existingComment,
-        formatComment('🔄', `Sync Contact → Feuille: ${changeSummary}`)
-    );
-    sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
-
+    appendSheetComment(sheet, row, '🔄', 'Sync Contact → Feuille');
     console.log(`✅ Applied ${changes.length} changes successfully`);
 }
 

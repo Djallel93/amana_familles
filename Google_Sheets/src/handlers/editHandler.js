@@ -308,20 +308,15 @@ function handleArchiveStatus(sheet, row) {
         logInfo(`Processing archive for family ${familyId} at row ${row}`);
 
         const deleteResult = deleteContactForArchivedFamily(familyId);
-
-        const existingComment = data[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
-        let newComment = formatComment('🗄️', 'Archivé');
-
+        appendSheetComment(sheet, row, '🗄️', 'Archivé');
+        
         if (deleteResult.success) {
-            newComment = addComment(newComment, formatComment('📞', 'Contact Google supprimé'));
             logInfo(`Contact deleted successfully for archived family: ${familyId}`);
+            appendSheetComment(sheet, row, '📞', 'Contact Google supprimé');
         } else {
-            newComment = addComment(newComment, formatComment('⚠️', `Échec suppression contact: ${deleteResult.error}`));
             logError(`Failed to delete contact for family: ${familyId}`, deleteResult.error);
+            appendSheetComment(sheet, row, '⚠️', `Échec suppression contact: ${deleteResult.error}`);
         }
-
-        const finalComment = addComment(existingComment, newComment);
-        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(finalComment);
 
         notifyAdmin(
             '🗄️ Famille archivée',
@@ -392,20 +387,14 @@ function processValidatedFamily(sheet, row) {
         };
 
         const contactResult = syncFamilyContact(familyData);
-
-        const existingComment = data[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
-        let newComment;
-
+        
         if (contactResult.success) {
             logInfo(`Contact synced for family: ${familyId}`);
-            newComment = addComment(existingComment, formatComment('✅', 'Validé et traité'));
+            appendSheetComment(sheet, row, '✅', 'Validé et traité');
         } else {
             logError(`Contact sync failed for family: ${familyId}`, contactResult.error);
-            newComment = addComment(existingComment, formatComment('⚠️', `Erreur création contact: ${contactResult.error}`));
+            appendSheetComment(sheet, row, '⚠️', `Erreur création contact: ${contactResult.error}`);
         }
-
-        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
-
     } catch (error) {
         logError('Failed to process validated family', error);
 

@@ -261,14 +261,7 @@ function sendVerificationEmailsToAll() {
 
             if (result.success) {
                 results.sent++;
-
-                const existingComment = row[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
-                const newComment = addComment(
-                    existingComment,
-                    formatComment('📧', 'Email de vérification envoyé')
-                );
-                sheet.getRange(i + 1, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
-
+                appendSheetComment(sheet, row, '📧', 'Email de vérification envoyé');
             } else {
                 if (result.reason === 'no_email' || result.reason === 'not_validated') {
                     results.skipped++;
@@ -376,15 +369,7 @@ function confirmFamilyInfo(familyId) {
             hour: '2-digit',
             minute: '2-digit'
         });
-
-        const existingComment = data[targetRow - 1][OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
-        const newComment = addComment(
-            existingComment,
-            formatComment('✅', `Informations confirmées à jour par email le ${timestamp}`)
-        );
-
-        sheet.getRange(targetRow, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
-
+        appendSheetComment(sheet, row, '✅', `Informations confirmées à jour par email le ${timestamp}`);
         logInfo(`✅ Famille ${familyId} a confirmé ses informations par email à ${timestamp}`);
 
         return {
