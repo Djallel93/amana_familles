@@ -1,7 +1,7 @@
 /**
- * @file src/services/reverseContactSyncService.js (UPDATED v6.0)
+ * @file src/services/reverseContactSyncService.js (UPDATED v7.0 - FIXED BOOLEAN COMPARISON)
  * @description Reverse sync with CANONICAL address formatting
- * CHANGE: Uses formatAddressCanonical for consistent address comparison
+ * CRITICAL FIX: Boolean comparison now works correctly for Zakat/Sadaqa/SeDeplace fields
  */
 
 /**
@@ -337,7 +337,7 @@ function extractContactData(contact) {
 
 /**
  * Detect changes between sheet data and contact data
- * UPDATED: Compares canonical addresses
+ * CRITICAL FIX: Proper boolean comparison for Zakat/Sadaqa/SeDeplace
  */
 function detectChanges(existingData, contactData, metadata) {
     const changes = [];
@@ -487,35 +487,43 @@ function detectChanges(existingData, contactData, metadata) {
         console.log('   ➖ No change');
     }
 
-    // Compare Zakat El Fitr
+    // CRITICAL FIX: Compare Zakat El Fitr with explicit boolean conversion
     const sheetZakat = existingData[OUTPUT_COLUMNS.ZAKAT_EL_FITR] === true;
-    console.log(`\n🔟 Zakat El Fitr: Sheet=${sheetZakat} (${typeof sheetZakat}) vs Contact=${metadata.zakatElFitr} (${typeof metadata.zakatElFitr})`);
+    const contactZakat = metadata.zakatElFitr === true;
+
+    console.log(`\n🔟 Zakat El Fitr: Sheet=${sheetZakat} (${typeof sheetZakat}) vs Contact=${contactZakat} (${typeof contactZakat})`);
     console.log(`   Raw sheet value: "${existingData[OUTPUT_COLUMNS.ZAKAT_EL_FITR]}" (type: ${typeof existingData[OUTPUT_COLUMNS.ZAKAT_EL_FITR]})`);
-    console.log(`   Comparison: ${metadata.zakatElFitr} !== ${sheetZakat} = ${metadata.zakatElFitr !== sheetZakat}`);
-    if (metadata.zakatElFitr !== sheetZakat) {
+    console.log(`   Raw contact value: ${metadata.zakatElFitr} (type: ${typeof metadata.zakatElFitr})`);
+    console.log(`   Comparison: ${contactZakat} !== ${sheetZakat} = ${contactZakat !== sheetZakat}`);
+
+    if (contactZakat !== sheetZakat) {
         console.log('   ✅ CHANGE DETECTED!');
         changes.push({
             field: 'zakat_el_fitr',
             column: OUTPUT_COLUMNS.ZAKAT_EL_FITR,
             oldValue: sheetZakat,
-            newValue: metadata.zakatElFitr
+            newValue: contactZakat
         });
     } else {
         console.log('   ➖ No change');
     }
 
-    // Compare Sadaqa
+    // CRITICAL FIX: Compare Sadaqa with explicit boolean conversion
     const sheetSadaqa = existingData[OUTPUT_COLUMNS.SADAQA] === true;
-    console.log(`\n1️⃣1️⃣ Sadaqa: Sheet=${sheetSadaqa} (${typeof sheetSadaqa}) vs Contact=${metadata.sadaqa} (${typeof metadata.sadaqa})`);
+    const contactSadaqa = metadata.sadaqa === true;
+
+    console.log(`\n1️⃣1️⃣ Sadaqa: Sheet=${sheetSadaqa} (${typeof sheetSadaqa}) vs Contact=${contactSadaqa} (${typeof contactSadaqa})`);
     console.log(`   Raw sheet value: "${existingData[OUTPUT_COLUMNS.SADAQA]}" (type: ${typeof existingData[OUTPUT_COLUMNS.SADAQA]})`);
-    console.log(`   Comparison: ${metadata.sadaqa} !== ${sheetSadaqa} = ${metadata.sadaqa !== sheetSadaqa}`);
-    if (metadata.sadaqa !== sheetSadaqa) {
+    console.log(`   Raw contact value: ${metadata.sadaqa} (type: ${typeof metadata.sadaqa})`);
+    console.log(`   Comparison: ${contactSadaqa} !== ${sheetSadaqa} = ${contactSadaqa !== sheetSadaqa}`);
+
+    if (contactSadaqa !== sheetSadaqa) {
         console.log('   ✅ CHANGE DETECTED!');
         changes.push({
             field: 'sadaqa',
             column: OUTPUT_COLUMNS.SADAQA,
             oldValue: sheetSadaqa,
-            newValue: metadata.sadaqa
+            newValue: contactSadaqa
         });
     } else {
         console.log('   ➖ No change');
@@ -536,18 +544,22 @@ function detectChanges(existingData, contactData, metadata) {
         console.log('   ➖ No change');
     }
 
-    // Compare se déplace
+    // CRITICAL FIX: Compare se déplace with explicit boolean conversion
     const sheetSeDeplace = existingData[OUTPUT_COLUMNS.SE_DEPLACE] === true;
-    console.log(`\n1️⃣3️⃣ Se Déplace: Sheet=${sheetSeDeplace} (${typeof sheetSeDeplace}) vs Contact=${metadata.seDeplace} (${typeof metadata.seDeplace})`);
+    const contactSeDeplace = metadata.seDeplace === true;
+
+    console.log(`\n1️⃣3️⃣ Se Déplace: Sheet=${sheetSeDeplace} (${typeof sheetSeDeplace}) vs Contact=${contactSeDeplace} (${typeof contactSeDeplace})`);
     console.log(`   Raw sheet value: "${existingData[OUTPUT_COLUMNS.SE_DEPLACE]}" (type: ${typeof existingData[OUTPUT_COLUMNS.SE_DEPLACE]})`);
-    console.log(`   Comparison: ${metadata.seDeplace} !== ${sheetSeDeplace} = ${metadata.seDeplace !== sheetSeDeplace}`);
-    if (metadata.seDeplace !== sheetSeDeplace) {
+    console.log(`   Raw contact value: ${metadata.seDeplace} (type: ${typeof metadata.seDeplace})`);
+    console.log(`   Comparison: ${contactSeDeplace} !== ${sheetSeDeplace} = ${contactSeDeplace !== sheetSeDeplace}`);
+
+    if (contactSeDeplace !== sheetSeDeplace) {
         console.log('   ✅ CHANGE DETECTED!');
         changes.push({
             field: 'se_deplace',
             column: OUTPUT_COLUMNS.SE_DEPLACE,
             oldValue: sheetSeDeplace,
-            newValue: metadata.seDeplace
+            newValue: contactSeDeplace
         });
     } else {
         console.log('   ➖ No change');

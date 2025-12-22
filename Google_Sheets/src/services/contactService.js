@@ -1,7 +1,7 @@
 /**
- * @file src/services/contactService.js (UPDATED v7.0)
+ * @file src/services/contactService.js (UPDATED v8.0 - FIXED BOOLEAN PARSING)
  * @description Contact management - Uses CANONICAL address formatting
- * CHANGE: Uses formatAddressCanonical for consistent address storage
+ * CRITICAL FIX: parseFamilyMetadataFromContact now correctly handles 'Oui'/'Non' strings
  */
 
 /**
@@ -194,6 +194,7 @@ function buildCustomFields(familyData) {
 
 /**
  * Parse family metadata from contact custom fields (ID parsed from givenName separately)
+ * CRITICAL FIX: Properly parse 'Oui'/'Non' strings to boolean
  */
 function parseFamilyMetadataFromContact(userDefined) {
     const metadata = {
@@ -228,16 +229,19 @@ function parseFamilyMetadataFromContact(userDefined) {
                 metadata.nombreEnfant = parseInt(value) || 0;
                 break;
             case 'Zakat El Fitr':
-                metadata.zakatElFitr = value.toLowerCase() === 'oui';
+                // CRITICAL FIX: Properly handle 'Oui'/'Non' strings
+                metadata.zakatElFitr = parseOuiNonToBoolean(value);
                 break;
             case 'Sadaqa':
-                metadata.sadaqa = value.toLowerCase() === 'oui';
+                // CRITICAL FIX: Properly handle 'Oui'/'Non' strings
+                metadata.sadaqa = parseOuiNonToBoolean(value);
                 break;
             case 'Langue':
                 metadata.langue = value;
                 break;
             case 'Se Déplace':
-                metadata.seDeplace = value.toLowerCase() === 'oui';
+                // CRITICAL FIX: Properly handle 'Oui'/'Non' strings
+                metadata.seDeplace = parseOuiNonToBoolean(value);
                 break;
             case 'Dernière mise à jour':
                 metadata.lastUpdate = value;
@@ -246,6 +250,36 @@ function parseFamilyMetadataFromContact(userDefined) {
     });
 
     return metadata;
+}
+
+/**
+ * CRITICAL NEW FUNCTION: Parse 'Oui'/'Non' strings to boolean
+ * Handles French, English, Arabic, and boolean values
+ * 
+ * @param {*} value - Value to parse (string, boolean, or other)
+ * @returns {boolean} - Parsed boolean value
+ */
+function parseOuiNonToBoolean(value) {
+    // If already boolean, return as-is
+    if (typeof value === 'boolean') {
+        return value;
+    }
+
+    // Convert to lowercase string for comparison
+    const strValue = String(value).trim().toLowerCase();
+
+    // Check for positive values (French, English, Arabic)
+    if (strValue === 'oui' || strValue === 'yes' || strValue === 'نعم') {
+        return true;
+    }
+
+    // Check for negative values (French, English, Arabic)
+    if (strValue === 'non' || strValue === 'no' || strValue === 'لا') {
+        return false;
+    }
+
+    // Default to false for unrecognized values
+    return false;
 }
 
 /**
