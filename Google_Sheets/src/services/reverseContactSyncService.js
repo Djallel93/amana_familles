@@ -1,6 +1,7 @@
 /**
- * @file src/services/reverseContactSyncService.js (FIXED v5.0)
- * @description Complete reverse sync with ID parsed from givenName
+ * @file src/services/reverseContactSyncService.js (UPDATED v6.0)
+ * @description Reverse sync with CANONICAL address formatting
+ * CHANGE: Uses formatAddressCanonical for consistent address comparison
  */
 
 /**
@@ -163,12 +164,13 @@ function fetchAllFamilyContacts() {
 }
 
 /**
- * Sync single contact to sheet (FIXED: ID from givenName)
+ * Sync single contact to sheet
+ * UPDATED: Uses formatAddressCanonical for comparison
  */
 function syncContactToSheet(contact) {
     console.log('\n🔍 Extracting contact data...');
 
-    // FIXED: Parse family ID from givenName (format: "{ID} -")
+    // Parse family ID from givenName (format: "{ID} -")
     let familyId = null;
     if (contact.names && contact.names.length > 0) {
         const givenName = contact.names[0].givenName || '';
@@ -181,7 +183,7 @@ function syncContactToSheet(contact) {
         }
     }
 
-    // Parse metadata from custom fields (NO ID - already parsed from givenName)
+    // Parse metadata from custom fields
     const metadata = parseFamilyMetadataFromContact(contact.userDefined);
 
     console.log('📋 Contact Metadata:');
@@ -248,9 +250,7 @@ function syncContactToSheet(contact) {
     console.log(`   Phone: "${contactData.phone}"`);
     console.log(`   Phone Bis: "${contactData.phoneBis}"`);
     console.log(`   Email: "${contactData.email}"`);
-    console.log(`   Address: "${contactData.address}"`);
-    console.log(`   Postal Code: "${contactData.postalCode}"`);
-    console.log(`   City: "${contactData.city}"`);
+    console.log(`   Address : "${contactData.addressCanonical}"`);
 
     console.log('\n🔍 Detecting changes...');
     const changes = detectChanges(existingData, contactData, metadata);
@@ -281,7 +281,8 @@ function syncContactToSheet(contact) {
 }
 
 /**
- * Extract relevant data from contact (FIXED: parse prenom from middleName)
+ * Extract relevant data from contact
+ * UPDATED: Uses formatAddressCanonical for consistent formatting
  */
 function extractContactData(contact) {
     const data = {
@@ -290,12 +291,10 @@ function extractContactData(contact) {
         phone: '',
         phoneBis: '',
         email: '',
-        address: '',
-        postalCode: '',
-        city: ''
+        addressCanonical: ''  // CHANGED: Store canonical address
     };
 
-    // FIXED: Extract firstName from middleName and lastName from familyName
+    // Extract firstName from middleName and lastName from familyName
     if (contact.names && contact.names.length > 0) {
         data.firstName = contact.names[0].middleName || '';
         data.lastName = contact.names[0].familyName || '';
@@ -319,20 +318,26 @@ function extractContactData(contact) {
         console.log(`   Email: "${data.email}"`);
     }
 
-    // Address
+    // CRITICAL FIX: Use canonical address formatting
     if (contact.addresses && contact.addresses.length > 0) {
         const addr = contact.addresses[0];
-        data.address = addr.streetAddress || '';
-        data.postalCode = addr.postalCode || '';
-        data.city = addr.city || '';
-        console.log(`   Raw address - street: "${addr.streetAddress}", postal: "${addr.postalCode}", city: "${addr.city}"`);
+        const street = addr.streetAddress || '';
+        const postalCode = addr.postalCode || '';
+        const city = addr.city || '';
+
+        // Use canonical formatter for consistency
+        data.addressCanonical = formatAddressCanonical(street, postalCode, city);
+
+        console.log(`   Raw address - street: "${street}", postal: "${postalCode}", city: "${city}"`);
+        console.log(`   Canonical address: "${data.addressCanonical}"`);
     }
 
     return data;
 }
 
 /**
- * Detect changes between sheet data and contact data (COMPLETE CHECK WITH DEBUG)
+ * Detect changes between sheet data and contact data
+ * UPDATED: Compares canonical addresses
  */
 function detectChanges(existingData, contactData, metadata) {
     const changes = [];
@@ -420,25 +425,21 @@ function detectChanges(existingData, contactData, metadata) {
         console.log('   ➖ No change');
     }
 
-    // Compare address
-    if (contactData.address || contactData.postalCode || contactData.city) {
-        const parts = [contactData.address, contactData.postalCode, contactData.city]
-            .filter(p => p && p.trim().length > 0);
-        const contactFullAddress = parts.join(', ');
-        const sheetAddress = (existingData[OUTPUT_COLUMNS.ADRESSE] || '').trim();
+    // CRITICAL FIX: Compare canonical addresses
+    const sheetAddress = (existingData[OUTPUT_COLUMNS.ADRESSE] || '').trim();
+    const contactAddress = contactData.addressCanonical;
 
-        console.log(`\n6️⃣ Address: Sheet="${sheetAddress}" vs Contact="${contactFullAddress}"`);
-        if (contactFullAddress !== sheetAddress && contactFullAddress.length > 0) {
-            console.log('   ✅ CHANGE DETECTED!');
-            changes.push({
-                field: 'adresse',
-                column: OUTPUT_COLUMNS.ADRESSE,
-                oldValue: sheetAddress,
-                newValue: contactFullAddress
-            });
-        } else {
-            console.log('   ➖ No change');
-        }
+    console.log(`\n6️⃣ Address : Sheet="${sheetAddress}" vs Contact="${contactAddress}"`);
+    if (contactAddress && contactAddress !== sheetAddress && contactAddress.length > 0) {
+        console.log('   ✅ CHANGE DETECTED!');
+        changes.push({
+            field: 'adresse',
+            column: OUTPUT_COLUMNS.ADRESSE,
+            oldValue: sheetAddress,
+            newValue: contactAddress
+        });
+    } else {
+        console.log('   ➖ No change');
     }
 
     // Compare criticité

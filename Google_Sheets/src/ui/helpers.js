@@ -1,6 +1,7 @@
 /**
- * @file src/ui/helpers.js (REFACTORED)
- * @description UI helpers using new service functions - ZERO duplication
+ * @file src/ui/helpers.js (UPDATED v3.0)
+ * @description UI helpers using canonical address formatting
+ * CHANGE: Uses formatAddressCanonical throughout
  */
 
 /**
@@ -123,7 +124,7 @@ function processManualEntry(formData) {
         let comment = formatComment('➕', 'Créé manuellement');
 
         if (addressValidation.quartierInvalid) {
-            comment = addComment(comment, formatComment('⚠️', addressValidation.warning));
+            appendSheetComment(sheet, row, '⚠️', addressValidation.warning);
         }
 
         const rowNumber = writeToFamilySheet(formData, {
@@ -314,6 +315,7 @@ function clearAllCaches() {
 
 /**
  * Write data to Famille sheet (uses buildFamilyRow)
+ * UPDATED: Uses formatAddressCanonical
  * @param {Object} formData - Form data
  * @param {Object} [options={}] - Options
  * @returns {number} Row number
@@ -344,6 +346,7 @@ function writeToFamilySheet(formData, options = {}) {
 
 /**
  * Update existing family (uses findFamilyRowById and updateFamilyCell)
+ * UPDATED: Uses formatAddressCanonical
  * @param {Object} duplicate - Duplicate result from findDuplicateFamily
  * @param {Object} formData - Form data
  * @param {Object} addressValidation - Address validation result
@@ -366,7 +369,8 @@ function updateExistingFamily(duplicate, formData, addressValidation, docValidat
         changes.push('téléphone');
     }
 
-    const newAddress = formatAddressFromComponents(formData.address, formData.postalCode, formData.city);
+    // UPDATED: Use canonical address formatting
+    const newAddress = formatAddressCanonical(formData.address, formData.postalCode, formData.city);
     const oldAddress = safeGetColumn(existingData, OUTPUT_COLUMNS.ADRESSE);
 
     if (newAddress !== oldAddress) {

@@ -1,6 +1,7 @@
 /**
- * @file src/core/utils.js (REFACTORÉ v5.0)
- * @description Utilitaires principaux - parsing adresse, validation téléphone/email, logging
+ * @file src/core/utils.js (UPDATED v6.0)
+ * @description Utilitaires principaux - CANONICAL ADDRESS FORMATTING
+ * CHANGE: Single source of truth for address formatting to fix sync issues
  */
 
 /**
@@ -37,19 +38,23 @@ function parseAddressComponents(fullAddress) {
 }
 
 /**
- * Formate les composants d'adresse en string propre (sans virgule finale)
+ * CANONICAL ADDRESS FORMATTER - Used EVERYWHERE (Sheet, Contact, Comparison)
+ * This is the SINGLE SOURCE OF TRUTH for address formatting
+ * Format: "Street, PostalCode City" (NO comma between postal code and city)
+ * 
  * @param {string} street - Rue
  * @param {string} postalCode - Code postal
  * @param {string} city - Ville
- * @returns {string} Adresse formatée
+ * @returns {string} Adresse formatée canoniquement
  */
-function formatAddressFromComponents(street, postalCode, city) {
+function formatAddressCanonical(street, postalCode, city) {
     const parts = [];
 
     if (street && street.trim()) {
         parts.push(street.trim());
     }
 
+    // CRITICAL: PostalCode and City go together WITHOUT comma between them
     const cityPart = [];
     if (postalCode && postalCode.trim()) {
         cityPart.push(postalCode.trim());
@@ -59,10 +64,18 @@ function formatAddressFromComponents(street, postalCode, city) {
     }
 
     if (cityPart.length > 0) {
-        parts.push(cityPart.join(' '));
+        parts.push(cityPart.join(' ')); // Space, NOT comma
     }
 
     return parts.join(', ');
+}
+
+/**
+ * DEPRECATED - Use formatAddressCanonical instead
+ * Kept for backward compatibility, redirects to canonical version
+ */
+function formatAddressFromComponents(street, postalCode, city) {
+    return formatAddressCanonical(street, postalCode, city);
 }
 
 /**
@@ -73,7 +86,7 @@ function formatAddressFromComponents(street, postalCode, city) {
  * @returns {string} Adresse complète avec France
  */
 function formatAddressForGeocoding(address, postalCode, city) {
-    const formatted = formatAddressFromComponents(address, postalCode, city);
+    const formatted = formatAddressCanonical(address, postalCode, city);
     return formatted ? `${formatted}, France` : 'France';
 }
 

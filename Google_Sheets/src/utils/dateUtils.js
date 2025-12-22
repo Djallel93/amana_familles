@@ -1,6 +1,7 @@
 /**
- * @file src/utils/dateUtils.js (NEW)
+ * @file src/utils/dateUtils.js (UPDATED v2.0)
  * @description Date formatting utilities - YYYY-MM-DD HH:MM:SS format
+ * CHANGE: Removed addComment() - now handled by appendSheetComment()
  */
 
 /**
@@ -40,21 +41,4 @@ function formatDate(date = new Date()) {
  */
 function formatComment(emoji, message) {
     return `${formatDateTime()} ${emoji} ${message}`;
-}
-
-/**
- * Add comment to existing comments (keeps only last 5)
- * @param {string} existingComments - Existing comment string
- * @param {string} newComment - New comment to add
- * @returns {string} Updated comments string
- */
-function addComment(existingComments, newComment) {
-    const comments = existingComments ?
-        existingComments.split('\n').filter(c => c.trim()) :
-        [];
-
-    comments.unshift(newComment);
-    const recentComments = comments.slice(0, 5);
-
-    return recentComments.join('\n');
 }

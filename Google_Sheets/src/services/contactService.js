@@ -1,6 +1,7 @@
 /**
- * @file src/services/contactService.js (FIXED v6.0)
- * @description Contact management - ID removed from custom fields, parsed from first name
+ * @file src/services/contactService.js (UPDATED v7.0)
+ * @description Contact management - Uses CANONICAL address formatting
+ * CHANGE: Uses formatAddressCanonical for consistent address storage
  */
 
 /**
@@ -249,6 +250,7 @@ function parseFamilyMetadataFromContact(userDefined) {
 
 /**
  * Create new contact with complete structure (ID in givenName)
+ * UPDATED: Uses formatAddressCanonical for consistent address storage
  */
 function createContact(familyData) {
     const { id, nom, prenom, email, telephone, phoneBis, adresse, idQuartier } = familyData;
@@ -293,14 +295,26 @@ function createContact(familyData) {
         }];
     }
 
+    // CRITICAL FIX: Use canonical address formatting
     if (adresse) {
         const parsedAddress = parseAddressComponents(adresse);
+
+        // Store in canonical format using formatAddressCanonical
+        const canonicalAddress = formatAddressCanonical(
+            parsedAddress.street,
+            parsedAddress.postalCode,
+            parsedAddress.city
+        );
+
+        logInfo(`Storing contact address in canonical format: "${canonicalAddress}"`);
+
         contactResource.addresses = [{
             streetAddress: parsedAddress.street,
             city: parsedAddress.city,
             postalCode: parsedAddress.postalCode,
             country: parsedAddress.country,
-            type: 'home'
+            type: 'home',
+            formattedValue: canonicalAddress  // Store canonical format
         }];
     }
 

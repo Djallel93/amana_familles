@@ -122,7 +122,7 @@ function showBulkUpdateDialog() {
  * Show reverse contact sync dialog
  */
 function showReverseContactSyncDialog() {
-    showDialog('views/dialogs/reverseContactSync', 'Sync Contact → Feuille', 600, 800);
+    showDialog('views/dialogs/reverseContactSync', 'Sync Contact → Feuille', 600, 850);
 }
 
 /**

@@ -1,7 +1,7 @@
 /**
- * @file src/services/sheetAccessService.js (MIS À JOUR v2.0)
+ * @file src/services/sheetAccessService.js (UPDATED v3.0)
  * @description Helpers lecture/écriture feuille
- * CHANGEMENT: Support cachedData pour éliminer double fetch
+ * CHANGE: appendSheetComment now includes comment history management (merged from addComment)
  */
 
 /**
@@ -69,7 +69,7 @@ function updateFamilyCell(row, columnIndex, value) {
 }
 
 /**
- * Ajoute un commentaire au champ commentaire d'une famille
+ * Ajoute un commentaire au champ commentaire d'une famille (MERGED with addComment logic)
  * @param {Sheet} sheet - Objet feuille
  * @param {number} row - Numéro de ligne (1-based)
  * @param {string} emoji - Emoji pour le commentaire
@@ -79,8 +79,17 @@ function updateFamilyCell(row, columnIndex, value) {
 function appendSheetComment(sheet, row, emoji, message) {
     try {
         const existingComment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
-        const newComment = addComment(existingComment, formatComment(emoji, message));
-        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
+        const newComment = formatComment(emoji, message);
+        const comments = existingComment ?
+            existingComment.split('\n').filter(c => c.trim()) :
+            [];
+
+        comments.unshift(newComment);
+        const recentComments = comments.slice(0, 5);
+
+        const updatedComment = recentComments.join('\n');
+
+        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(updatedComment);
         return true;
     } catch (error) {
         logError(`Échec ajout commentaire ligne ${row}`, error);
@@ -90,7 +99,6 @@ function appendSheetComment(sheet, row, emoji, message) {
 
 /**
  * Récupère toutes les familles validées avec filtre optionnel
- * OPTIMISÉ: Accepte cachedData pour éviter double fetch
  * @param {Function} [filterFn] - Fonction de filtrage optionnelle (row) => boolean
  * @param {Array[]} [cachedData=null] - Données déjà récupérées (optimisation)
  * @returns {Array[]} Tableau de données de lignes
