@@ -528,15 +528,6 @@ function autoFixCommonIssues() {
     try {
         const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-        if (!ss.getSheetByName(BULK_IMPORT_SHEET_NAME)) {
-            getOrCreateBulkImportSheet();
-            results.fixed.push('Created Bulk Import sheet');
-        }
-
-        if (!ss.getSheetByName(BULK_UPDATE_SHEET_NAME)) {
-            getOrCreateBulkUpdateSheet();
-            results.fixed.push('Created Bulk Update sheet');
-        }
     } catch (error) {
         results.failed.push(`Failed to create sheets: ${error.toString()}`);
     }

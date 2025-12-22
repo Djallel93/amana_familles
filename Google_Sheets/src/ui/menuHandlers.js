@@ -124,22 +124,6 @@ function showEmailPreview() {
 // ============================================
 
 /**
- * Create Bulk Import sheet
- */
-function createBulkImportSheet() {
-    getOrCreateBulkImportSheet();
-    SpreadsheetApp.getUi().alert(
-        '✅ Feuille "Bulk Import" prête',
-        'Vous pouvez maintenant coller vos données.\n\n' +
-        '⚠️ IMPORTANT:\n' +
-        '• La ligne 1 contient les en-têtes (ne pas modifier)\n' +
-        '• Collez vos données À PARTIR DE LA LIGNE 2\n\n' +
-        'Colonnes requises:\nnom, prenom, nombre_adulte, nombre_enfant, adresse, code_postal, ville, telephone, criticite, langue',
-        SpreadsheetApp.getUi().ButtonSet.OK
-    );
-}
-
-/**
  * Clear bulk import sheet with confirmation
  */
 function clearBulkImportSheetWithConfirm() {
@@ -198,24 +182,6 @@ function resetProcessingStatusWithConfirm() {
 // ============================================
 // BULK UPDATE HANDLERS
 // ============================================
-
-/**
- * Create Bulk Update sheet
- */
-function createBulkUpdateSheet() {
-    getOrCreateBulkUpdateSheet();
-    SpreadsheetApp.getUi().alert(
-        '✅ Feuille "Bulk Update" prête',
-        'Vous pouvez maintenant coller vos mises à jour.\n\n' +
-        '⚠️ IMPORTANT:\n' +
-        '• La ligne 1 contient les en-têtes (ne pas modifier)\n' +
-        '• Collez vos données À PARTIR DE LA LIGNE 2\n' +
-        '• Colonne "id" OBLIGATOIRE\n' +
-        '• Au moins une autre colonne doit contenir une valeur\n' +
-        '• Seules les colonnes non vides seront mises à jour',
-        SpreadsheetApp.getUi().ButtonSet.OK
-    );
-}
 
 /**
  * Clear bulk update sheet with confirmation

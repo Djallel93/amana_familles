@@ -49,7 +49,6 @@ function createEmailMenu(ui) {
  */
 function createBulkImportMenu(ui) {
     return ui.createMenu('📥 Import en Masse')
-        .addItem('📑 Créer/Ouvrir Feuille Import', 'createBulkImportSheet')
         .addItem('⚙️ Traiter Import', 'showBulkImportDialog')
         .addItem('🧹 Effacer Feuille Import', 'clearBulkImportSheetWithConfirm')
         .addItem('📊 Statistiques Import', 'showBulkImportStats')
@@ -61,7 +60,6 @@ function createBulkImportMenu(ui) {
  */
 function createBulkUpdateMenu(ui) {
     return ui.createMenu('✏️ Mise à Jour en Masse')
-        .addItem('📑 Créer/Ouvrir Feuille Update', 'createBulkUpdateSheet')
         .addItem('⚙️ Traiter Mises à Jour', 'showBulkUpdateDialog')
         .addItem('🧹 Effacer Feuille Update', 'clearBulkUpdateSheetWithConfirm')
         .addItem('📊 Statistiques Update', 'showBulkUpdateStats')

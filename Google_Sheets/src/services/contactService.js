@@ -1,13 +1,10 @@
 /**
- * @file src/services/contactService.js (REFACTORÉ v4.0)
- * @description Gestion des contacts Google avec structure de nom propre
- * CHANGEMENT: Utilise parseAddressComponents() de utils.js (ZERO duplication)
+ * @file src/services/contactService.js (FIXED v5.0)
+ * @description Contact management with complete sync support + last update tracking
  */
 
 /**
- * Crée ou met à jour un contact Google pour une famille
- * @param {Object} familyData - Données de la famille
- * @returns {Object} {success: boolean, error?: string}
+ * Create or update Google contact for a family
  */
 function syncFamilyContact(familyData) {
     try {
@@ -16,60 +13,52 @@ function syncFamilyContact(familyData) {
         const existingContact = findContactByFamilyId(id);
 
         if (existingContact) {
-            logInfo(`Suppression contact existant pour famille: ${id}`);
+            logInfo(`Deleting existing contact for family: ${id}`);
             People.People.deleteContact(existingContact.resourceName);
-
             Utilities.sleep(500);
-
-            logInfo(`Création nouveau contact pour famille: ${id}`);
+            logInfo(`Creating new contact for family: ${id}`);
             createContact(familyData);
         } else {
             createContact(familyData);
-            logInfo(`Contact créé pour famille: ${id}`);
+            logInfo(`Contact created for family: ${id}`);
         }
 
         return { success: true };
     } catch (e) {
-        logError('Échec sync contact', e);
+        logError('Contact sync failed', e);
         return { success: false, error: e.toString() };
     }
 }
 
 /**
- * Supprime le contact d'une famille archivée
- * @param {string} familyId - ID de la famille
- * @returns {Object} {success: boolean, message?: string, error?: string}
+ * Delete contact for archived family
  */
 function deleteContactForArchivedFamily(familyId) {
     try {
         const contact = findContactByFamilyId(familyId);
 
         if (!contact) {
-            logInfo(`Aucun contact trouvé pour famille ${familyId}, suppression ignorée`);
-            return { success: true, message: 'Aucun contact à supprimer' };
+            logInfo(`No contact found for family ${familyId}, skipping deletion`);
+            return { success: true, message: 'No contact to delete' };
         }
 
         People.People.deleteContact(contact.resourceName);
+        logInfo(`Contact deleted for archived family: ${familyId}`);
 
-        logInfo(`Contact supprimé pour famille archivée: ${familyId}`);
-
-        return { success: true, message: 'Contact supprimé avec succès' };
+        return { success: true, message: 'Contact deleted successfully' };
     } catch (e) {
-        logError('Échec suppression contact', e);
+        logError('Contact deletion failed', e);
         return { success: false, error: e.toString() };
     }
 }
 
 /**
- * Cherche un contact par ID famille dans le champ personnalisé
- * @param {string} familyId - ID de la famille
- * @returns {Object|null} Contact ou null
+ * Find contact by family ID in custom field
  */
 function findContactByFamilyId(familyId) {
     try {
         const searchId = String(familyId);
-
-        logInfo(`Recherche contact avec ID famille: ${searchId}`);
+        logInfo(`Searching for contact with family ID: ${searchId}`);
 
         const response = People.People.Connections.list('people/me', {
             pageSize: 2000,
@@ -77,13 +66,13 @@ function findContactByFamilyId(familyId) {
         });
 
         if (response.connections && response.connections.length > 0) {
-            logInfo(`Scan de ${response.connections.length} contacts...`);
+            logInfo(`Scanning ${response.connections.length} contacts...`);
 
             for (const contact of response.connections) {
                 if (contact.userDefined) {
                     for (const field of contact.userDefined) {
                         if (field.key === 'ID' && field.value === searchId) {
-                            logInfo(`Contact trouvé pour famille ${searchId}`);
+                            logInfo(`Contact found for family ${searchId}`);
                             return contact;
                         }
                     }
@@ -91,19 +80,17 @@ function findContactByFamilyId(familyId) {
             }
         }
 
-        logInfo(`Aucun contact trouvé pour ID famille: ${searchId}`);
+        logInfo(`No contact found for family ID: ${searchId}`);
         return null;
 
     } catch (e) {
-        logError(`Erreur recherche contact pour famille ${familyId}`, e);
+        logError(`Contact search failed for family ${familyId}`, e);
         return null;
     }
 }
 
 /**
- * Récupère ou crée un groupe de contacts
- * @param {string} groupName - Nom du groupe
- * @returns {string|null} Resource name du groupe
+ * Get or create contact group
  */
 function getOrCreateContactGroup(groupName) {
     const cache = CacheService.getScriptCache();
@@ -135,20 +122,18 @@ function getOrCreateContactGroup(groupName) {
         });
 
         cache.put(cacheKey, newGroup.resourceName, CONFIG.CACHE.VERY_LONG);
-        logInfo(`Nouveau groupe de contacts créé: ${groupName}`);
+        logInfo(`New contact group created: ${groupName}`);
 
         return newGroup.resourceName;
 
     } catch (e) {
-        logError('Échec récupération/création groupe contact', e);
+        logError('Failed to get/create contact group', e);
         return null;
     }
 }
 
 /**
- * Récupère le nom du groupe basé sur la localisation
- * @param {string} quartierId - ID du quartier
- * @returns {string|null} Nom du groupe
+ * Get location group name based on quartier
  */
 function getLocationGroupName(quartierId) {
     if (!quartierId) {
@@ -159,22 +144,20 @@ function getLocationGroupName(quartierId) {
         const hierarchy = getLocationHierarchyFromQuartier(quartierId);
 
         if (hierarchy.error || !hierarchy.ville || !hierarchy.secteur) {
-            logWarning(`Impossible de récupérer hiérarchie pour quartier ${quartierId}`);
+            logWarning(`Cannot get hierarchy for quartier ${quartierId}`);
             return null;
         }
 
         return `${hierarchy.ville.nom} - ${hierarchy.secteur.nom}`;
 
     } catch (e) {
-        logError('Échec récupération nom groupe localisation', e);
+        logError('Failed to get location group name', e);
         return null;
     }
 }
 
 /**
- * Construit les champs personnalisés pour un contact
- * @param {Object} familyData - Données de la famille
- * @returns {Array} Tableau de champs personnalisés
+ * Build custom fields for a contact (COMPLETE WITH LAST UPDATE)
  */
 function buildCustomFields(familyData) {
     const {
@@ -187,23 +170,26 @@ function buildCustomFields(familyData) {
         seDeplace = false
     } = familyData;
 
+    // Format current timestamp for last update
+    const lastUpdate = formatDateTime(new Date());
+
     const customFields = [
+        { key: 'ID', value: String(familyData.id) },
         { key: 'Criticité', value: String(criticite) },
         { key: 'Adultes', value: String(nombreAdulte) },
         { key: 'Enfants', value: String(nombreEnfant) },
         { key: 'Zakat El Fitr', value: zakatElFitr ? 'Oui' : 'Non' },
         { key: 'Sadaqa', value: sadaqa ? 'Oui' : 'Non' },
         { key: 'Langue', value: langue },
-        { key: 'Se Déplace', value: seDeplace ? 'Oui' : 'Non' }
+        { key: 'Se Déplace', value: seDeplace ? 'Oui' : 'Non' },
+        { key: 'Dernière mise à jour', value: lastUpdate }
     ];
 
     return customFields;
 }
 
 /**
- * Parse les métadonnées famille depuis les champs personnalisés d'un contact
- * @param {Array} userDefined - Champs personnalisés du contact
- * @returns {Object} Métadonnées parsées
+ * Parse family metadata from contact custom fields (COMPLETE PARSING)
  */
 function parseFamilyMetadataFromContact(userDefined) {
     const metadata = {
@@ -214,7 +200,8 @@ function parseFamilyMetadataFromContact(userDefined) {
         zakatElFitr: false,
         sadaqa: false,
         langue: CONFIG.LANGUAGES.FR,
-        seDeplace: false
+        seDeplace: false,
+        lastUpdate: null
     };
 
     if (!userDefined || userDefined.length === 0) {
@@ -225,21 +212,34 @@ function parseFamilyMetadataFromContact(userDefined) {
         const key = field.key;
         const value = field.value;
 
-        if (key === 'ID') {
-            metadata.familyId = value;
-        } else if (key === 'Criticité') {
-            metadata.criticite = parseInt(value) || 0;
-        } else if (key === 'Adultes') {
-            metadata.nombreAdulte = parseInt(value) || 0;
-        } else if (key === 'Enfants') {
-            metadata.nombreEnfant = parseInt(value) || 0;
-        } else if (key === 'Éligibilité') {
-            metadata.zakatElFitr = value.includes('Zakat El Fitr');
-            metadata.sadaqa = value.includes('Sadaqa');
-        } else if (key === 'Langue') {
-            metadata.langue = value;
-        } else if (key === 'Se Déplace') {
-            metadata.seDeplace = value === 'Oui';
+        switch (key) {
+            case 'ID':
+                metadata.familyId = value;
+                break;
+            case 'Criticité':
+                metadata.criticite = parseInt(value) || 0;
+                break;
+            case 'Adultes':
+                metadata.nombreAdulte = parseInt(value) || 0;
+                break;
+            case 'Enfants':
+                metadata.nombreEnfant = parseInt(value) || 0;
+                break;
+            case 'Zakat El Fitr':
+                metadata.zakatElFitr = value.toLowerCase() === 'oui';
+                break;
+            case 'Sadaqa':
+                metadata.sadaqa = value.toLowerCase() === 'oui';
+                break;
+            case 'Langue':
+                metadata.langue = value;
+                break;
+            case 'Se Déplace':
+                metadata.seDeplace = value.toLowerCase() === 'oui';
+                break;
+            case 'Dernière mise à jour':
+                metadata.lastUpdate = value;
+                break;
         }
     });
 
@@ -247,9 +247,7 @@ function parseFamilyMetadataFromContact(userDefined) {
 }
 
 /**
- * Crée un nouveau contact avec structure de nom correcte
- * Structure: givenName: "ID -", middleName: "Prenom", familyName: "Nom"
- * @param {Object} familyData - Données de la famille
+ * Create new contact with complete structure
  */
 function createContact(familyData) {
     const { id, nom, prenom, email, telephone, phoneBis, adresse, idQuartier } = familyData;
@@ -268,7 +266,7 @@ function createContact(familyData) {
         const normalizedPhone = normalizePhone(telephone);
 
         if (!normalizedPhone) {
-            logWarning(`Numéro téléphone invalide pour famille ${id}: ${telephone}`);
+            logWarning(`Invalid phone for family ${id}: ${telephone}`);
         } else {
             contactResource.phoneNumbers = [{
                 value: normalizedPhone,
@@ -334,23 +332,21 @@ function createContact(familyData) {
         contactResource.memberships = memberships;
     }
 
-    logInfo(`Création contact pour famille ${id}`, {
+    logInfo(`Creating contact for family ${id}`, {
         displayName: `${id} - ${prenom} ${nom}`,
-        phone: contactResource.phoneNumbers ? contactResource.phoneNumbers[0].value : 'aucun',
-        email: email || 'aucun',
+        phone: contactResource.phoneNumbers ? contactResource.phoneNumbers[0].value : 'none',
+        email: email || 'none',
         criticite: familyData.criticite,
         household: `${familyData.nombreAdulte}A/${familyData.nombreEnfant}E`,
         customFieldsCount: contactResource.userDefined.length
     });
 
     People.People.createContact(contactResource);
-    logInfo(`Contact créé avec champs personnalisés pour famille: ${id}`);
+    logInfo(`Contact created with custom fields for family: ${id}`);
 }
 
 /**
- * Met à jour les groupes d'un contact
- * @param {string} contactResourceName - Resource name du contact
- * @param {string} idQuartier - ID du quartier
+ * Update contact groups
  */
 function updateContactGroups(contactResourceName, idQuartier) {
     try {
@@ -386,10 +382,10 @@ function updateContactGroups(contactResourceName, idQuartier) {
 
                     if (groupInfo.name && locationGroupPattern.test(groupInfo.name)) {
                         oldLocationGroups.push(groupResourceName);
-                        logInfo(`Ancien groupe localisation identifié: ${groupInfo.name}`);
+                        logInfo(`Old location group identified: ${groupInfo.name}`);
                     }
                 } catch (e) {
-                    logWarning(`Impossible récupérer info groupe ${groupResourceName}`, e);
+                    logWarning(`Cannot get group info for ${groupResourceName}`, e);
                 }
             }
         });
@@ -403,9 +399,9 @@ function updateContactGroups(contactResourceName, idQuartier) {
                             resourceNamesToRemove: [contactResourceName]
                         }
                     });
-                    logInfo(`Contact retiré ancien groupe localisation: ${oldGroupId}`);
+                    logInfo(`Contact removed from old location group: ${oldGroupId}`);
                 } catch (e) {
-                    logError(`Échec retrait contact du groupe ${oldGroupId}`, e);
+                    logError(`Failed to remove contact from group ${oldGroupId}`, e);
                 }
             });
         }
@@ -422,7 +418,7 @@ function updateContactGroups(contactResourceName, idQuartier) {
                     resourceNamesToAdd: [contactResourceName]
                 }
             });
-            logInfo(`Contact ajouté au groupe principal: Famille dans le besoin`);
+            logInfo(`Contact added to main group: Famille dans le besoin`);
         }
 
         if (newLocationGroupId) {
@@ -438,11 +434,11 @@ function updateContactGroups(contactResourceName, idQuartier) {
                         resourceNamesToAdd: [contactResourceName]
                     }
                 });
-                logInfo(`Contact ajouté nouveau groupe localisation: ${newLocationGroupName}`);
+                logInfo(`Contact added to new location group: ${newLocationGroupName}`);
             }
         }
 
     } catch (e) {
-        logError('Échec mise à jour groupes contact', e);
+        logError('Failed to update contact groups', e);
     }
 }
