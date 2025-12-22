@@ -1,10 +1,251 @@
 /**
- * @file src/services/validationService.js (NEW)
- * @description Validate sheet structures and script properties
+ * @file src/services/validationService.js (CONSOLIDATED)
+ * @description All validation logic in one place - field, address, document, household
  */
+
+// ============================================
+// FIELD VALIDATION
+// ============================================
+
+/**
+ * Validate required fields for family creation
+ * @param {Object} data - Form data to validate
+ * @returns {Object} {isValid: boolean, errors: string[]}
+ */
+function validateRequiredFields(data) {
+    const errors = [];
+
+    if (!data.lastName) errors.push('Nom de famille requis');
+    if (!data.firstName) errors.push('Prénom requis');
+    if (!data.phone) errors.push('Téléphone requis');
+    if (!isValidPhone(data.phone)) errors.push('Numéro de téléphone invalide');
+    if (data.email && !isValidEmail(data.email)) errors.push('Email invalide');
+    if (!data.address) errors.push('Adresse requise');
+    if (!data.postalCode) errors.push('Code postal requis');
+    if (!data.city) errors.push('Ville requise');
+    if (data.nombreAdulte == null || isNaN(data.nombreAdulte)) errors.push('Nombre d\'adultes requis');
+    if (data.nombreEnfant == null || isNaN(data.nombreEnfant)) errors.push('Nombre d\'enfants requis');
+
+    const totalPersons = parseInt(data.nombreAdulte || 0) + parseInt(data.nombreEnfant || 0);
+    if (totalPersons === 0) {
+        errors.push('Le foyer doit contenir au moins une personne (adulte ou enfant)');
+    }
+
+    return {
+        isValid: errors.length === 0,
+        errors: errors
+    };
+}
+
+/**
+ * Validate household composition (can be called separately for updates)
+ * @param {number} nombreAdulte - Number of adults
+ * @param {number} nombreEnfant - Number of children
+ * @returns {Object} {isValid: boolean, error?: string, adultes?: number, enfants?: number, total?: number}
+ */
+function validateHouseholdComposition(nombreAdulte, nombreEnfant) {
+    const adultes = parseInt(nombreAdulte) || 0;
+    const enfants = parseInt(nombreEnfant) || 0;
+
+    if (adultes < 0) {
+        return {
+            isValid: false,
+            error: 'Le nombre d\'adultes ne peut pas être négatif'
+        };
+    }
+
+    if (enfants < 0) {
+        return {
+            isValid: false,
+            error: 'Le nombre d\'enfants ne peut pas être négatif'
+        };
+    }
+
+    const total = adultes + enfants;
+    if (total === 0) {
+        return {
+            isValid: false,
+            error: 'Le foyer doit contenir au moins une personne (adulte ou enfant)'
+        };
+    }
+
+    return {
+        isValid: true,
+        adultes: adultes,
+        enfants: enfants,
+        total: total
+    };
+}
+
+// ============================================
+// ADDRESS VALIDATION
+// ============================================
+
+/**
+ * Validate quartier ID exists in GEO API
+ * @param {string} quartierId - Quartier ID to validate
+ * @returns {Object} {isValid: boolean, error?: string, quartier?: Object}
+ */
+function validateQuartierId(quartierId) {
+    if (!quartierId) {
+        return {
+            isValid: false,
+            error: 'Quartier ID is empty'
+        };
+    }
+
+    try {
+        const quartierResult = getQuartierById(quartierId);
+
+        if (quartierResult.error || !quartierResult.id) {
+            return {
+                isValid: false,
+                error: `Quartier ID "${quartierId}" n'existe pas dans l'API GEO`
+            };
+        }
+
+        return {
+            isValid: true,
+            quartier: {
+                id: quartierResult.id,
+                nom: quartierResult.nom,
+                idSecteur: quartierResult.idSecteur
+            }
+        };
+
+    } catch (e) {
+        logError('Failed to validate quartier ID', e);
+        return {
+            isValid: false,
+            error: `Erreur de validation: ${e.toString()}`
+        };
+    }
+}
+
+/**
+ * Validate address and get quartier ID (full validation)
+ * @param {string} address - Street address
+ * @param {string} postalCode - Postal code
+ * @param {string} city - City name
+ * @returns {Object} Validation result with quartier info
+ */
+function validateAddressAndGetQuartier(address, postalCode, city) {
+    if (!address || !postalCode || !city) {
+        return {
+            isValid: false,
+            error: 'Adresse complète requise (adresse, code postal, ville)'
+        };
+    }
+
+    const geocodeResult = geocodeAddress(address, city, postalCode);
+
+    if (geocodeResult.error || !geocodeResult.isValid) {
+        return {
+            isValid: false,
+            error: 'Adresse invalide ou introuvable'
+        };
+    }
+
+    const locationResult = resolveLocation(
+        geocodeResult.coordinates.latitude,
+        geocodeResult.coordinates.longitude
+    );
+
+    if (locationResult.error) {
+        return {
+            isValid: true,
+            validated: true,
+            coordinates: geocodeResult.coordinates,
+            formattedAddress: geocodeResult.formattedAddress,
+            quartierId: null,
+            quartierName: null,
+            warning: 'Aucune localisation trouvée dans la base de données'
+        };
+    }
+
+    const quartierId = locationResult.quartier ? locationResult.quartier.id : null;
+    const quartierName = locationResult.quartier ? locationResult.quartier.nom : null;
+
+    let quartierInvalid = false;
+    let warning = null;
+
+    if (quartierId) {
+        const validation = validateQuartierId(quartierId);
+        if (!validation.isValid) {
+            quartierInvalid = true;
+            warning = `⚠️ ATTENTION: Quartier ID "${quartierId}" n'existe pas dans l'API GEO. Vérifier l'adresse avant validation.`;
+            logWarning(`Quartier validation failed: ${validation.error}`);
+        }
+    }
+
+    return {
+        isValid: true,
+        validated: true,
+        coordinates: geocodeResult.coordinates,
+        formattedAddress: geocodeResult.formattedAddress,
+        quartierId: quartierId,
+        quartierName: quartierName,
+        quartierInvalid: quartierInvalid,
+        warning: warning,
+        location: locationResult
+    };
+}
+
+// ============================================
+// DOCUMENT VALIDATION
+// ============================================
+
+/**
+ * Validate uploaded documents exist
+ * @param {string} identityDocUrls - Identity document URLs
+ * @param {string} aidesEtatDocUrls - Aides d'état document URLs
+ * @param {string} resourceDocUrls - Resource document URLs
+ * @returns {Object} {isValid: boolean, errors: string[], identityIds: string[], aidesEtatIds: string[], resourceIds: string[]}
+ */
+function validateDocuments(identityDocUrls, aidesEtatDocUrls, resourceDocUrls) {
+    const errors = [];
+
+    const identityIds = extractFileIds(identityDocUrls);
+    if (identityIds.length === 0) {
+        errors.push('Aucun justificatif d\'identité fourni');
+    } else {
+        identityIds.forEach(id => {
+            if (!fileExists(id)) {
+                errors.push(`Document d'identité introuvable: ${id}`);
+            }
+        });
+    }
+
+    const aidesEtatIds = extractFileIds(aidesEtatDocUrls);
+    aidesEtatIds.forEach(id => {
+        if (!fileExists(id)) {
+            errors.push(`Document aides d'état introuvable: ${id}`);
+        }
+    });
+
+    const resourceIds = extractFileIds(resourceDocUrls);
+    resourceIds.forEach(id => {
+        if (!fileExists(id)) {
+            errors.push(`Document de ressources introuvable: ${id}`);
+        }
+    });
+
+    return {
+        isValid: errors.length === 0,
+        errors: errors,
+        identityIds: identityIds,
+        aidesEtatIds: aidesEtatIds,
+        resourceIds: resourceIds
+    };
+}
+
+// ============================================
+// SYSTEM VALIDATION
+// ============================================
 
 /**
  * Validate all sheets exist and have correct structure
+ * @returns {Object} Validation results
  */
 function validateSheetStructure() {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -15,7 +256,6 @@ function validateSheetStructure() {
         sheets: {}
     };
 
-    // Required sheets
     const requiredSheets = [
         CONFIG.SHEETS.FAMILLE,
         CONFIG.SHEETS.GOOGLE_FORM,
@@ -24,13 +264,11 @@ function validateSheetStructure() {
         CONFIG.SHEETS.FORM_EN
     ];
 
-    // Optional sheets
     const optionalSheets = [
         BULK_IMPORT_SHEET_NAME,
         BULK_UPDATE_SHEET_NAME
     ];
 
-    // Check required sheets
     requiredSheets.forEach(sheetName => {
         const sheet = ss.getSheetByName(sheetName);
         if (!sheet) {
@@ -47,7 +285,6 @@ function validateSheetStructure() {
         }
     });
 
-    // Check optional sheets
     optionalSheets.forEach(sheetName => {
         const sheet = ss.getSheetByName(sheetName);
         if (!sheet) {
@@ -63,7 +300,6 @@ function validateSheetStructure() {
         }
     });
 
-    // Validate Famille sheet structure
     const familleSheet = ss.getSheetByName(CONFIG.SHEETS.FAMILLE);
     if (familleSheet) {
         const headers = familleSheet.getRange(1, 1, 1, familleSheet.getLastColumn()).getValues()[0];
@@ -91,6 +327,7 @@ function validateSheetStructure() {
 
 /**
  * Validate script properties are configured
+ * @returns {Object} Validation results
  */
 function validateScriptProperties() {
     const properties = PropertiesService.getScriptProperties();
@@ -101,7 +338,6 @@ function validateScriptProperties() {
         properties: {}
     };
 
-    // Required properties
     const requiredProps = [
         'SPREADSHEET_ID',
         'GEO_API_URL',
@@ -109,7 +345,6 @@ function validateScriptProperties() {
         'FAMILLE_API_KEY'
     ];
 
-    // Optional but recommended properties
     const optionalProps = [
         'GESTION_FAMILLES_FOLDER_ID',
         'ADMIN_EMAIL',
@@ -121,7 +356,6 @@ function validateScriptProperties() {
         'CLIENT_SECRET'
     ];
 
-    // Check required properties
     requiredProps.forEach(prop => {
         const value = properties.getProperty(prop);
         if (!value) {
@@ -138,7 +372,6 @@ function validateScriptProperties() {
         }
     });
 
-    // Check optional properties
     optionalProps.forEach(prop => {
         const value = properties.getProperty(prop);
         if (!value) {
@@ -159,6 +392,7 @@ function validateScriptProperties() {
 
 /**
  * Validate GEO API connectivity
+ * @returns {Object} Validation results
  */
 function validateGeoApiConnection() {
     const results = {
@@ -192,6 +426,7 @@ function validateGeoApiConnection() {
 
 /**
  * Validate Google Contacts API access
+ * @returns {Object} Validation results
  */
 function validateContactsApiAccess() {
     const results = {
@@ -202,7 +437,6 @@ function validateContactsApiAccess() {
     };
 
     try {
-        // Try to read contacts
         const response = People.People.Connections.list('people/me', {
             pageSize: 1,
             personFields: 'names'
@@ -210,7 +444,6 @@ function validateContactsApiAccess() {
 
         results.canRead = true;
 
-        // Try to get contact groups (write check)
         const groups = People.ContactGroups.list({
             pageSize: 1
         });
@@ -235,6 +468,7 @@ function validateContactsApiAccess() {
 
 /**
  * Comprehensive system validation
+ * @returns {Object} Complete validation results
  */
 function runSystemValidation() {
     const results = {
@@ -252,7 +486,6 @@ function runSystemValidation() {
         }
     };
 
-    // 1. Validate sheets
     results.checks.sheets = validateSheetStructure();
     if (!results.checks.sheets.success) {
         results.overall = false;
@@ -260,7 +493,6 @@ function runSystemValidation() {
     }
     results.summary.warnings += results.checks.sheets.warnings.length;
 
-    // 2. Validate properties
     results.checks.properties = validateScriptProperties();
     if (!results.checks.properties.success) {
         results.overall = false;
@@ -268,14 +500,12 @@ function runSystemValidation() {
     }
     results.summary.warnings += results.checks.properties.warnings.length;
 
-    // 3. Validate GEO API
     results.checks.geoApi = validateGeoApiConnection();
     if (!results.checks.geoApi.success) {
         results.overall = false;
         results.summary.errors++;
     }
 
-    // 4. Validate Contacts API
     results.checks.contactsApi = validateContactsApiAccess();
     if (!results.checks.contactsApi.success) {
         results.overall = false;
@@ -287,6 +517,7 @@ function runSystemValidation() {
 
 /**
  * Fix common issues automatically
+ * @returns {Object} {fixed: string[], failed: string[]}
  */
 function autoFixCommonIssues() {
     const results = {
@@ -294,7 +525,6 @@ function autoFixCommonIssues() {
         failed: []
     };
 
-    // 1. Create missing bulk sheets
     try {
         const ss = SpreadsheetApp.getActiveSpreadsheet();
 
@@ -311,15 +541,13 @@ function autoFixCommonIssues() {
         results.failed.push(`Failed to create sheets: ${error.toString()}`);
     }
 
-    // 2. Clear all caches
     try {
-        CacheService.getScriptCache().removeAll([]);
+        clearAllCache();
         results.fixed.push('Cleared script cache');
     } catch (error) {
         results.failed.push(`Failed to clear cache: ${error.toString()}`);
     }
 
-    // 3. Reset processing statuses
     try {
         resetProcessingStatus();
         resetUpdateProcessingStatus();

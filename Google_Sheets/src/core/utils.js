@@ -1,50 +1,19 @@
 /**
- * @file src/core/utils.js (REFACTORED v3.0)
- * @description Utility functions with shared logic and improved address handling
- * 
- * CHANGES:
- * - Added shared address parsing function (used by contacts and sheets)
- * - Improved address formatting (no trailing commas)
- * - Consolidated duplicate logic
+ * @file src/core/utils.js (REFACTORED v4.0)
+ * @description Core utilities - address parsing, phone/email validation, logging
+ * Uses shared helper functions from new services
  */
 
 /**
- * 📝 Format comment with timestamp and emoji
- * Format: yyyy-MM-dd emoji comment
- */
-function formatComment(emoji, message) {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const dateStr = `${year}-${month}-${day}`;
-
-    return `${dateStr} ${emoji} ${message}`;
-}
-
-/**
- * 📝 Add comment to existing comments (keeps only last 5)
- */
-function addComment(existingComments, newComment) {
-    const comments = existingComments ? existingComments.split('\n').filter(c => c.trim()) : [];
-    comments.unshift(newComment);
-    const recentComments = comments.slice(0, 5);
-    return recentComments.join('\n');
-}
-
-/**
- * 📍 SHARED: Parse address into components (used by contacts AND forms)
- * Removes trailing commas and handles various formats
- * 
- * @param {string} fullAddress - Full address string (e.g., "1 Rue, 44000 Nantes, France")
- * @returns {Object} - { street, postalCode, city, country }
+ * Parse address into components (CANONICAL - used everywhere)
+ * @param {string} fullAddress - Full address string
+ * @returns {Object} {street, postalCode, city, country}
  */
 function parseAddressComponents(fullAddress) {
     if (!fullAddress) {
         return { street: '', postalCode: '', city: '', country: 'France' };
     }
 
-    // Split by comma and remove empty parts and extra whitespace
     const parts = fullAddress
         .split(',')
         .map(p => p.trim())
@@ -58,28 +27,22 @@ function parseAddressComponents(fullAddress) {
         return { street: parts[0], postalCode: '', city: '', country: 'France' };
     }
 
-    // First part is always street
     const street = parts[0];
-
-    // Second part may contain postal code and city
     const secondPart = parts[1];
     const postalCodeMatch = secondPart.match(/\b(\d{5})\b/);
     const postalCode = postalCodeMatch ? postalCodeMatch[1] : '';
     const city = postalCode ? secondPart.replace(postalCode, '').trim() : secondPart;
-
-    // Third part is country if exists, otherwise France
     const country = parts.length >= 3 ? parts[parts.length - 1] : 'France';
 
     return { street, postalCode, city, country };
 }
 
 /**
- * 📍 SHARED: Format address components into clean string (NO trailing comma)
- * 
+ * Format address components into clean string (NO trailing comma)
  * @param {string} street - Street address
  * @param {string} postalCode - Postal code
  * @param {string} city - City name
- * @returns {string} - Formatted address "Street, PostalCode City" (no trailing comma)
+ * @returns {string} Formatted address
  */
 function formatAddressFromComponents(street, postalCode, city) {
     const parts = [];
@@ -88,7 +51,6 @@ function formatAddressFromComponents(street, postalCode, city) {
         parts.push(street.trim());
     }
 
-    // Combine postal code and city
     const cityPart = [];
     if (postalCode && postalCode.trim()) {
         cityPart.push(postalCode.trim());
@@ -101,19 +63,30 @@ function formatAddressFromComponents(street, postalCode, city) {
         parts.push(cityPart.join(' '));
     }
 
-    // Join with comma and space, NO trailing comma
     return parts.join(', ');
 }
 
 /**
- * 📞 Normaliser et formater un numéro de téléphone français
- * Format de sortie: +33 X XX XX XX XX
+ * Format address for geocoding (adds France)
+ * @param {string} address - Street address
+ * @param {string} postalCode - Postal code
+ * @param {string} city - City name
+ * @returns {string} Full address with France
+ */
+function formatAddressForGeocoding(address, postalCode, city) {
+    const formatted = formatAddressFromComponents(address, postalCode, city);
+    return formatted ? `${formatted}, France` : 'France';
+}
+
+/**
+ * Normalize French phone number to +33 X XX XX XX XX format
+ * @param {string} phone - Phone number to normalize
+ * @returns {string} Normalized phone number
  */
 function normalizePhone(phone) {
     if (!phone) return '';
 
-    let cleaned = String(phone).trim();
-    cleaned = cleaned.replace(/\D/g, '');
+    let cleaned = String(phone).trim().replace(/\D/g, '');
 
     if (!cleaned) return '';
 
@@ -130,7 +103,7 @@ function normalizePhone(phone) {
     } else if (cleaned.length === 10 && cleaned.startsWith('0')) {
         localNumber = cleaned.substring(1);
     } else {
-        logWarning(`⚠️ Format de téléphone non standard: ${phone} -> ${cleaned}`);
+        logWarning(`Non-standard phone format: ${phone} -> ${cleaned}`);
 
         if (cleaned.length >= 9) {
             localNumber = cleaned.slice(-9);
@@ -140,7 +113,7 @@ function normalizePhone(phone) {
     }
 
     if (localNumber.length !== 9) {
-        logWarning(`⚠️ Numéro de téléphone invalide (doit avoir 9 chiffres): ${phone}`);
+        logWarning(`Invalid phone (must be 9 digits): ${phone}`);
 
         if (localNumber.length > 9) {
             localNumber = localNumber.slice(-9);
@@ -151,7 +124,7 @@ function normalizePhone(phone) {
 
     const firstDigit = localNumber[0];
     if (!/[1-9]/.test(firstDigit)) {
-        logWarning(`⚠️ Numéro invalide - premier chiffre doit être 1-9: ${phone}`);
+        logWarning(`Invalid phone - first digit must be 1-9: ${phone}`);
         return cleaned;
     }
 
@@ -159,7 +132,9 @@ function normalizePhone(phone) {
 }
 
 /**
- * 📞 Valider un numéro de téléphone français
+ * Validate French phone number
+ * @param {string} phone - Phone number to validate
+ * @returns {boolean} Is valid
  */
 function isValidPhone(phone) {
     if (!phone) return false;
@@ -180,7 +155,9 @@ function isValidPhone(phone) {
 }
 
 /**
- * 📝 Normaliser le nom d'un champ (trim + apostrophes)
+ * Normalize field name (trim + apostrophes)
+ * @param {string} fieldName - Field name to normalize
+ * @returns {string} Normalized field name
  */
 function normalizeFieldName(fieldName) {
     if (!fieldName) return '';
@@ -191,7 +168,9 @@ function normalizeFieldName(fieldName) {
 }
 
 /**
- * ✉️ Valider le format d'un email
+ * Validate email format
+ * @param {string} email - Email to validate
+ * @returns {boolean} Is valid
  */
 function isValidEmail(email) {
     if (!email) return false;
@@ -200,7 +179,10 @@ function isValidEmail(email) {
 }
 
 /**
- * 🗺️ Parser une réponse de formulaire en objet standardisé
+ * Parse form response to standardized object
+ * @param {Array} headers - Header row
+ * @param {Array} values - Values row
+ * @returns {Object} Parsed form data
  */
 function parseFormResponse(headers, values) {
     const parsed = {};
@@ -208,8 +190,9 @@ function parseFormResponse(headers, values) {
     headers.forEach((header, i) => {
         const normalizedHeader = normalizeFieldName(header.trim());
         const fieldName = COLUMN_MAP[normalizedHeader];
+
         if (fieldName) {
-            logInfo(`📋 Champ: "${fieldName}" = "${values[i]}"`);
+            logInfo(`Field: "${fieldName}" = "${values[i]}"`);
             parsed[fieldName] = values[i] ?? '';
         }
     });
@@ -218,50 +201,45 @@ function parseFormResponse(headers, values) {
 }
 
 /**
- * 🏠 Formater une adresse pour le géocodage
- * REFACTORED: Now uses shared address formatting
- */
-function formatAddressForGeocoding(address, postalCode, city) {
-    const formatted = formatAddressFromComponents(address, postalCode, city);
-    // Add France if not empty
-    return formatted ? `${formatted}, France` : 'France';
-}
-
-/**
- * 📝 Log avec timestamp et emoji
+ * Log with timestamp and emoji (uses formatDateTime)
+ * @param {string} message - Log message
+ * @param {*} [data=null] - Optional data to log
  */
 function logInfo(message, data = null) {
-    const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] ℹ️ INFO: ${message}`);
+    console.log(`[${formatDateTime()}] ℹ️ INFO: ${message}`);
     if (data) {
         console.log(JSON.stringify(data, null, 2));
     }
 }
 
 /**
- * ⚠️ Log d'avertissement
+ * Log warning with timestamp
+ * @param {string} message - Warning message
+ * @param {*} [data=null] - Optional data to log
  */
 function logWarning(message, data = null) {
-    const timestamp = new Date().toISOString();
-    console.warn(`[${timestamp}] ⚠️ WARN: ${message}`);
+    console.warn(`[${formatDateTime()}] ⚠️ WARN: ${message}`);
     if (data) {
         console.warn(JSON.stringify(data, null, 2));
     }
 }
 
 /**
- * ❌ Log d'erreur
+ * Log error with timestamp
+ * @param {string} message - Error message
+ * @param {*} [error=null] - Optional error object
  */
 function logError(message, error = null) {
-    const timestamp = new Date().toISOString();
-    console.error(`[${timestamp}] ❌ ERROR: ${message}`);
+    console.error(`[${formatDateTime()}] ❌ ERROR: ${message}`);
     if (error) {
         console.error(error);
     }
 }
 
 /**
- * 📄 Récupérer une feuille avec mise en cache
+ * Get sheet by name
+ * @param {string} sheetName - Sheet name
+ * @returns {Sheet|null} Sheet object or null
  */
 function getSheetByName(sheetName) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -269,7 +247,9 @@ function getSheetByName(sheetName) {
 }
 
 /**
- * 📁 Vérifier si un fichier existe dans Drive
+ * Check if Drive file exists
+ * @param {string} fileId - File ID
+ * @returns {boolean} File exists
  */
 function fileExists(fileId) {
     try {
@@ -281,83 +261,25 @@ function fileExists(fileId) {
 }
 
 /**
- * 📂 Récupérer ou créer un dossier
+ * Get or create folder
+ * @param {Folder} parentFolder - Parent folder
+ * @param {string} folderName - Folder name
+ * @returns {Folder} Folder object
  */
 function getOrCreateFolder(parentFolder, folderName) {
     const folders = parentFolder.getFoldersByName(folderName);
+
     if (folders.hasNext()) {
         return folders.next();
     }
+
     return parentFolder.createFolder(folderName);
 }
 
 /**
- * ✅ Valider les champs requis
- */
-function validateRequiredFields(data) {
-    const errors = [];
-
-    if (!data.lastName) errors.push('Nom de famille requis');
-    if (!data.firstName) errors.push('Prénom requis');
-    if (!data.phone) errors.push('Téléphone requis');
-    if (!isValidPhone(data.phone)) errors.push('Numéro de téléphone invalide');
-    if (data.email && !isValidEmail(data.email)) errors.push('Email invalide');
-    if (!data.address) errors.push('Adresse requise');
-    if (!data.postalCode) errors.push('Code postal requis');
-    if (!data.city) errors.push('Ville requise');
-    if (data.nombreAdulte == null || isNaN(data.nombreAdulte)) errors.push('Nombre d\'adultes requis');
-    if (data.nombreEnfant == null || isNaN(data.nombreEnfant)) errors.push('Nombre d\'enfants requis');
-
-    const totalPersons = parseInt(data.nombreAdulte || 0) + parseInt(data.nombreEnfant || 0);
-    if (totalPersons === 0) {
-        errors.push('Le foyer doit contenir au moins une personne (adulte ou enfant)');
-    }
-
-    return {
-        isValid: errors.length === 0,
-        errors: errors
-    };
-}
-
-/**
- * Validate household composition separately (for updates)
- */
-function validateHouseholdComposition(nombreAdulte, nombreEnfant) {
-    const adultes = parseInt(nombreAdulte) || 0;
-    const enfants = parseInt(nombreEnfant) || 0;
-
-    if (adultes < 0) {
-        return {
-            isValid: false,
-            error: 'Le nombre d\'adultes ne peut pas être négatif'
-        };
-    }
-
-    if (enfants < 0) {
-        return {
-            isValid: false,
-            error: 'Le nombre d\'enfants ne peut pas être négatif'
-        };
-    }
-
-    const total = adultes + enfants;
-    if (total === 0) {
-        return {
-            isValid: false,
-            error: 'Le foyer doit contenir au moins une personne (adulte ou enfant)'
-        };
-    }
-
-    return {
-        isValid: true,
-        adultes: adultes,
-        enfants: enfants,
-        total: total
-    };
-}
-
-/**
- * 🔗 Extraire les IDs de fichier depuis les URLs Drive
+ * Extract file IDs from Drive URLs
+ * @param {string} urlString - Comma-separated URLs
+ * @returns {Array<string>} Array of file IDs
  */
 function extractFileIds(urlString) {
     if (!urlString) return [];
@@ -366,7 +288,9 @@ function extractFileIds(urlString) {
     const fileIds = [];
 
     urls.forEach(url => {
-        const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+        const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) ||
+            url.match(/id=([a-zA-Z0-9_-]+)/);
+
         if (match && match[1]) {
             fileIds.push(match[1]);
         }
@@ -376,40 +300,42 @@ function extractFileIds(urlString) {
 }
 
 /**
- * 🔍 Vérifier les doublons de famille (téléphone + nom)
+ * Find duplicate family (phone + name or email)
+ * @param {string} phone - Phone number
+ * @param {string} lastName - Last name
+ * @param {string} [email=null] - Optional email
+ * @returns {Object} {exists: boolean, row?: number, id?: string, data?: Array}
  */
 function findDuplicateFamily(phone, lastName, email = null) {
     try {
-        const cache = CacheService.getScriptCache();
         const normalizedPhone = normalizePhone(phone).replace(/[\s\(\)]/g, '');
         const normalizedLastName = lastName.toLowerCase().trim();
 
         const cacheKey = `dup_${normalizedPhone}_${normalizedLastName}`;
-        const cached = cache.get(cacheKey);
+        const cached = getCached(cacheKey);
 
         if (cached) {
             try {
                 return JSON.parse(cached);
             } catch (e) {
-                logWarning('⚠️ Erreur parsing cache, ignoré', e);
+                logWarning('Error parsing cache, ignored', e);
             }
         }
 
-        const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
+        const data = getFamilySheetData();
 
-        if (!sheet) {
-            logWarning('⚠️ Feuille Famille introuvable pour vérification doublons');
+        if (!data) {
+            logWarning('Famille sheet not found for duplicate check');
             return { exists: false };
         }
-
-        const data = sheet.getDataRange().getValues();
 
         for (let i = 1; i < data.length; i++) {
             const row = data[i];
 
             if (!row || row.length === 0) continue;
 
-            const rowPhone = normalizePhone(String(row[OUTPUT_COLUMNS.TELEPHONE] || '')).replace(/[\s\(\)]/g, '');
+            const rowPhone = normalizePhone(String(row[OUTPUT_COLUMNS.TELEPHONE] || ''))
+                .replace(/[\s\(\)]/g, '');
             const rowLastName = (row[OUTPUT_COLUMNS.NOM] || '').toLowerCase().trim();
             const rowEmail = (row[OUTPUT_COLUMNS.EMAIL] || '').toLowerCase().trim();
 
@@ -422,34 +348,27 @@ function findDuplicateFamily(phone, lastName, email = null) {
                     data: row
                 };
 
-                try {
-                    cache.put(cacheKey, JSON.stringify(result), CONFIG.CACHE.MEDIUM);
-                } catch (e) {
-                    logWarning('⚠️ Erreur mise en cache, ignoré', e);
-                }
-
+                setCached(cacheKey, JSON.stringify(result), CONFIG.CACHE.MEDIUM);
                 return result;
             }
         }
 
         const result = { exists: false };
-
-        try {
-            cache.put(cacheKey, JSON.stringify(result), CONFIG.CACHE.SHORT);
-        } catch (e) {
-            logWarning('⚠️ Erreur mise en cache, ignoré', e);
-        }
+        setCached(cacheKey, JSON.stringify(result), CONFIG.CACHE.SHORT);
 
         return result;
 
     } catch (error) {
-        logError('❌ Erreur dans findDuplicateFamily', error);
+        logError('Error in findDuplicateFamily', error);
         return { exists: false };
     }
 }
 
 /**
- * 🔄 Wrapper de retry pour les appels API
+ * Retry operation wrapper
+ * @param {Function} operation - Operation to retry
+ * @param {number} [maxRetries=3] - Max retry attempts
+ * @returns {*} Operation result
  */
 function retryOperation(operation, maxRetries = 3) {
     let lastError;
@@ -459,7 +378,7 @@ function retryOperation(operation, maxRetries = 3) {
             return operation();
         } catch (e) {
             lastError = e;
-            logError(`❌ Tentative ${i + 1}/${maxRetries} échouée`, e);
+            logError(`Attempt ${i + 1}/${maxRetries} failed`, e);
 
             if (i < maxRetries - 1) {
                 Utilities.sleep(1000 * (i + 1));
@@ -471,7 +390,9 @@ function retryOperation(operation, maxRetries = 3) {
 }
 
 /**
- * 📧 Notifier l'administrateur par email
+ * Notify admin by email
+ * @param {string} subject - Email subject
+ * @param {string} message - Email message
  */
 function notifyAdmin(subject, message) {
     try {
@@ -479,7 +400,7 @@ function notifyAdmin(subject, message) {
         const adminEmail = config.adminEmail;
 
         if (!adminEmail) {
-            logWarning('⚠️ Email administrateur non configuré');
+            logWarning('Admin email not configured');
             return;
         }
 
@@ -503,7 +424,7 @@ function notifyAdmin(subject, message) {
         <div class="content">
             <p>${message.replace(/\n/g, '<br>')}</p>
             <hr>
-            <p><strong>Horodatage:</strong> ${new Date().toLocaleString('fr-FR')}</p>
+            <p><strong>Timestamp:</strong> ${formatDateTime()}</p>
         </div>
         <div class="footer">
             <p>📦 Système de Gestion des Familles - Notification automatique</p>
@@ -518,15 +439,19 @@ function notifyAdmin(subject, message) {
             htmlBody: emailBody
         });
 
-        logInfo(`📧 Email envoyé à l'administrateur: ${subject}`);
+        logInfo(`Email sent to admin: ${subject}`);
 
     } catch (error) {
-        logError('❌ Échec de l\'envoi de l\'email administrateur', error);
+        logError('Failed to send admin email', error);
     }
 }
 
 /**
- * 🔨 Construire une URL avec paramètres
+ * Build URL with query parameters
+ * @param {string} baseUrl - Base URL
+ * @param {string} action - Action parameter
+ * @param {Object} params - Additional parameters
+ * @returns {string} Complete URL
  */
 function buildUrlWithParams(baseUrl, action, params) {
     const queryParams = ['action=' + encodeURIComponent(action)];
@@ -541,13 +466,16 @@ function buildUrlWithParams(baseUrl, action, params) {
 }
 
 /**
- * 🔍 Obtenir la dernière ligne vide d'une feuille
+ * Get last empty row in sheet
+ * @param {Sheet} sheet - Sheet object
+ * @returns {number} Last empty row number
  */
 function getLastEmptyRow(sheet) {
     const data = sheet.getDataRange().getValues();
 
     for (let i = data.length - 1; i >= 0; i--) {
         const rowIsEmpty = data[i].every(cell => cell === '' || cell === null);
+
         if (!rowIsEmpty) {
             return i + 2;
         }
@@ -557,7 +485,9 @@ function getLastEmptyRow(sheet) {
 }
 
 /**
- * 🚫 Vérifier si la soumission contient un refus de consentement
+ * Check if consent is refused
+ * @param {Object} formData - Form data
+ * @returns {boolean} Consent is refused
  */
 function isConsentRefused(formData) {
     const consent = formData.personalDataProtection || '';
@@ -567,7 +497,7 @@ function isConsentRefused(formData) {
     );
 
     if (isRefused) {
-        logInfo('🚫 Soumission ignorée: refus de consentement détecté');
+        logInfo('Submission ignored: consent refused');
     }
 
     return isRefused;

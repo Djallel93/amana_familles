@@ -169,14 +169,12 @@ function handleEdit(e) {
                             'Le statut a été rétabli à: ' + oldStatusValue,
                             SpreadsheetApp.getUi().ButtonSet.OK
                         );
-
-                        const existingComment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
-                        const newComment = addComment(
-                            existingComment,
-                            formatComment('❌', `Tentative de validation échouée: ${addressValidation.error || 'Quartier introuvable'}`)
+                        appendSheetComment(
+                            sheet,
+                            row,
+                            '❌',
+                            `Tentative de validation échouée: ${addressValidation.error || 'Quartier introuvable'}`
                         );
-                        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
-
                         return;
                     }
 
@@ -184,13 +182,12 @@ function handleEdit(e) {
                     sheet.getRange(row, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue(quartierId);
 
                     logInfo(`Quartier auto-resolved: ${quartierId} (${addressValidation.quartierName})`);
-
-                    const existingComment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
-                    const newComment = addComment(
-                        existingComment,
-                        formatComment('✅', `Quartier résolu automatiquement: ${addressValidation.quartierName || quartierId}`)
+                    appendSheetComment(
+                        sheet,
+                        row,
+                        '✅',
+                        `Quartier résolu automatiquement: ${addressValidation.quartierName || quartierId}`
                     );
-                    sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
                 }
 
                 const quartierValidation = validateQuartierId(quartierId);
@@ -207,12 +204,12 @@ function handleEdit(e) {
                         SpreadsheetApp.getUi().ButtonSet.OK
                     );
 
-                    const existingComment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
-                    const newComment = addComment(
-                        existingComment,
-                        formatComment('❌', `Tentative de validation échouée: ${quartierValidation.error}`)
+                    appendSheetComment(
+                        sheet,
+                        row,
+                        '❌',
+                        `Tentative de validation échouée: ${quartierValidation.error}`
                     );
-                    sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
 
                     logInfo(`Validation blocked for row ${row}: ${quartierValidation.error}`);
                     return;
@@ -285,15 +282,14 @@ function handleHouseholdCompositionEdit(sheet, row, col, e) {
             return;
         }
 
-        // Add comment about household update
-        const existingComment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
+        // Add comment about household 
         const fieldName = col === OUTPUT_COLUMNS.NOMBRE_ADULTE + 1 ? 'Adultes' : 'Enfants';
-        const newComment = addComment(
-            existingComment,
-            formatComment('👥', `${fieldName}: ${e.oldValue || 0} → ${newValue} (Total: ${validation.total})`)
+        appendSheetComment(
+            sheet,
+            row,
+            '👥',
+            `${fieldName}: ${e.oldValue || 0} → ${newValue} (Total: ${validation.total})`
         );
-        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
-
         logInfo(`Household composition updated for row ${row}: ${fieldName} = ${newValue}, Total = ${validation.total}`);
 
     } catch (error) {

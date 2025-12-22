@@ -1,6 +1,6 @@
 /**
- * @file src/api/familyApiHandler.js (ENHANCED v2.2)
- * @description REST API with eligibility filtering and advanced sorting
+ * @file src/api/familyApiHandler.js (REFACTORED v3.0)
+ * @description REST API using canonical family data functions - ZERO duplication
  */
 
 /**
@@ -14,11 +14,9 @@ function doGet(e) {
             return jsonResponse({ error: 'Missing action parameter' }, 400);
         }
 
-        // Public endpoints (no API key required)
         const publicActions = ['confirmfamilyinfo', 'ping'];
 
         if (!publicActions.includes(action.toLowerCase())) {
-            // Verify API key for protected endpoints
             const authResult = authenticateRequest(e);
             if (!authResult.success) {
                 return jsonResponse({ error: authResult.error }, 401);
@@ -27,13 +25,13 @@ function doGet(e) {
 
         switch (action.toLowerCase()) {
             case 'allfamilies':
-                return getAllFamilies(e);
+                return getAllFamiliesApi(e);
 
             case 'familybyid':
-                return getFamilyById(e);
+                return getFamilyByIdApi(e);
 
             case 'familyaddressbyid':
-                return getFamilyAddressById(e);
+                return getFamilyAddressByIdApi(e);
 
             case 'familieszakatfitr':
                 return getFamiliesForZakatFitr(e);
@@ -66,7 +64,7 @@ function doGet(e) {
                 return jsonResponse({
                     status: 'ok',
                     message: 'Famille API operational',
-                    version: '2.2',
+                    version: '3.0',
                     geoApiVersion: CONFIG.GEO_API.VERSION,
                     timestamp: new Date().toISOString()
                 });
@@ -103,7 +101,7 @@ function authenticateRequest(e) {
     }
 
     if (providedApiKey !== expectedApiKey) {
-        logWarning(`Invalid API key attempt`);
+        logWarning('Invalid API key attempt');
         return { success: false, error: 'Invalid API key' };
     }
 
@@ -121,7 +119,6 @@ function handleConfirmFamilyInfo(e) {
         return createConfirmationErrorPage('missing_params');
     }
 
-    // Simple token validation: token should match FAMILLE_API_KEY
     const config = getScriptConfig();
     if (token !== config.familleApiKey) {
         return createConfirmationErrorPage('invalid_token');
@@ -140,7 +137,7 @@ function handleConfirmFamilyInfo(e) {
 }
 
 /**
- * Create dynamic confirmation success page
+ * Create confirmation success page
  */
 function createConfirmationSuccessPage(familyData) {
     const template = HtmlService.createTemplateFromFile('views/email/confirmationSuccess');
@@ -155,7 +152,7 @@ function createConfirmationSuccessPage(familyData) {
 }
 
 /**
- * Create dynamic confirmation error page
+ * Create confirmation error page
  */
 function createConfirmationErrorPage(errorType) {
     const template = HtmlService.createTemplateFromFile('views/email/confirmationError');
@@ -176,60 +173,51 @@ function handleSendVerificationEmails(e) {
 
 /**
  * Get all validated families with ENHANCED filtering and sorting
- * NEW: Supports eligibility filters and multiple sort options
  */
-function getAllFamilies(e) {
+function getAllFamiliesApi(e) {
     const orderBy = e.parameter.orderBy;
     const lat = parseFloat(e.parameter.lat);
     const lng = parseFloat(e.parameter.lng);
     const includeHierarchy = e.parameter.includeHierarchy === 'true';
 
-    // NEW: Eligibility filters
     const filterZakat = e.parameter.zakatElFitr === 'true';
     const filterSadaqa = e.parameter.sadaqa === 'true';
 
     const cacheKey = `api_all_families_${orderBy}_${lat}_${lng}_${includeHierarchy}_${filterZakat}_${filterSadaqa}`;
-    const cache = CacheService.getScriptCache();
 
-    const cached = cache.get(cacheKey);
+    const cached = getCached(cacheKey);
     if (cached) {
         return ContentService.createTextOutput(cached)
             .setMimeType(ContentService.MimeType.JSON);
     }
 
-    const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
-    if (!sheet) {
-        return jsonResponse({ error: 'Sheet not found' }, 404);
-    }
-
-    const data = sheet.getDataRange().getValues();
-    let families = [];
-
-    // Get last update timestamps from comments
-    const lastUpdateMap = buildLastUpdateMap(data);
-
-    for (let i = 1; i < data.length; i++) {
-        const row = data[i];
-        if (row[OUTPUT_COLUMNS.ETAT_DOSSIER] === CONFIG.STATUS.VALIDATED) {
-            // NEW: Apply eligibility filters
+    // Build filter function
+    let filterFn = null;
+    if (filterZakat || filterSadaqa) {
+        filterFn = (row) => {
             const zakatValue = row[OUTPUT_COLUMNS.ZAKAT_EL_FITR] === true;
             const sadaqaValue = row[OUTPUT_COLUMNS.SADAQA] === true;
 
-            // If filters are set, check eligibility
-            if (filterZakat && !zakatValue) continue;
-            if (filterSadaqa && !sadaqaValue) continue;
+            if (filterZakat && !zakatValue) return false;
+            if (filterSadaqa && !sadaqaValue) return false;
 
-            const family = rowToFamilyObject(row, includeHierarchy);
-
-            // NEW: Add last update timestamp
-            const familyId = row[OUTPUT_COLUMNS.ID];
-            family.lastUpdate = lastUpdateMap[familyId] || null;
-
-            families.push(family);
-        }
+            return true;
+        };
     }
 
-    // NEW: Enhanced sorting
+    // Use canonical function from familyDataService
+    let families = getAllFamilies(filterFn, includeHierarchy);
+
+    // Add last update timestamps
+    const data = getFamilySheetData();
+    if (data) {
+        const lastUpdateMap = buildLastUpdateMap(data);
+        families.forEach(family => {
+            family.lastUpdate = lastUpdateMap[family.id] || null;
+        });
+    }
+
+    // Apply sorting
     families = applySorting(families, orderBy, lat, lng);
 
     const result = jsonResponse({
@@ -243,30 +231,26 @@ function getAllFamilies(e) {
         families: families
     });
 
-    cache.put(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
+    setCached(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
     return result;
 }
 
 /**
- * NEW: Build map of family IDs to last update timestamps
+ * Build map of family IDs to last update timestamps
  */
 function buildLastUpdateMap(data) {
     const lastUpdateMap = {};
 
     for (let i = 1; i < data.length; i++) {
         const row = data[i];
-        const familyId = row[OUTPUT_COLUMNS.ID];
-        const comment = row[OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
+        const familyId = safeGetColumn(row, OUTPUT_COLUMNS.ID);
+        const comment = safeGetColumn(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER);
 
-        // Extract most recent timestamp from comments
-        // Format: yyyy-MM-dd HH:mm:ss
         const timestampRegex = /(\d{4}-\d{2}-\d{2})/g;
         const matches = comment.match(timestampRegex);
 
         if (matches && matches.length > 0) {
-            // Get the most recent date (first in comment due to addComment prepending)
-            const mostRecentDate = matches[0];
-            lastUpdateMap[familyId] = mostRecentDate;
+            lastUpdateMap[familyId] = matches[0];
         }
     }
 
@@ -274,24 +258,20 @@ function buildLastUpdateMap(data) {
 }
 
 /**
- * NEW: Apply sorting to families array
+ * Apply sorting to families array
  */
 function applySorting(families, orderBy, lat, lng) {
     if (!orderBy) {
         return families;
     }
 
-    // Split orderBy for multiple sort criteria
     const sortCriteria = orderBy.split(',').map(s => s.trim());
-
-    // Primary sort
     const primarySort = sortCriteria[0];
 
     if (primarySort === 'criticite') {
         families.sort((a, b) => b.criticite - a.criticite);
     } else if (primarySort === 'lastUpdate' || primarySort === 'lastupdate') {
         families.sort((a, b) => {
-            // Sort by most recent first (descending)
             if (!a.lastUpdate) return 1;
             if (!b.lastUpdate) return -1;
             return b.lastUpdate.localeCompare(a.lastUpdate);
@@ -300,12 +280,11 @@ function applySorting(families, orderBy, lat, lng) {
         families = sortFamiliesByDistance(families, lat, lng);
     }
 
-    // Secondary sort (if provided)
+    // Secondary sort
     if (sortCriteria.length > 1) {
         const secondarySort = sortCriteria[1];
 
         if (secondarySort === 'criticite' && primarySort !== 'criticite') {
-            // Stable sort by criticite as secondary
             families.sort((a, b) => {
                 const primaryValue = getPrimarySortValue(a, primarySort, lat, lng);
                 const primaryValueB = getPrimarySortValue(b, primarySort, lat, lng);
@@ -313,7 +292,7 @@ function applySorting(families, orderBy, lat, lng) {
                 if (primaryValue === primaryValueB) {
                     return b.criticite - a.criticite;
                 }
-                return 0; // Keep original order if different
+                return 0;
             });
         } else if ((secondarySort === 'lastUpdate' || secondarySort === 'lastupdate') && primarySort !== 'lastUpdate') {
             families.sort((a, b) => {
@@ -334,7 +313,7 @@ function applySorting(families, orderBy, lat, lng) {
 }
 
 /**
- * NEW: Helper to get primary sort value for secondary sorting
+ * Helper to get primary sort value
  */
 function getPrimarySortValue(family, sortType, lat, lng) {
     if (sortType === 'criticite') {
@@ -348,43 +327,6 @@ function getPrimarySortValue(family, sortType, lat, lng) {
 }
 
 /**
- * Get families by criticite level
- */
-function getFamiliesByCriticite(e) {
-    const criticite = parseInt(e.parameter.criticite);
-    const includeHierarchy = e.parameter.includeHierarchy === 'true';
-
-    if (isNaN(criticite) || criticite < CONFIG.CRITICITE.MIN || criticite > CONFIG.CRITICITE.MAX) {
-        return jsonResponse({
-            error: `Invalid criticite. Must be between ${CONFIG.CRITICITE.MIN} and ${CONFIG.CRITICITE.MAX}`
-        }, 400);
-    }
-
-    const cache = CacheService.getScriptCache();
-    const cacheKey = `api_criticite_${criticite}_${includeHierarchy}`;
-
-    const cached = cache.get(cacheKey);
-    if (cached) {
-        return ContentService.createTextOutput(cached)
-            .setMimeType(ContentService.MimeType.JSON);
-    }
-
-    const families = getValidatedFamilies(
-        row => parseInt(row[OUTPUT_COLUMNS.CRITICITE]) === criticite,
-        includeHierarchy
-    );
-
-    const result = jsonResponse({
-        criticite: criticite,
-        count: families.length,
-        families: families
-    });
-
-    cache.put(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
-    return result;
-}
-
-/**
  * Sort families by distance from reference point
  */
 function sortFamiliesByDistance(families, refLat, refLng) {
@@ -392,20 +334,16 @@ function sortFamiliesByDistance(families, refLat, refLng) {
         if (family.adresse) {
             try {
                 const cacheKey = `geocode_${family.adresse}`;
-                const cache = CacheService.getScriptCache();
+                let coords = getCached(cacheKey);
 
-                let coords = cache.get(cacheKey);
                 if (!coords) {
-                    const parts = family.adresse.split(',');
-                    const address = parts[0] ? parts[0].trim() : '';
-                    const postalCode = parts[1] ? parts[1].trim() : '';
-                    const city = parts[2] ? parts[2].trim() : '';
+                    const parts = parseAddressComponents(family.adresse);
 
-                    const geocodeResult = geocodeAddress(address, city, postalCode);
+                    const geocodeResult = geocodeAddress(parts.street, parts.city, parts.postalCode);
 
                     if (geocodeResult && geocodeResult.isValid) {
                         coords = JSON.stringify(geocodeResult.coordinates);
-                        cache.put(cacheKey, coords, CONFIG.CACHE.VERY_LONG);
+                        setCached(cacheKey, coords, CONFIG.CACHE.VERY_LONG);
                     }
                 }
 
@@ -436,9 +374,9 @@ function sortFamiliesByDistance(families, refLat, refLng) {
 }
 
 /**
- * Get family by ID
+ * Get family by ID (uses canonical getFamilyById)
  */
-function getFamilyById(e) {
+function getFamilyByIdApi(e) {
     const id = e.parameter.id;
     const includeHierarchy = e.parameter.includeHierarchy === 'true';
 
@@ -446,29 +384,30 @@ function getFamilyById(e) {
         return jsonResponse({ error: 'Missing id parameter' }, 400);
     }
 
-    const cache = CacheService.getScriptCache();
     const cacheKey = `api_family_${id}_${includeHierarchy}`;
+    const cached = getCached(cacheKey);
 
-    const cached = cache.get(cacheKey);
     if (cached) {
         return ContentService.createTextOutput(cached)
             .setMimeType(ContentService.MimeType.JSON);
     }
 
-    const family = findFamilyById(id, includeHierarchy);
+    // Use canonical function
+    const family = getFamilyById(id, includeHierarchy);
+
     if (!family) {
         return jsonResponse({ error: 'Family not found' }, 404);
     }
 
     const result = jsonResponse(family);
-    cache.put(cacheKey, result.getContent(), CONFIG.CACHE.MEDIUM);
+    setCached(cacheKey, result.getContent(), CONFIG.CACHE.MEDIUM);
     return result;
 }
 
 /**
  * Get family address by ID
  */
-function getFamilyAddressById(e) {
+function getFamilyAddressByIdApi(e) {
     const id = e.parameter.id;
     const includeHierarchy = e.parameter.includeHierarchy === 'true';
 
@@ -476,7 +415,8 @@ function getFamilyAddressById(e) {
         return jsonResponse({ error: 'Missing id parameter' }, 400);
     }
 
-    const family = findFamilyById(id, includeHierarchy);
+    const family = getFamilyById(id, includeHierarchy);
+
     if (!family) {
         return jsonResponse({ error: 'Family not found' }, 404);
     }
@@ -504,26 +444,23 @@ function getFamilyAddressById(e) {
  */
 function getFamiliesForZakatFitr(e) {
     const includeHierarchy = e.parameter.includeHierarchy === 'true';
-    const cache = CacheService.getScriptCache();
     const cacheKey = `api_zakat_fitr_${includeHierarchy}`;
 
-    const cached = cache.get(cacheKey);
+    const cached = getCached(cacheKey);
     if (cached) {
         return ContentService.createTextOutput(cached)
             .setMimeType(ContentService.MimeType.JSON);
     }
 
-    const families = getValidatedFamilies(
-        row => row[OUTPUT_COLUMNS.ZAKAT_EL_FITR] === true,
-        includeHierarchy
-    );
+    const filterFn = (row) => row[OUTPUT_COLUMNS.ZAKAT_EL_FITR] === true;
+    const families = getAllFamilies(filterFn, includeHierarchy);
 
     const result = jsonResponse({
         count: families.length,
         families: families
     });
 
-    cache.put(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
+    setCached(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
     return result;
 }
 
@@ -532,26 +469,23 @@ function getFamiliesForZakatFitr(e) {
  */
 function getFamiliesForSadaka(e) {
     const includeHierarchy = e.parameter.includeHierarchy === 'true';
-    const cache = CacheService.getScriptCache();
     const cacheKey = `api_sadaka_${includeHierarchy}`;
 
-    const cached = cache.get(cacheKey);
+    const cached = getCached(cacheKey);
     if (cached) {
         return ContentService.createTextOutput(cached)
             .setMimeType(ContentService.MimeType.JSON);
     }
 
-    const families = getValidatedFamilies(
-        row => row[OUTPUT_COLUMNS.SADAQA] === true,
-        includeHierarchy
-    );
+    const filterFn = (row) => row[OUTPUT_COLUMNS.SADAQA] === true;
+    const families = getAllFamilies(filterFn, includeHierarchy);
 
     const result = jsonResponse({
         count: families.length,
         families: families
     });
 
-    cache.put(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
+    setCached(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
     return result;
 }
 
@@ -566,19 +500,16 @@ function getFamiliesByQuartier(e) {
         return jsonResponse({ error: 'Missing quartierId parameter' }, 400);
     }
 
-    const cache = CacheService.getScriptCache();
     const cacheKey = `api_quartier_${quartierId}_${includeHierarchy}`;
+    const cached = getCached(cacheKey);
 
-    const cached = cache.get(cacheKey);
     if (cached) {
         return ContentService.createTextOutput(cached)
             .setMimeType(ContentService.MimeType.JSON);
     }
 
-    const families = getValidatedFamilies(
-        row => row[OUTPUT_COLUMNS.ID_QUARTIER] == quartierId,
-        includeHierarchy
-    );
+    const filterFn = (row) => safeGetColumn(row, OUTPUT_COLUMNS.ID_QUARTIER) == quartierId;
+    const families = getAllFamilies(filterFn, includeHierarchy);
 
     const result = jsonResponse({
         quartierId: quartierId,
@@ -586,7 +517,7 @@ function getFamiliesByQuartier(e) {
         families: families
     });
 
-    cache.put(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
+    setCached(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
     return result;
 }
 
@@ -600,16 +531,15 @@ function getFamiliesBySecteur(e) {
         return jsonResponse({ error: 'Missing secteurId parameter' }, 400);
     }
 
-    const cache = CacheService.getScriptCache();
     const cacheKey = `api_secteur_${secteurId}`;
+    const cached = getCached(cacheKey);
 
-    const cached = cache.get(cacheKey);
     if (cached) {
         return ContentService.createTextOutput(cached)
             .setMimeType(ContentService.MimeType.JSON);
     }
 
-    const allFamilies = getValidatedFamilies(null, false);
+    const allFamilies = getAllFamilies(null, false);
     const quartierIds = [...new Set(allFamilies.map(f => f.idQuartier).filter(id => id))];
     const hierarchies = batchGetLocationHierarchies(quartierIds);
 
@@ -634,7 +564,7 @@ function getFamiliesBySecteur(e) {
         families: filteredFamilies
     });
 
-    cache.put(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
+    setCached(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
     return result;
 }
 
@@ -648,16 +578,15 @@ function getFamiliesByVille(e) {
         return jsonResponse({ error: 'Missing villeId parameter' }, 400);
     }
 
-    const cache = CacheService.getScriptCache();
     const cacheKey = `api_ville_${villeId}`;
+    const cached = getCached(cacheKey);
 
-    const cached = cache.get(cacheKey);
     if (cached) {
         return ContentService.createTextOutput(cached)
             .setMimeType(ContentService.MimeType.JSON);
     }
 
-    const allFamilies = getValidatedFamilies(null, false);
+    const allFamilies = getAllFamilies(null, false);
     const quartierIds = [...new Set(allFamilies.map(f => f.idQuartier).filter(id => id))];
     const hierarchies = batchGetLocationHierarchies(quartierIds);
 
@@ -682,7 +611,7 @@ function getFamiliesByVille(e) {
         families: filteredFamilies
     });
 
-    cache.put(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
+    setCached(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
     return result;
 }
 
@@ -691,113 +620,58 @@ function getFamiliesByVille(e) {
  */
 function getFamiliesSeDeplace(e) {
     const includeHierarchy = e.parameter.includeHierarchy === 'true';
-    const cache = CacheService.getScriptCache();
     const cacheKey = `api_se_deplace_${includeHierarchy}`;
 
-    const cached = cache.get(cacheKey);
+    const cached = getCached(cacheKey);
     if (cached) {
         return ContentService.createTextOutput(cached)
             .setMimeType(ContentService.MimeType.JSON);
     }
 
-    const families = getValidatedFamilies(
-        row => row[OUTPUT_COLUMNS.SE_DEPLACE] === true,
-        includeHierarchy
-    );
+    const filterFn = (row) => row[OUTPUT_COLUMNS.SE_DEPLACE] === true;
+    const families = getAllFamilies(filterFn, includeHierarchy);
 
     const result = jsonResponse({
         count: families.length,
         families: families
     });
 
-    cache.put(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
+    setCached(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
     return result;
 }
 
 /**
- * Find family by ID
+ * Get families by criticite level
  */
-function findFamilyById(id, includeHierarchy = false) {
-    const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
-    if (!sheet) return null;
+function getFamiliesByCriticite(e) {
+    const criticite = parseInt(e.parameter.criticite);
+    const includeHierarchy = e.parameter.includeHierarchy === 'true';
 
-    const data = sheet.getDataRange().getValues();
-
-    for (let i = 1; i < data.length; i++) {
-        const row = data[i];
-        if (row[OUTPUT_COLUMNS.ID] === id &&
-            row[OUTPUT_COLUMNS.ETAT_DOSSIER] === CONFIG.STATUS.VALIDATED) {
-            return rowToFamilyObject(row, includeHierarchy);
-        }
+    if (isNaN(criticite) || criticite < CONFIG.CRITICITE.MIN || criticite > CONFIG.CRITICITE.MAX) {
+        return jsonResponse({
+            error: `Invalid criticite. Must be between ${CONFIG.CRITICITE.MIN} and ${CONFIG.CRITICITE.MAX}`
+        }, 400);
     }
 
-    return null;
-}
+    const cacheKey = `api_criticite_${criticite}_${includeHierarchy}`;
+    const cached = getCached(cacheKey);
 
-/**
- * Get validated families with optional filter
- */
-function getValidatedFamilies(filterFn = null, includeHierarchy = false) {
-    const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
-    if (!sheet) return [];
-
-    const data = sheet.getDataRange().getValues();
-    const families = [];
-
-    for (let i = 1; i < data.length; i++) {
-        const row = data[i];
-
-        if (row[OUTPUT_COLUMNS.ETAT_DOSSIER] !== CONFIG.STATUS.VALIDATED) {
-            continue;
-        }
-
-        if (filterFn && !filterFn(row)) {
-            continue;
-        }
-
-        families.push(rowToFamilyObject(row, includeHierarchy));
+    if (cached) {
+        return ContentService.createTextOutput(cached)
+            .setMimeType(ContentService.MimeType.JSON);
     }
 
-    return families;
-}
+    const filterFn = (row) => parseInt(safeGetColumn(row, OUTPUT_COLUMNS.CRITICITE, 0)) === criticite;
+    const families = getAllFamilies(filterFn, includeHierarchy);
 
-/**
- * Convert row to family object
- */
-function rowToFamilyObject(row, includeHierarchy = false) {
-    const family = {
-        id: row[OUTPUT_COLUMNS.ID],
-        nom: row[OUTPUT_COLUMNS.NOM],
-        prenom: row[OUTPUT_COLUMNS.PRENOM],
-        zakatElFitr: row[OUTPUT_COLUMNS.ZAKAT_EL_FITR] || false,
-        sadaqa: row[OUTPUT_COLUMNS.SADAQA] || false,
-        nombreAdulte: row[OUTPUT_COLUMNS.NOMBRE_ADULTE] || 0,
-        nombreEnfant: row[OUTPUT_COLUMNS.NOMBRE_ENFANT] || 0,
-        adresse: row[OUTPUT_COLUMNS.ADRESSE],
-        idQuartier: row[OUTPUT_COLUMNS.ID_QUARTIER] || null,
-        seDeplace: row[OUTPUT_COLUMNS.SE_DEPLACE] || false,
-        email: row[OUTPUT_COLUMNS.EMAIL],
-        telephone: row[OUTPUT_COLUMNS.TELEPHONE],
-        telephoneBis: row[OUTPUT_COLUMNS.TELEPHONE_BIS],
-        circonstances: row[OUTPUT_COLUMNS.CIRCONSTANCES],
-        ressentit: row[OUTPUT_COLUMNS.RESSENTIT],
-        specificites: row[OUTPUT_COLUMNS.SPECIFICITES],
-        criticite: parseInt(row[OUTPUT_COLUMNS.CRITICITE]) || 0,
-        langue: row[OUTPUT_COLUMNS.LANGUE] || CONFIG.LANGUAGES.FR
-    };
+    const result = jsonResponse({
+        criticite: criticite,
+        count: families.length,
+        families: families
+    });
 
-    if (includeHierarchy && family.idQuartier) {
-        const hierarchy = getLocationHierarchyFromQuartier(family.idQuartier);
-        if (!hierarchy.error) {
-            family.idVille = hierarchy.ville.id;
-            family.idSecteur = hierarchy.secteur.id;
-        } else {
-            family.idVille = null;
-            family.idSecteur = null;
-        }
-    }
-
-    return family;
+    setCached(cacheKey, result.getContent(), CONFIG.CACHE.SHORT);
+    return result;
 }
 
 /**
