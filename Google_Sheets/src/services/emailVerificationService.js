@@ -1,10 +1,12 @@
 /**
- * @file src/services/emailVerificationService.js (UPDATED)
- * @description Email verification with GEO API for proper address display and confirmation tracking
+ * @file src/services/emailVerificationService.js (REFACTORÉ v2.0)
+ * @description Vérification email avec GEO API et génération template HTML
+ * CHANGEMENT: Utilise template HTML externe au lieu de replace() inline
  */
 
 /**
- * Get email translations
+ * Récupère les traductions email
+ * @returns {Object} Traductions par langue
  */
 function getEmailTranslations() {
     return {
@@ -66,13 +68,17 @@ function getEmailTranslations() {
 }
 
 /**
- * Generate HTML email using template with proper address from GEO API
+ * Génère l'email HTML depuis template avec informations adresse depuis GEO API
+ * @param {Object} familyData - Données famille
+ * @param {string} language - Langue
+ * @param {string} confirmUrl - URL confirmation
+ * @param {string} updateUrl - URL mise à jour
+ * @returns {string} HTML de l'email
  */
 function generateVerificationEmailHtml(familyData, language, confirmUrl, updateUrl) {
     const t = getEmailTranslations()[language] || getEmailTranslations()['Français'];
     const isRTL = language === 'Arabe';
 
-    // Get proper address information from GEO API using quartier
     let street = '';
     let postalCode = '';
     let city = '';
@@ -85,101 +91,94 @@ function generateVerificationEmailHtml(familyData, language, confirmUrl, updateU
                 city = hierarchy.ville.nom || '';
                 postalCode = hierarchy.ville.codePostal || '';
 
-                // Extract street from full address
                 if (familyData.adresse) {
-                    const addressParts = familyData.adresse.split(',').map(p => p.trim());
-                    street = addressParts[0] || '';
+                    const addressParts = parseAddressComponents(familyData.adresse);
+                    street = addressParts.street || '';
                 }
             } else {
-                // Fallback to parsing if GEO API fails
-                logWarning('GEO API failed, falling back to address parsing', hierarchy.error);
-                const addressParts = familyData.adresse ? familyData.adresse.split(',').map(p => p.trim()) : ['', '', ''];
-                street = addressParts[0] || '';
-                postalCode = addressParts[1] ? addressParts[1].match(/\d{5}/)?.[0] || '' : '';
-                city = addressParts[2] || addressParts[1]?.replace(/\d{5}/, '').trim() || '';
+                logWarning('API GEO échouée, fallback parsing adresse', hierarchy.error);
+                const addressParts = parseAddressComponents(familyData.adresse);
+                street = addressParts.street;
+                postalCode = addressParts.postalCode;
+                city = addressParts.city;
             }
         } catch (e) {
-            logError('Error getting address from GEO API', e);
-            // Fallback to simple parsing
-            const addressParts = familyData.adresse ? familyData.adresse.split(',').map(p => p.trim()) : ['', '', ''];
-            street = addressParts[0] || '';
-            postalCode = addressParts[1] ? addressParts[1].match(/\d{5}/)?.[0] || '' : '';
-            city = addressParts[2] || addressParts[1]?.replace(/\d{5}/, '').trim() || '';
+            logError('Erreur récupération adresse depuis API GEO', e);
+            const addressParts = parseAddressComponents(familyData.adresse);
+            street = addressParts.street;
+            postalCode = addressParts.postalCode;
+            city = addressParts.city;
         }
     } else {
-        // No quartier ID, fallback to simple parsing
-        const addressParts = familyData.adresse ? familyData.adresse.split(',').map(p => p.trim()) : ['', '', ''];
-        street = addressParts[0] || '';
-        postalCode = addressParts[1] ? addressParts[1].match(/\d{5}/)?.[0] || '' : '';
-        city = addressParts[2] || addressParts[1]?.replace(/\d{5}/, '').trim() || '';
+        const addressParts = parseAddressComponents(familyData.adresse);
+        street = addressParts.street;
+        postalCode = addressParts.postalCode;
+        city = addressParts.city;
     }
 
-    // Load template
-    const template = HtmlService.createHtmlOutputFromFile('views/email/verificationEmailTemplate').getContent();
+    const template = HtmlService.createTemplateFromFile('views/email/verificationEmail');
 
-    // Replace all placeholders
-    let html = template
-        .replace(/{{DIR_CLASS}}/g, isRTL ? 'rtl' : '')
-        .replace(/{{SUBJECT}}/g, CONFIG.EMAIL_VERIFICATION.SUBJECT[language])
-        .replace(/{{GREETING}}/g, t.greeting)
-        .replace(/{{FIRST_NAME}}/g, familyData.prenom || '')
-        .replace(/{{LAST_NAME}}/g, familyData.nom || '')
-        .replace(/{{INTRO}}/g, t.intro)
-        .replace(/{{CURRENT_INFO}}/g, t.currentInfo)
-        .replace(/{{LABEL_NAME}}/g, t.name)
-        .replace(/{{LABEL_PHONE}}/g, t.phone)
-        .replace(/{{LABEL_ADDRESS}}/g, t.address)
-        .replace(/{{LABEL_POSTAL_CODE}}/g, t.postalCode)
-        .replace(/{{LABEL_CITY}}/g, t.city)
-        .replace(/{{LABEL_ADULTS}}/g, t.adults)
-        .replace(/{{LABEL_CHILDREN}}/g, t.children)
-        .replace(/{{PHONE}}/g, familyData.telephone || '')
-        .replace(/{{ADDRESS}}/g, street)
-        .replace(/{{POSTAL_CODE}}/g, postalCode)
-        .replace(/{{CITY}}/g, city)
-        .replace(/{{NUM_ADULTS}}/g, familyData.nombreAdulte || 0)
-        .replace(/{{NUM_CHILDREN}}/g, familyData.nombreEnfant || 0)
-        .replace(/{{QUESTION}}/g, t.question)
-        .replace(/{{BUTTON_UP_TO_DATE}}/g, t.buttonUpToDate)
-        .replace(/{{BUTTON_CHANGED}}/g, t.buttonChanged)
-        .replace(/{{CONFIRM_URL}}/g, confirmUrl)
-        .replace(/{{UPDATE_URL}}/g, updateUrl)
-        .replace(/{{FOOTER}}/g, t.footer)
-        .replace(/{{THANKS}}/g, t.thanks)
-        .replace(/{{TEAM}}/g, t.team);
+    template.dirClass = isRTL ? 'rtl' : '';
+    template.subject = CONFIG.EMAIL_VERIFICATION.SUBJECT[language];
+    template.greeting = t.greeting;
+    template.firstName = familyData.prenom || '';
+    template.lastName = familyData.nom || '';
+    template.intro = t.intro;
+    template.currentInfoTitle = t.currentInfo;
+    template.labelName = t.name;
+    template.labelPhone = t.phone;
+    template.labelAddress = t.address;
+    template.labelPostalCode = t.postalCode;
+    template.labelCity = t.city;
+    template.labelAdults = t.adults;
+    template.labelChildren = t.children;
+    template.phone = familyData.telephone || '';
+    template.address = street;
+    template.postalCode = postalCode;
+    template.city = city;
+    template.numAdults = familyData.nombreAdulte || 0;
+    template.numChildren = familyData.nombreEnfant || 0;
+    template.question = t.question;
+    template.buttonUpToDate = t.buttonUpToDate;
+    template.buttonChanged = t.buttonChanged;
+    template.confirmUrl = confirmUrl;
+    template.updateUrl = updateUrl;
+    template.footerMessage = t.footer;
+    template.thanks = t.thanks;
+    template.team = t.team;
 
-    return html;
+    return template.evaluate().getContent();
 }
 
 /**
- * Send verification email to a single family
+ * Envoie un email de vérification à une famille
+ * @param {Object} familyData - Données famille
+ * @returns {Object} {success: boolean, reason?: string, error?: string}
  */
 function sendVerificationEmail(familyData) {
     try {
         const config = getScriptConfig();
 
         if (!familyData.email || !isValidEmail(familyData.email)) {
-            logWarning(`No valid email for family ${familyData.id}`);
+            logWarning(`Pas d'email valide pour famille ${familyData.id}`);
             return { success: false, reason: 'no_email' };
         }
 
         if (familyData.etatDossier !== CONFIG.STATUS.VALIDATED) {
-            logWarning(`Family ${familyData.id} not validated`);
+            logWarning(`Famille ${familyData.id} non validée`);
             return { success: false, reason: 'not_validated' };
         }
 
         const language = familyData.langue || CONFIG.LANGUAGES.FR;
 
-        // Use API key directly as token
         const apiKey = config.familleApiKey;
         if (!apiKey) {
-            logError('FAMILLE_API_KEY not configured');
-            return { success: false, reason: 'error', error: 'API key not configured' };
+            logError('FAMILLE_API_KEY non configurée');
+            return { success: false, reason: 'error', error: 'Clé API non configurée' };
         }
 
         const confirmUrl = `${config.webAppUrl}?action=confirmFamilyInfo&id=${familyData.id}&token=${apiKey}`;
 
-        // Build update URL (Google Form)
         const langCode = getLanguageCode(language);
         const formUrls = {
             'fr': config.formUrlFr,
@@ -188,10 +187,8 @@ function sendVerificationEmail(familyData) {
         };
         const updateUrl = formUrls[langCode] || formUrls['fr'];
 
-        // Generate HTML email from template
         const htmlBody = generateVerificationEmailHtml(familyData, language, confirmUrl, updateUrl);
 
-        // Send email
         MailApp.sendEmail({
             to: familyData.email,
             subject: CONFIG.EMAIL_VERIFICATION.SUBJECT[language],
@@ -199,24 +196,25 @@ function sendVerificationEmail(familyData) {
             name: CONFIG.EMAIL_VERIFICATION.FROM_NAME
         });
 
-        logInfo(`✅ Verification email sent to family ${familyData.id} (${familyData.email})`);
+        logInfo(`✅ Email vérification envoyé à famille ${familyData.id} (${familyData.email})`);
 
         return { success: true };
 
     } catch (error) {
-        logError(`Failed to send email to family ${familyData.id}`, error);
+        logError(`Échec envoi email à famille ${familyData.id}`, error);
         return { success: false, reason: 'error', error: error.toString() };
     }
 }
 
 /**
- * Send verification emails to all validated families
+ * Envoie des emails de vérification à toutes les familles validées
+ * @returns {Object} Résultats de l'envoi
  */
 function sendVerificationEmailsToAll() {
     try {
         const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
         if (!sheet) {
-            return { success: false, error: 'Sheet not found' };
+            return { success: false, error: 'Feuille introuvable' };
         }
 
         const data = sheet.getDataRange().getValues();
@@ -284,10 +282,10 @@ function sendVerificationEmailsToAll() {
             Utilities.sleep(100);
         }
 
-        logInfo('✅ Verification emails sent', results);
+        logInfo('✅ Emails de vérification envoyés', results);
 
         notifyAdmin(
-            '📧 Envoi d\'emails de vérification terminé',
+            '📧 Envoi emails de vérification terminé',
             `Total: ${results.total}\nEnvoyés: ${results.sent}\nIgnorés: ${results.skipped}\nÉchecs: ${results.failed}\n\nDétails:\n- Sans email: ${results.reasons.no_email}\n- Non validé: ${results.reasons.not_validated}\n- Erreurs: ${results.reasons.error}`
         );
 
@@ -297,13 +295,15 @@ function sendVerificationEmailsToAll() {
         };
 
     } catch (error) {
-        logError('Failed to send verification emails', error);
+        logError('Échec envoi emails de vérification', error);
         return { success: false, error: error.toString() };
     }
 }
 
 /**
- * Check if family has already confirmed (NEW)
+ * Vérifie si la famille a déjà confirmé
+ * @param {string} familyId - ID famille
+ * @returns {boolean} Déjà confirmé
  */
 function hasAlreadyConfirmed(familyId) {
     try {
@@ -317,29 +317,29 @@ function hasAlreadyConfirmed(familyId) {
         for (let i = 1; i < data.length; i++) {
             if (data[i][OUTPUT_COLUMNS.ID] == familyId) {
                 const comment = data[i][OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER] || '';
-                // Check if there's a confirmation timestamp in comments
                 return comment.includes('✅ Informations confirmées à jour par email le');
             }
         }
 
         return false;
     } catch (error) {
-        logError('Error checking confirmation status', error);
+        logError('Erreur vérification statut confirmation', error);
         return false;
     }
 }
 
 /**
- * Handle confirmation from email (UPDATED)
+ * Gère la confirmation depuis l'email
+ * @param {string} familyId - ID famille
+ * @returns {Object} Résultat de la confirmation
  */
 function confirmFamilyInfo(familyId) {
     try {
         const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
         if (!sheet) {
-            return { success: false, error: 'Sheet not found' };
+            return { success: false, error: 'Feuille introuvable' };
         }
 
-        // Check if already confirmed
         if (hasAlreadyConfirmed(familyId)) {
             return {
                 success: false,
@@ -365,10 +365,9 @@ function confirmFamilyInfo(familyId) {
         }
 
         if (targetRow === -1) {
-            return { success: false, error: 'Family not found' };
+            return { success: false, error: 'Famille introuvable' };
         }
 
-        // Add confirmation with timestamp
         const now = new Date();
         const timestamp = now.toLocaleString('fr-FR', {
             year: 'numeric',
@@ -386,18 +385,18 @@ function confirmFamilyInfo(familyId) {
 
         sheet.getRange(targetRow, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
 
-        logInfo(`✅ Family ${familyId} confirmed information via email at ${timestamp}`);
+        logInfo(`✅ Famille ${familyId} a confirmé ses informations par email à ${timestamp}`);
 
         return {
             success: true,
-            message: 'Information confirmed successfully',
+            message: 'Informations confirmées avec succès',
             familyId: familyId,
             familyData: familyData,
             timestamp: timestamp
         };
 
     } catch (error) {
-        logError('Failed to confirm family info', error);
+        logError('Échec confirmation informations famille', error);
         return { success: false, error: error.toString() };
     }
 }

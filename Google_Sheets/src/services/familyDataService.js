@@ -1,13 +1,14 @@
 /**
- * @file src/services/familyDataService.js (NEW)
- * @description Canonical family data conversion and access functions
+ * @file src/services/familyDataService.js (MIS À JOUR v2.0)
+ * @description Fonctions canoniques de conversion et accès données famille
+ * CHANGEMENT: Support cachedData optionnel pour éviter double fetch
  */
 
 /**
- * Convert sheet row to family object (CANONICAL VERSION - use everywhere)
- * @param {Array} row - Sheet row data
- * @param {boolean} [includeHierarchy=false] - Include location hierarchy
- * @returns {Object} Family object
+ * Convertit une ligne de feuille en objet famille (VERSION CANONIQUE)
+ * @param {Array} row - Données de ligne
+ * @param {boolean} [includeHierarchy=false] - Inclure hiérarchie localisation
+ * @returns {Object} Objet famille
  */
 function rowToFamilyObject(row, includeHierarchy = false) {
     const family = {
@@ -47,10 +48,10 @@ function rowToFamilyObject(row, includeHierarchy = false) {
 }
 
 /**
- * Build family row array for sheet insertion
- * @param {Object} formData - Form data object
+ * Construit un tableau de ligne pour insertion dans la feuille
+ * @param {Object} formData - Données du formulaire
  * @param {Object} options - Options (status, comment, familyId, etc.)
- * @returns {Array} Row array ready for sheet
+ * @returns {Array} Tableau prêt pour la feuille
  */
 function buildFamilyRow(formData, options = {}) {
     const {
@@ -102,10 +103,10 @@ function buildFamilyRow(formData, options = {}) {
 }
 
 /**
- * Get single family by ID
- * @param {string|number} familyId - Family ID
- * @param {boolean} [includeHierarchy=false] - Include location hierarchy
- * @returns {Object|null} Family object or null
+ * Récupère une seule famille par ID
+ * @param {string|number} familyId - ID famille
+ * @param {boolean} [includeHierarchy=false] - Inclure hiérarchie localisation
+ * @returns {Object|null} Objet famille ou null
  */
 function getFamilyById(familyId, includeHierarchy = false) {
     const result = findFamilyRowById(familyId);
@@ -124,13 +125,15 @@ function getFamilyById(familyId, includeHierarchy = false) {
 }
 
 /**
- * Get all families with optional filter
- * @param {Function} [filterFn] - Optional filter function (row) => boolean
- * @param {boolean} [includeHierarchy=false] - Include location hierarchy
- * @returns {Array<Object>} Array of family objects
+ * Récupère toutes les familles avec filtre optionnel
+ * OPTIMISÉ: Accepte cachedData pour éviter double fetch
+ * @param {Function} [filterFn] - Fonction de filtrage optionnelle (row) => boolean
+ * @param {boolean} [includeHierarchy=false] - Inclure hiérarchie localisation
+ * @param {Array[]} [cachedData=null] - Données déjà récupérées (optimisation)
+ * @returns {Array<Object>} Tableau d'objets famille
  */
-function getAllFamilies(filterFn = null, includeHierarchy = false) {
-    const rows = getValidatedFamilyRows(filterFn);
+function getAllFamilies(filterFn = null, includeHierarchy = false, cachedData = null) {
+    const rows = getValidatedFamilyRows(filterFn, cachedData);
 
     return rows.map(row => rowToFamilyObject(row, includeHierarchy));
 }

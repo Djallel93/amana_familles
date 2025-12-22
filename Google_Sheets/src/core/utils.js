@@ -1,12 +1,11 @@
 /**
- * @file src/core/utils.js (REFACTORED v4.0)
- * @description Core utilities - address parsing, phone/email validation, logging
- * Uses shared helper functions from new services
+ * @file src/core/utils.js (REFACTORÉ v5.0)
+ * @description Utilitaires principaux - parsing adresse, validation téléphone/email, logging
  */
 
 /**
- * Parse address into components (CANONICAL - used everywhere)
- * @param {string} fullAddress - Full address string
+ * Parse une adresse complète en composants (CANONIQUE - fonction unique)
+ * @param {string} fullAddress - Adresse complète
  * @returns {Object} {street, postalCode, city, country}
  */
 function parseAddressComponents(fullAddress) {
@@ -38,11 +37,11 @@ function parseAddressComponents(fullAddress) {
 }
 
 /**
- * Format address components into clean string (NO trailing comma)
- * @param {string} street - Street address
- * @param {string} postalCode - Postal code
- * @param {string} city - City name
- * @returns {string} Formatted address
+ * Formate les composants d'adresse en string propre (sans virgule finale)
+ * @param {string} street - Rue
+ * @param {string} postalCode - Code postal
+ * @param {string} city - Ville
+ * @returns {string} Adresse formatée
  */
 function formatAddressFromComponents(street, postalCode, city) {
     const parts = [];
@@ -67,11 +66,11 @@ function formatAddressFromComponents(street, postalCode, city) {
 }
 
 /**
- * Format address for geocoding (adds France)
- * @param {string} address - Street address
- * @param {string} postalCode - Postal code
- * @param {string} city - City name
- * @returns {string} Full address with France
+ * Formate l'adresse pour le géocodage (ajoute France)
+ * @param {string} address - Rue
+ * @param {string} postalCode - Code postal
+ * @param {string} city - Ville
+ * @returns {string} Adresse complète avec France
  */
 function formatAddressForGeocoding(address, postalCode, city) {
     const formatted = formatAddressFromComponents(address, postalCode, city);
@@ -79,9 +78,9 @@ function formatAddressForGeocoding(address, postalCode, city) {
 }
 
 /**
- * Normalize French phone number to +33 X XX XX XX XX format
- * @param {string} phone - Phone number to normalize
- * @returns {string} Normalized phone number
+ * Normalise un numéro de téléphone français en format +33 X XX XX XX XX
+ * @param {string} phone - Numéro à normaliser
+ * @returns {string} Numéro normalisé
  */
 function normalizePhone(phone) {
     if (!phone) return '';
@@ -103,7 +102,7 @@ function normalizePhone(phone) {
     } else if (cleaned.length === 10 && cleaned.startsWith('0')) {
         localNumber = cleaned.substring(1);
     } else {
-        logWarning(`Non-standard phone format: ${phone} -> ${cleaned}`);
+        logWarning(`Format téléphone non standard: ${phone} -> ${cleaned}`);
 
         if (cleaned.length >= 9) {
             localNumber = cleaned.slice(-9);
@@ -113,7 +112,7 @@ function normalizePhone(phone) {
     }
 
     if (localNumber.length !== 9) {
-        logWarning(`Invalid phone (must be 9 digits): ${phone}`);
+        logWarning(`Téléphone invalide (doit faire 9 chiffres): ${phone}`);
 
         if (localNumber.length > 9) {
             localNumber = localNumber.slice(-9);
@@ -124,7 +123,7 @@ function normalizePhone(phone) {
 
     const firstDigit = localNumber[0];
     if (!/[1-9]/.test(firstDigit)) {
-        logWarning(`Invalid phone - first digit must be 1-9: ${phone}`);
+        logWarning(`Téléphone invalide - premier chiffre doit être 1-9: ${phone}`);
         return cleaned;
     }
 
@@ -132,9 +131,9 @@ function normalizePhone(phone) {
 }
 
 /**
- * Validate French phone number
- * @param {string} phone - Phone number to validate
- * @returns {boolean} Is valid
+ * Valide un numéro de téléphone français
+ * @param {string} phone - Numéro à valider
+ * @returns {boolean} Est valide
  */
 function isValidPhone(phone) {
     if (!phone) return false;
@@ -155,9 +154,9 @@ function isValidPhone(phone) {
 }
 
 /**
- * Normalize field name (trim + apostrophes)
- * @param {string} fieldName - Field name to normalize
- * @returns {string} Normalized field name
+ * Normalise un nom de champ (trim + apostrophes)
+ * @param {string} fieldName - Nom du champ
+ * @returns {string} Nom normalisé
  */
 function normalizeFieldName(fieldName) {
     if (!fieldName) return '';
@@ -168,9 +167,9 @@ function normalizeFieldName(fieldName) {
 }
 
 /**
- * Validate email format
- * @param {string} email - Email to validate
- * @returns {boolean} Is valid
+ * Valide le format d'un email
+ * @param {string} email - Email à valider
+ * @returns {boolean} Est valide
  */
 function isValidEmail(email) {
     if (!email) return false;
@@ -179,10 +178,10 @@ function isValidEmail(email) {
 }
 
 /**
- * Parse form response to standardized object
- * @param {Array} headers - Header row
- * @param {Array} values - Values row
- * @returns {Object} Parsed form data
+ * Parse une réponse de formulaire en objet standardisé
+ * @param {Array} headers - Ligne d'en-têtes
+ * @param {Array} values - Ligne de valeurs
+ * @returns {Object} Données parsées
  */
 function parseFormResponse(headers, values) {
     const parsed = {};
@@ -192,7 +191,7 @@ function parseFormResponse(headers, values) {
         const fieldName = COLUMN_MAP[normalizedHeader];
 
         if (fieldName) {
-            logInfo(`Field: "${fieldName}" = "${values[i]}"`);
+            logInfo(`Champ: "${fieldName}" = "${values[i]}"`);
             parsed[fieldName] = values[i] ?? '';
         }
     });
@@ -201,9 +200,9 @@ function parseFormResponse(headers, values) {
 }
 
 /**
- * Log with timestamp and emoji (uses formatDateTime)
- * @param {string} message - Log message
- * @param {*} [data=null] - Optional data to log
+ * Log avec timestamp et emoji
+ * @param {string} message - Message
+ * @param {*} [data=null] - Données optionnelles
  */
 function logInfo(message, data = null) {
     console.log(`[${formatDateTime()}] ℹ️ INFO: ${message}`);
@@ -213,9 +212,9 @@ function logInfo(message, data = null) {
 }
 
 /**
- * Log warning with timestamp
- * @param {string} message - Warning message
- * @param {*} [data=null] - Optional data to log
+ * Log warning
+ * @param {string} message - Message
+ * @param {*} [data=null] - Données optionnelles
  */
 function logWarning(message, data = null) {
     console.warn(`[${formatDateTime()}] ⚠️ WARN: ${message}`);
@@ -225,21 +224,21 @@ function logWarning(message, data = null) {
 }
 
 /**
- * Log error with timestamp
- * @param {string} message - Error message
- * @param {*} [error=null] - Optional error object
+ * Log erreur
+ * @param {string} message - Message
+ * @param {*} [error=null] - Objet erreur
  */
 function logError(message, error = null) {
-    console.error(`[${formatDateTime()}] ❌ ERROR: ${message}`);
+    console.error(`[${formatDateTime()}] ❌ ERREUR: ${message}`);
     if (error) {
         console.error(error);
     }
 }
 
 /**
- * Get sheet by name
- * @param {string} sheetName - Sheet name
- * @returns {Sheet|null} Sheet object or null
+ * Récupère une feuille par nom
+ * @param {string} sheetName - Nom de la feuille
+ * @returns {Sheet|null} Objet feuille ou null
  */
 function getSheetByName(sheetName) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -247,9 +246,9 @@ function getSheetByName(sheetName) {
 }
 
 /**
- * Check if Drive file exists
- * @param {string} fileId - File ID
- * @returns {boolean} File exists
+ * Vérifie si un fichier Drive existe
+ * @param {string} fileId - ID du fichier
+ * @returns {boolean} Existe
  */
 function fileExists(fileId) {
     try {
@@ -261,10 +260,10 @@ function fileExists(fileId) {
 }
 
 /**
- * Get or create folder
- * @param {Folder} parentFolder - Parent folder
- * @param {string} folderName - Folder name
- * @returns {Folder} Folder object
+ * Récupère ou crée un dossier
+ * @param {Folder} parentFolder - Dossier parent
+ * @param {string} folderName - Nom du dossier
+ * @returns {Folder} Objet dossier
  */
 function getOrCreateFolder(parentFolder, folderName) {
     const folders = parentFolder.getFoldersByName(folderName);
@@ -277,9 +276,9 @@ function getOrCreateFolder(parentFolder, folderName) {
 }
 
 /**
- * Extract file IDs from Drive URLs
- * @param {string} urlString - Comma-separated URLs
- * @returns {Array<string>} Array of file IDs
+ * Extrait les IDs de fichier depuis des URLs Drive
+ * @param {string} urlString - URLs séparées par des virgules
+ * @returns {Array<string>} Tableau d'IDs
  */
 function extractFileIds(urlString) {
     if (!urlString) return [];
@@ -300,10 +299,10 @@ function extractFileIds(urlString) {
 }
 
 /**
- * Find duplicate family (phone + name or email)
- * @param {string} phone - Phone number
- * @param {string} lastName - Last name
- * @param {string} [email=null] - Optional email
+ * Cherche une famille en doublon (téléphone + nom ou email)
+ * @param {string} phone - Téléphone
+ * @param {string} lastName - Nom
+ * @param {string} [email=null] - Email optionnel
  * @returns {Object} {exists: boolean, row?: number, id?: string, data?: Array}
  */
 function findDuplicateFamily(phone, lastName, email = null) {
@@ -318,14 +317,14 @@ function findDuplicateFamily(phone, lastName, email = null) {
             try {
                 return JSON.parse(cached);
             } catch (e) {
-                logWarning('Error parsing cache, ignored', e);
+                logWarning('Erreur parsing cache, ignoré', e);
             }
         }
 
         const data = getFamilySheetData();
 
         if (!data) {
-            logWarning('Famille sheet not found for duplicate check');
+            logWarning('Feuille Famille introuvable pour vérification doublon');
             return { exists: false };
         }
 
@@ -359,16 +358,16 @@ function findDuplicateFamily(phone, lastName, email = null) {
         return result;
 
     } catch (error) {
-        logError('Error in findDuplicateFamily', error);
+        logError('Erreur dans findDuplicateFamily', error);
         return { exists: false };
     }
 }
 
 /**
- * Retry operation wrapper
- * @param {Function} operation - Operation to retry
- * @param {number} [maxRetries=3] - Max retry attempts
- * @returns {*} Operation result
+ * Wrapper pour réessayer une opération
+ * @param {Function} operation - Opération à réessayer
+ * @param {number} [maxRetries=3] - Nombre max de tentatives
+ * @returns {*} Résultat de l'opération
  */
 function retryOperation(operation, maxRetries = 3) {
     let lastError;
@@ -378,7 +377,7 @@ function retryOperation(operation, maxRetries = 3) {
             return operation();
         } catch (e) {
             lastError = e;
-            logError(`Attempt ${i + 1}/${maxRetries} failed`, e);
+            logError(`Tentative ${i + 1}/${maxRetries} échouée`, e);
 
             if (i < maxRetries - 1) {
                 Utilities.sleep(1000 * (i + 1));
@@ -390,9 +389,9 @@ function retryOperation(operation, maxRetries = 3) {
 }
 
 /**
- * Notify admin by email
- * @param {string} subject - Email subject
- * @param {string} message - Email message
+ * Notifie l'admin par email
+ * @param {string} subject - Sujet
+ * @param {string} message - Message
  */
 function notifyAdmin(subject, message) {
     try {
@@ -400,7 +399,7 @@ function notifyAdmin(subject, message) {
         const adminEmail = config.adminEmail;
 
         if (!adminEmail) {
-            logWarning('Admin email not configured');
+            logWarning('Email admin non configuré');
             return;
         }
 
@@ -439,19 +438,19 @@ function notifyAdmin(subject, message) {
             htmlBody: emailBody
         });
 
-        logInfo(`Email sent to admin: ${subject}`);
+        logInfo(`Email envoyé à l'admin: ${subject}`);
 
     } catch (error) {
-        logError('Failed to send admin email', error);
+        logError('Échec envoi email admin', error);
     }
 }
 
 /**
- * Build URL with query parameters
- * @param {string} baseUrl - Base URL
- * @param {string} action - Action parameter
- * @param {Object} params - Additional parameters
- * @returns {string} Complete URL
+ * Construit une URL avec paramètres
+ * @param {string} baseUrl - URL de base
+ * @param {string} action - Paramètre action
+ * @param {Object} params - Paramètres additionnels
+ * @returns {string} URL complète
  */
 function buildUrlWithParams(baseUrl, action, params) {
     const queryParams = ['action=' + encodeURIComponent(action)];
@@ -466,9 +465,9 @@ function buildUrlWithParams(baseUrl, action, params) {
 }
 
 /**
- * Get last empty row in sheet
- * @param {Sheet} sheet - Sheet object
- * @returns {number} Last empty row number
+ * Récupère la dernière ligne vide d'une feuille
+ * @param {Sheet} sheet - Objet feuille
+ * @returns {number} Numéro de ligne vide
  */
 function getLastEmptyRow(sheet) {
     const data = sheet.getDataRange().getValues();
@@ -485,9 +484,9 @@ function getLastEmptyRow(sheet) {
 }
 
 /**
- * Check if consent is refused
- * @param {Object} formData - Form data
- * @returns {boolean} Consent is refused
+ * Vérifie si le consentement est refusé
+ * @param {Object} formData - Données du formulaire
+ * @returns {boolean} Consentement refusé
  */
 function isConsentRefused(formData) {
     const consent = formData.personalDataProtection || '';
@@ -497,7 +496,7 @@ function isConsentRefused(formData) {
     );
 
     if (isRefused) {
-        logInfo('Submission ignored: consent refused');
+        logInfo('Soumission ignorée: consentement refusé');
     }
 
     return isRefused;

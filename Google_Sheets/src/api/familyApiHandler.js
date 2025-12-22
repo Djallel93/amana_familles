@@ -1,17 +1,18 @@
 /**
- * @file src/api/familyApiHandler.js (REFACTORED v3.0)
- * @description REST API using canonical family data functions - ZERO duplication
+ * @file src/api/familyApiHandler.js (REFACTORÉ v4.0)
+ * @description REST API utilisant fonctions canoniques
+ * CHANGEMENT: Élimination du double fetch de données (optimisation performance)
  */
 
 /**
- * Main doGet handler with API key authentication
+ * Handler principal doGet avec authentification API key
  */
 function doGet(e) {
     try {
         const action = e.parameter.action;
 
         if (!action) {
-            return jsonResponse({ error: 'Missing action parameter' }, 400);
+            return jsonResponse({ error: 'Paramètre action manquant' }, 400);
         }
 
         const publicActions = ['confirmfamilyinfo', 'ping'];
@@ -63,32 +64,32 @@ function doGet(e) {
             case 'ping':
                 return jsonResponse({
                     status: 'ok',
-                    message: 'Famille API operational',
-                    version: '3.0',
+                    message: 'API Famille opérationnelle',
+                    version: '4.0',
                     geoApiVersion: CONFIG.GEO_API.VERSION,
                     timestamp: new Date().toISOString()
                 });
 
             default:
-                return jsonResponse({ error: 'Unknown action' }, 400);
+                return jsonResponse({ error: 'Action inconnue' }, 400);
         }
 
     } catch (error) {
-        logError('API request failed', error);
+        logError('Requête API échouée', error);
         return jsonResponse({ error: error.toString() }, 500);
     }
 }
 
 /**
- * Authenticate API request using API key
+ * Authentifie une requête API avec clé API
  */
 function authenticateRequest(e) {
     const config = getScriptConfig();
     const expectedApiKey = config.familleApiKey;
 
     if (!expectedApiKey) {
-        logError('FAMILLE_API_KEY not configured');
-        return { success: false, error: 'API authentication not configured' };
+        logError('FAMILLE_API_KEY non configurée');
+        return { success: false, error: 'Authentification API non configurée' };
     }
 
     const providedApiKey = e.parameter.apiKey || e.parameter.api_key;
@@ -96,20 +97,20 @@ function authenticateRequest(e) {
     if (!providedApiKey) {
         return {
             success: false,
-            error: 'Missing API key. Include ?apiKey=YOUR_KEY in request.'
+            error: 'Clé API manquante. Incluez ?apiKey=VOTRE_CLE dans la requête.'
         };
     }
 
     if (providedApiKey !== expectedApiKey) {
-        logWarning('Invalid API key attempt');
-        return { success: false, error: 'Invalid API key' };
+        logWarning('Tentative clé API invalide');
+        return { success: false, error: 'Clé API invalide' };
     }
 
     return { success: true };
 }
 
 /**
- * Handle email confirmation from families
+ * Gère la confirmation email des familles
  */
 function handleConfirmFamilyInfo(e) {
     const id = e.parameter.id;
@@ -137,7 +138,7 @@ function handleConfirmFamilyInfo(e) {
 }
 
 /**
- * Create confirmation success page
+ * Crée la page de succès de confirmation
  */
 function createConfirmationSuccessPage(familyData) {
     const template = HtmlService.createTemplateFromFile('views/email/confirmationSuccess');
@@ -152,7 +153,7 @@ function createConfirmationSuccessPage(familyData) {
 }
 
 /**
- * Create confirmation error page
+ * Crée la page d'erreur de confirmation
  */
 function createConfirmationErrorPage(errorType) {
     const template = HtmlService.createTemplateFromFile('views/email/confirmationError');
@@ -164,7 +165,7 @@ function createConfirmationErrorPage(errorType) {
 }
 
 /**
- * Handle API request to send verification emails
+ * Gère la requête API d'envoi des emails de vérification
  */
 function handleSendVerificationEmails(e) {
     const result = sendVerificationEmailsToAll();
@@ -172,7 +173,8 @@ function handleSendVerificationEmails(e) {
 }
 
 /**
- * Get all validated families with ENHANCED filtering and sorting
+ * Récupère toutes les familles validées avec filtrage et tri AMÉLIORÉS
+ * OPTIMISÉ: Fetch unique des données
  */
 function getAllFamiliesApi(e) {
     const orderBy = e.parameter.orderBy;
@@ -191,7 +193,6 @@ function getAllFamiliesApi(e) {
             .setMimeType(ContentService.MimeType.JSON);
     }
 
-    // Build filter function
     let filterFn = null;
     if (filterZakat || filterSadaqa) {
         filterFn = (row) => {
@@ -205,19 +206,19 @@ function getAllFamiliesApi(e) {
         };
     }
 
-    // Use canonical function from familyDataService
-    let families = getAllFamilies(filterFn, includeHierarchy);
-
-    // Add last update timestamps
     const data = getFamilySheetData();
-    if (data) {
-        const lastUpdateMap = buildLastUpdateMap(data);
-        families.forEach(family => {
-            family.lastUpdate = lastUpdateMap[family.id] || null;
-        });
+
+    if (!data) {
+        return jsonResponse({ error: 'Feuille Famille introuvable' }, 500);
     }
 
-    // Apply sorting
+    let families = getAllFamilies(filterFn, includeHierarchy, data);
+
+    const lastUpdateMap = buildLastUpdateMap(data);
+    families.forEach(family => {
+        family.lastUpdate = lastUpdateMap[family.id] || null;
+    });
+
     families = applySorting(families, orderBy, lat, lng);
 
     const result = jsonResponse({
@@ -236,7 +237,9 @@ function getAllFamiliesApi(e) {
 }
 
 /**
- * Build map of family IDs to last update timestamps
+ * Construit une map des IDs famille vers timestamps de dernière mise à jour
+ * @param {Array[]} data - Données de la feuille
+ * @returns {Object} Map ID -> timestamp
  */
 function buildLastUpdateMap(data) {
     const lastUpdateMap = {};
@@ -258,7 +261,7 @@ function buildLastUpdateMap(data) {
 }
 
 /**
- * Apply sorting to families array
+ * Applique le tri aux familles
  */
 function applySorting(families, orderBy, lat, lng) {
     if (!orderBy) {
@@ -280,7 +283,6 @@ function applySorting(families, orderBy, lat, lng) {
         families = sortFamiliesByDistance(families, lat, lng);
     }
 
-    // Secondary sort
     if (sortCriteria.length > 1) {
         const secondarySort = sortCriteria[1];
 
@@ -313,7 +315,7 @@ function applySorting(families, orderBy, lat, lng) {
 }
 
 /**
- * Helper to get primary sort value
+ * Récupère la valeur de tri primaire
  */
 function getPrimarySortValue(family, sortType, lat, lng) {
     if (sortType === 'criticite') {
@@ -327,7 +329,7 @@ function getPrimarySortValue(family, sortType, lat, lng) {
 }
 
 /**
- * Sort families by distance from reference point
+ * Trie les familles par distance depuis un point de référence
  */
 function sortFamiliesByDistance(families, refLat, refLng) {
     families.forEach(family => {
@@ -361,7 +363,7 @@ function sortFamiliesByDistance(families, refLat, refLng) {
                     family.distance = 999999;
                 }
             } catch (e) {
-                logError(`Failed to calculate distance for family ${family.id}`, e);
+                logError(`Échec calcul distance pour famille ${family.id}`, e);
                 family.distance = 999999;
             }
         } else {
@@ -374,14 +376,14 @@ function sortFamiliesByDistance(families, refLat, refLng) {
 }
 
 /**
- * Get family by ID (uses canonical getFamilyById)
+ * Récupère une famille par ID
  */
 function getFamilyByIdApi(e) {
     const id = e.parameter.id;
     const includeHierarchy = e.parameter.includeHierarchy === 'true';
 
     if (!id) {
-        return jsonResponse({ error: 'Missing id parameter' }, 400);
+        return jsonResponse({ error: 'Paramètre id manquant' }, 400);
     }
 
     const cacheKey = `api_family_${id}_${includeHierarchy}`;
@@ -392,11 +394,10 @@ function getFamilyByIdApi(e) {
             .setMimeType(ContentService.MimeType.JSON);
     }
 
-    // Use canonical function
     const family = getFamilyById(id, includeHierarchy);
 
     if (!family) {
-        return jsonResponse({ error: 'Family not found' }, 404);
+        return jsonResponse({ error: 'Famille introuvable' }, 404);
     }
 
     const result = jsonResponse(family);
@@ -405,20 +406,20 @@ function getFamilyByIdApi(e) {
 }
 
 /**
- * Get family address by ID
+ * Récupère l'adresse d'une famille par ID
  */
 function getFamilyAddressByIdApi(e) {
     const id = e.parameter.id;
     const includeHierarchy = e.parameter.includeHierarchy === 'true';
 
     if (!id) {
-        return jsonResponse({ error: 'Missing id parameter' }, 400);
+        return jsonResponse({ error: 'Paramètre id manquant' }, 400);
     }
 
     const family = getFamilyById(id, includeHierarchy);
 
     if (!family) {
-        return jsonResponse({ error: 'Family not found' }, 404);
+        return jsonResponse({ error: 'Famille introuvable' }, 404);
     }
 
     const response = {
@@ -440,7 +441,7 @@ function getFamilyAddressByIdApi(e) {
 }
 
 /**
- * Get families eligible for Zakat El Fitr
+ * Récupère les familles éligibles Zakat El Fitr
  */
 function getFamiliesForZakatFitr(e) {
     const includeHierarchy = e.parameter.includeHierarchy === 'true';
@@ -465,7 +466,7 @@ function getFamiliesForZakatFitr(e) {
 }
 
 /**
- * Get families eligible for Sadaqa
+ * Récupère les familles éligibles Sadaqa
  */
 function getFamiliesForSadaka(e) {
     const includeHierarchy = e.parameter.includeHierarchy === 'true';
@@ -490,14 +491,14 @@ function getFamiliesForSadaka(e) {
 }
 
 /**
- * Get families by quartier
+ * Récupère les familles par quartier
  */
 function getFamiliesByQuartier(e) {
     const quartierId = e.parameter.quartierId;
     const includeHierarchy = e.parameter.includeHierarchy === 'true';
 
     if (!quartierId) {
-        return jsonResponse({ error: 'Missing quartierId parameter' }, 400);
+        return jsonResponse({ error: 'Paramètre quartierId manquant' }, 400);
     }
 
     const cacheKey = `api_quartier_${quartierId}_${includeHierarchy}`;
@@ -522,13 +523,13 @@ function getFamiliesByQuartier(e) {
 }
 
 /**
- * Get families by secteur
+ * Récupère les familles par secteur
  */
 function getFamiliesBySecteur(e) {
     const secteurId = e.parameter.secteurId;
 
     if (!secteurId) {
-        return jsonResponse({ error: 'Missing secteurId parameter' }, 400);
+        return jsonResponse({ error: 'Paramètre secteurId manquant' }, 400);
     }
 
     const cacheKey = `api_secteur_${secteurId}`;
@@ -569,13 +570,13 @@ function getFamiliesBySecteur(e) {
 }
 
 /**
- * Get families by ville
+ * Récupère les familles par ville
  */
 function getFamiliesByVille(e) {
     const villeId = e.parameter.villeId;
 
     if (!villeId) {
-        return jsonResponse({ error: 'Missing villeId parameter' }, 400);
+        return jsonResponse({ error: 'Paramètre villeId manquant' }, 400);
     }
 
     const cacheKey = `api_ville_${villeId}`;
@@ -616,7 +617,7 @@ function getFamiliesByVille(e) {
 }
 
 /**
- * Get families who can travel
+ * Récupère les familles qui peuvent se déplacer
  */
 function getFamiliesSeDeplace(e) {
     const includeHierarchy = e.parameter.includeHierarchy === 'true';
@@ -641,7 +642,7 @@ function getFamiliesSeDeplace(e) {
 }
 
 /**
- * Get families by criticite level
+ * Récupère les familles par niveau de criticité
  */
 function getFamiliesByCriticite(e) {
     const criticite = parseInt(e.parameter.criticite);
@@ -649,7 +650,7 @@ function getFamiliesByCriticite(e) {
 
     if (isNaN(criticite) || criticite < CONFIG.CRITICITE.MIN || criticite > CONFIG.CRITICITE.MAX) {
         return jsonResponse({
-            error: `Invalid criticite. Must be between ${CONFIG.CRITICITE.MIN} and ${CONFIG.CRITICITE.MAX}`
+            error: `Criticité invalide. Doit être entre ${CONFIG.CRITICITE.MIN} et ${CONFIG.CRITICITE.MAX}`
         }, 400);
     }
 
@@ -675,7 +676,7 @@ function getFamiliesByCriticite(e) {
 }
 
 /**
- * Create JSON response
+ * Crée une réponse JSON
  */
 function jsonResponse(data, statusCode = 200) {
     return ContentService.createTextOutput(JSON.stringify(data))

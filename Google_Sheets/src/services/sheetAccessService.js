@@ -1,17 +1,18 @@
 /**
- * @file src/services/sheetAccessService.js (NEW)
- * @description Sheet read/write helper functions to eliminate duplication
+ * @file src/services/sheetAccessService.js (MIS À JOUR v2.0)
+ * @description Helpers lecture/écriture feuille
+ * CHANGEMENT: Support cachedData pour éliminer double fetch
  */
 
 /**
- * Get validated Famille sheet data
- * @returns {Array[]|null} Data array or null on error
+ * Récupère les données de la feuille Famille validée
+ * @returns {Array[]|null} Tableau de données ou null en cas d'erreur
  */
 function getFamilySheetData() {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
 
     if (!sheet) {
-        logError('Famille sheet not found');
+        logError('Feuille Famille introuvable');
         return null;
     }
 
@@ -19,9 +20,9 @@ function getFamilySheetData() {
 }
 
 /**
- * Find family row by ID
- * @param {string|number} familyId - Family ID to find
- * @returns {Object|null} {row: number, data: Array} or null if not found
+ * Trouve une ligne famille par ID
+ * @param {string|number} familyId - ID famille à chercher
+ * @returns {Object|null} {row: number, data: Array} ou null si introuvable
  */
 function findFamilyRowById(familyId) {
     const data = getFamilySheetData();
@@ -34,7 +35,7 @@ function findFamilyRowById(familyId) {
         if (data[i][OUTPUT_COLUMNS.ID] === familyId ||
             data[i][OUTPUT_COLUMNS.ID] == familyId) {
             return {
-                row: i + 1, // 1-based row number
+                row: i + 1,
                 data: data[i]
             };
         }
@@ -44,36 +45,36 @@ function findFamilyRowById(familyId) {
 }
 
 /**
- * Update a single cell in Famille sheet with error handling
- * @param {number} row - Row number (1-based)
- * @param {number} columnIndex - Column index (0-based)
- * @param {*} value - Value to set
- * @returns {boolean} Success status
+ * Met à jour une seule cellule dans la feuille Famille avec gestion d'erreur
+ * @param {number} row - Numéro de ligne (1-based)
+ * @param {number} columnIndex - Index de colonne (0-based)
+ * @param {*} value - Valeur à définir
+ * @returns {boolean} Statut succès
  */
 function updateFamilyCell(row, columnIndex, value) {
     try {
         const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
 
         if (!sheet) {
-            logError('Famille sheet not found');
+            logError('Feuille Famille introuvable');
             return false;
         }
 
         sheet.getRange(row, columnIndex + 1).setValue(value);
         return true;
     } catch (error) {
-        logError(`Failed to update cell at row ${row}, col ${columnIndex}`, error);
+        logError(`Échec mise à jour cellule ligne ${row}, col ${columnIndex}`, error);
         return false;
     }
 }
 
 /**
- * Append comment to a family's comment field
- * @param {Sheet} sheet - Sheet object
- * @param {number} row - Row number (1-based)
- * @param {string} emoji - Emoji for the comment
- * @param {string} message - Comment message
- * @returns {boolean} Success status
+ * Ajoute un commentaire au champ commentaire d'une famille
+ * @param {Sheet} sheet - Objet feuille
+ * @param {number} row - Numéro de ligne (1-based)
+ * @param {string} emoji - Emoji pour le commentaire
+ * @param {string} message - Message du commentaire
+ * @returns {boolean} Statut succès
  */
 function appendSheetComment(sheet, row, emoji, message) {
     try {
@@ -82,18 +83,20 @@ function appendSheetComment(sheet, row, emoji, message) {
         sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
         return true;
     } catch (error) {
-        logError(`Failed to append comment at row ${row}`, error);
+        logError(`Échec ajout commentaire ligne ${row}`, error);
         return false;
     }
 }
 
 /**
- * Get all validated families with optional filter
- * @param {Function} [filterFn] - Optional filter function (row) => boolean
- * @returns {Array[]} Array of row data
+ * Récupère toutes les familles validées avec filtre optionnel
+ * OPTIMISÉ: Accepte cachedData pour éviter double fetch
+ * @param {Function} [filterFn] - Fonction de filtrage optionnelle (row) => boolean
+ * @param {Array[]} [cachedData=null] - Données déjà récupérées (optimisation)
+ * @returns {Array[]} Tableau de données de lignes
  */
-function getValidatedFamilyRows(filterFn = null) {
-    const data = getFamilySheetData();
+function getValidatedFamilyRows(filterFn = null, cachedData = null) {
+    const data = cachedData || getFamilySheetData();
 
     if (!data) {
         return [];
@@ -119,11 +122,11 @@ function getValidatedFamilyRows(filterFn = null) {
 }
 
 /**
- * Safe column value getter with null safety
- * @param {Array} row - Row data array
- * @param {number} columnIndex - Column index (0-based)
- * @param {*} [defaultValue=''] - Default value if null/undefined
- * @returns {*} Column value or default
+ * Getter sécurisé de valeur de colonne avec null safety
+ * @param {Array} row - Tableau de données de ligne
+ * @param {number} columnIndex - Index de colonne (0-based)
+ * @param {*} [defaultValue=''] - Valeur par défaut si null/undefined
+ * @returns {*} Valeur de colonne ou valeur par défaut
  */
 function safeGetColumn(row, columnIndex, defaultValue = '') {
     if (!row || !Array.isArray(row)) {

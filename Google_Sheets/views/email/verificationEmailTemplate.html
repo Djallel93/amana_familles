@@ -160,7 +160,6 @@
             color: #888;
         }
 
-        /* RTL Support for Arabic */
         .rtl {
             direction: rtl;
             text-align: right;
@@ -171,7 +170,6 @@
             border-right: 4px solid #4a90e2;
         }
 
-        /* Mobile Responsive */
         @media only screen and (max-width: 600px) {
             .email-container {
                 border-radius: 0;
@@ -209,85 +207,119 @@
 </head>
 
 <body>
-    <!-- This template uses placeholder variables that will be replaced by the service -->
-    <div class="email-container {{DIR_CLASS}}">
+    <div class="email-container <?= dirClass ?>">
         <div class="header">
             <div class="icon">📋</div>
-            <h1>{{SUBJECT}}</h1>
+            <h1>
+                <?= subject ?>
+            </h1>
         </div>
 
         <div class="content">
             <div class="greeting">
-                {{GREETING}} {{FIRST_NAME}} {{LAST_NAME}},
+                <?= greeting ?>
+                <?= firstName ?>
+                <?= lastName ?>,
             </div>
 
             <div class="intro">
-                {{INTRO}}
+                <?= intro ?>
             </div>
 
             <div class="info-box">
                 <div class="info-title">
-                    {{CURRENT_INFO}}
+                    <?= currentInfoTitle ?>
                 </div>
 
                 <div class="info-row">
-                    <div class="info-label">{{LABEL_NAME}}:</div>
-                    <div class="info-value">{{FIRST_NAME}} {{LAST_NAME}}</div>
+                    <div class="info-label">
+                        <?= labelName ?>:
+                    </div>
+                    <div class="info-value">
+                        <?= firstName ?>
+                        <?= lastName ?>
+                    </div>
                 </div>
 
                 <div class="info-row">
-                    <div class="info-label">{{LABEL_PHONE}}:</div>
-                    <div class="info-value">{{PHONE}}</div>
+                    <div class="info-label">
+                        <?= labelPhone ?>:
+                    </div>
+                    <div class="info-value">
+                        <?= phone ?>
+                    </div>
                 </div>
 
                 <div class="info-row">
-                    <div class="info-label">{{LABEL_ADDRESS}}:</div>
-                    <div class="info-value">{{ADDRESS}}</div>
+                    <div class="info-label">
+                        <?= labelAddress ?>:
+                    </div>
+                    <div class="info-value">
+                        <?= address ?>
+                    </div>
                 </div>
 
                 <div class="info-row">
-                    <div class="info-label">{{LABEL_POSTAL_CODE}}:</div>
-                    <div class="info-value">{{POSTAL_CODE}}</div>
+                    <div class="info-label">
+                        <?= labelPostalCode ?>:
+                    </div>
+                    <div class="info-value">
+                        <?= postalCode ?>
+                    </div>
                 </div>
 
                 <div class="info-row">
-                    <div class="info-label">{{LABEL_CITY}}:</div>
-                    <div class="info-value">{{CITY}}</div>
+                    <div class="info-label">
+                        <?= labelCity ?>:
+                    </div>
+                    <div class="info-value">
+                        <?= city ?>
+                    </div>
                 </div>
 
                 <div class="info-row">
-                    <div class="info-label">{{LABEL_ADULTS}}:</div>
-                    <div class="info-value">{{NUM_ADULTS}}</div>
+                    <div class="info-label">
+                        <?= labelAdults ?>:
+                    </div>
+                    <div class="info-value">
+                        <?= numAdults ?>
+                    </div>
                 </div>
 
                 <div class="info-row">
-                    <div class="info-label">{{LABEL_CHILDREN}}:</div>
-                    <div class="info-value">{{NUM_CHILDREN}}</div>
+                    <div class="info-label">
+                        <?= labelChildren ?>:
+                    </div>
+                    <div class="info-value">
+                        <?= numChildren ?>
+                    </div>
                 </div>
             </div>
 
             <div class="question">
-                {{QUESTION}}
+                <?= question ?>
             </div>
 
             <div class="button-container">
-                <a href="{{CONFIRM_URL}}" class="button button-confirm">
-                    {{BUTTON_UP_TO_DATE}}
+                <a href="<?= confirmUrl ?>" class="button button-confirm">
+                    <?= buttonUpToDate ?>
                 </a>
-                <a href="{{UPDATE_URL}}" class="button button-update">
-                    {{BUTTON_CHANGED}}
+                <a href="<?= updateUrl ?>" class="button button-update">
+                    <?= buttonChanged ?>
                 </a>
             </div>
         </div>
 
         <div class="footer">
             <div class="footer-message">
-                {{FOOTER}}
+                <?= footerMessage ?>
             </div>
             <div class="footer-thanks">
-                {{THANKS}}
+                <?= thanks ?>
             </div>
-            <div class="team-signature">— {{TEAM}}</div>
+            <div class="team-signature">—
+                <?= team ?>
+            </div>
         </div>
     </div>
 </body>

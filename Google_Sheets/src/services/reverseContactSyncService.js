@@ -1,11 +1,6 @@
 /**
  * @file src/services/reverseContactSyncService.js (FIXED v3.0)
  * @description Reverse sync from Google Contacts to Sheets with proper name/address parsing
- * 
- * CHANGES:
- * - Fixed name extraction from new structure (givenName has ID, middleName/familyName have real names)
- * - Uses shared address parsing logic (no trailing comma)
- * - Refactored contact data extraction
  */
 
 /**
