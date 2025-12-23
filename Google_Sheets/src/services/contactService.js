@@ -1,7 +1,6 @@
 /**
- * @file src/services/contactService.js (UPDATED v8.0 - FIXED BOOLEAN PARSING)
- * @description Contact management - Uses CANONICAL address formatting
- * CRITICAL FIX: parseFamilyMetadataFromContact now correctly handles 'Oui'/'Non' strings
+ * @file src/services/contactService.js
+ * @description Contact management
  */
 
 /**

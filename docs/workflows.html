@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Système de Gestion des Familles</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1a73e8, #1669c1);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .nav {
+            background: #f8f9fa;
+            padding: 20px;
+            border-bottom: 3px solid #1a73e8;
+        }
+
+        .nav-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+        }
+
+        .nav-btn {
+            padding: 12px 24px;
+            background: white;
+            border: 2px solid #1a73e8;
+            border-radius: 8px;
+            color: #1a73e8;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .nav-btn:hover {
+            background: #1a73e8;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(26, 115, 232, 0.3);
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .section {
+            display: none;
+            animation: fadeIn 0.5s;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h2 {
+            color: #1a73e8;
+            font-size: 2em;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #1a73e8;
+        }
+
+        h3 {
+            color: #333;
+            font-size: 1.5em;
+            margin: 30px 0 15px;
+        }
+
+        .card {
+            background: #f8f9fa;
+            border-left: 4px solid #1a73e8;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .workflow {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 30px;
+            margin: 30px 0;
+        }
+
+        .step {
+            display: flex;
+            align-items: flex-start;
+            margin: 25px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+
+        .step:hover {
+            transform: translateX(10px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .step-number {
+            background: linear-gradient(135deg, #1a73e8, #1669c1);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5em;
+            font-weight: bold;
+            flex-shrink: 0;
+            margin-right: 20px;
+        }
+
+        .step-content h4 {
+            color: #1a73e8;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+
+        .step-content p {
+            color: #666;
+            line-height: 1.6;
+        }
+
+        .diagram {
+            background: white;
+            border: 3px solid #1a73e8;
+            border-radius: 12px;
+            padding: 30px;
+            margin: 30px 0;
+            text-align: center;
+        }
+
+        .flow-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin: 15px auto;
+            max-width: 400px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .arrow {
+            font-size: 2em;
+            color: #1a73e8;
+            margin: 10px 0;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .warning-box {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .success-box {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        ul {
+            margin: 15px 0;
+            padding-left: 30px;
+        }
+
+        li {
+            margin: 10px 0;
+            line-height: 1.6;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .feature-card {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 12px;
+            text-align: center;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+
+        .feature-card:hover {
+            border-color: #1a73e8;
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .feature-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+
+        .feature-card h4 {
+            color: #1a73e8;
+            margin-bottom: 10px;
+        }
+
+        .screenshot {
+            width: 100%;
+            max-width: 800px;
+            margin: 20px auto;
+            display: block;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8em;
+            }
+
+            .content {
+                padding: 20px;
+            }
+
+            .nav-buttons {
+                flex-direction: column;
+            }
+
+            .step {
+                flex-direction: column;
+            }
+
+            .step-number {
+                margin-bottom: 15px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📦 Système de Gestion des Familles</h1>
+            <p>Documentation Complète pour Administrateurs</p>
+        </div>
+
+        <div class="nav">
+            <div class="nav-buttons">
+                <a class="nav-btn" onclick="showSection('overview')">🏠 Vue d'ensemble</a>
+                <a class="nav-btn" onclick="showSection('forms')">📝 Formulaires</a>
+                <a class="nav-btn" onclick="showSection('manual')">✏️ Saisie Manuelle</a>
+                <a class="nav-btn" onclick="showSection('bulk')">📥 Import en Masse</a>
+                <a class="nav-btn" onclick="showSection('sync')">🔄 Synchronisation</a>
+                <a class="nav-btn" onclick="showSection('email')">📧 Emails</a>
+            </div>
+        </div>
+
+        <div class="content">
+            <!-- VUE D'ENSEMBLE -->
+            <div id="overview" class="section active">
+                <h2>🏠 Vue d'Ensemble du Système</h2>
+
+                <div class="info-box">
+                    <h3>💡 À quoi sert ce système ?</h3>
+                    <p>Ce système permet de gérer efficacement les familles bénéficiaires d'aide alimentaire et sociale.
+                        Il centralise toutes les informations, synchronise avec vos contacts Google, et facilite la
+                        communication.</p>
+                </div>
+
+                <h3>🎯 Fonctionnalités Principales</h3>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">📝</div>
+                        <h4>Formulaires Multilingues</h4>
+                        <p>Français, Arabe, Anglais</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📞</div>
+                        <h4>Sync Google Contacts</h4>
+                        <p>Bidirectionnelle automatique</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📥</div>
+                        <h4>Import en Masse</h4>
+                        <p>Importez plusieurs familles à la fois</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📧</div>
+                        <h4>Emails de Vérification</h4>
+                        <p>Validation automatique des données</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🌍</div>
+                        <h4>Géolocalisation</h4>
+                        <p>Attribution automatique des quartiers</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">⚡</div>
+                        <h4>Priorités</h4>
+                        <p>Criticité 0-5 pour la logistique</p>
+                    </div>
+                </div>
+
+                <h3>🔐 Données Collectées</h3>
+                <div class="card">
+                    <ul>
+                        <li><strong>Informations de contact :</strong> Nom, prénom, téléphone(s), email</li>
+                        <li><strong>Adresse complète :</strong> Rue, code postal, ville (+ géolocalisation automatique)
+                        </li>
+                        <li><strong>Composition du foyer :</strong> Nombre d'adultes et d'enfants</li>
+                        <li><strong>Éligibilité :</strong> Zakat El Fitr, Sadaqa</li>
+                        <li><strong>Mobilité :</strong> Peut se déplacer pour récupérer le colis ?</li>
+                        <li><strong>Priorité :</strong> Criticité de 0 (non évalué) à 5 (urgente)</li>
+                        <li><strong>Langue :</strong> Préférence pour les communications</li>
+                        <li><strong>Notes :</strong> Circonstances, spécificités, ressentis</li>
+                    </ul>
+                </div>
+
+                <h3>📊 Workflow Global</h3>
+                <div class="diagram">
+                    <div class="flow-box">📝 Soumission (Formulaire/Manuel/Import)</div>
+                    <div class="arrow">⬇️</div>
+                    <div class="flow-box">✅ Validation (Adresse, Doublon, Données)</div>
+                    <div class="arrow">⬇️</div>
+                    <div class="flow-box">📋 Enregistrement dans la Feuille</div>
+                    <div class="arrow">⬇️</div>
+                    <div class="flow-box">⚙️ Statut "En cours"</div>
+                    <div class="arrow">⬇️</div>
+                    <div class="flow-box">👨‍💼 Validation Manuelle par Admin</div>
+                    <div class="arrow">⬇️</div>
+                    <div class="flow-box">📞 Création Contact Google</div>
+                    <div class="arrow">⬇️</div>
+                    <div class="flow-box">✨ Disponible pour tous (via sync)</div>
+                </div>
+            </div>
+
+            <!-- FORMULAIRES -->
+            <div id="forms" class="section">
+                <h2>📝 Formulaires Google</h2>
+
+                <div class="info-box">
+                    <h3>🌍 Formulaires Disponibles</h3>
+                    <ul>
+                        <li><strong>Formulaire Français :</strong> Pour les bénéficiaires francophones</li>
+                        <li><strong>Formulaire Arabe :</strong> Interface en arabe (RTL)</li>
+                        <li><strong>Formulaire Anglais :</strong> Pour les anglophones</li>
+                        <li><strong>Formulaire Admin :</strong> Saisie rapide avec éligibilité</li>
+                    </ul>
+                </div>
+
+                <h3>📋 Processus de Soumission via Formulaire</h3>
+                <div class="workflow">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4>🌐 La famille remplit le formulaire</h4>
+                            <p>Elle choisit le formulaire dans sa langue (FR/AR/EN) et entre ses informations : nom,
+                                prénom, téléphone, adresse, composition du foyer, etc.</p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4>📥 Réception dans Google Sheets</h4>
+                            <p>Les données arrivent automatiquement dans la feuille correspondante (Familles - FR,
+                                Familles - AR, ou Familles - EN).</p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h4>🔍 Validation Automatique</h4>
+                            <p>Le système vérifie automatiquement :
+                            <ul>
+                                <li>✅ Champs requis présents</li>
+                                <li>✅ Format téléphone valide</li>
+                                <li>✅ Format email valide (si fourni)</li>
+                                <li>✅ Adresse valide et géolocalisable</li>
+                                <li>✅ Pas de doublon (téléphone + nom)</li>
+                            </ul>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h4>🌍 Géolocalisation</h4>
+                            <p>L'adresse est envoyée à l'API GEO qui retourne :
+                            <ul>
+                                <li>📍 Coordonnées GPS</li>
+                                <li>🏘️ Quartier assigné</li>
+                                <li>🏢 Secteur</li>
+                                <li>🏙️ Ville</li>
+                            </ul>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">5</div>
+                        <div class="step-content">
+                            <h4>📝 Enregistrement Final</h4>
+                            <p>La famille est ajoutée dans la feuille "Famille" avec :
+                            <ul>
+                                <li>🆔 ID unique généré</li>
+                                <li>⚙️ Statut "En cours"</li>
+                                <li>🏘️ Quartier assigné</li>
+                                <li>⚠️ Criticité 0 par défaut</li>
+                                <li>📅 Commentaire avec date/heure</li>
+                            </ul>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">6</div>
+                        <div class="step-content">
+                            <h4>📧 Notification Admin</h4>
+                            <p>L'administrateur reçoit un email avec toutes les informations de la nouvelle soumission.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="warning-box">
+                    <h3>⚠️ Cas Particuliers</h3>
+                    <ul>
+                        <li><strong>Doublon détecté :</strong> Si une famille avec le même téléphone+nom existe déjà,
+                            ses données sont mises à jour au lieu de créer un doublon</li>
+                        <li><strong>Adresse introuvable :</strong> La famille est enregistrée avec statut "Rejeté" et un
+                            commentaire explicatif</li>
+                        <li><strong>Quartier invalide :</strong> La famille est en "En cours" avec un avertissement dans
+                            les commentaires</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- SAISIE MANUELLE -->
+            <div id="manual" class="section">
+                <h2>✏️ Saisie Manuelle & Mise à Jour</h2>
+
+                <div class="info-box">
+                    <h3>📋 Accès au Formulaire</h3>
+                    <p><strong>Menu Google Sheets :</strong> 📦 Gestion Familles → ➕ Nouvelle Famille / ✏️ Mise à Jour
+                    </p>
+                </div>
+
+                <h3>➕ Mode Nouvelle Famille</h3>
+                <div class="workflow">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4>📝 Remplir le Formulaire</h4>
+                            <p>Tous les champs marqués d'une étoile (*) sont obligatoires :
+                            <ul>
+                                <li>Nom, prénom, téléphone</li>
+                                <li>Adresse complète (rue, code postal, ville)</li>
+                                <li>Composition du foyer (adultes + enfants ≥ 1 personne)</li>
+                                <li>Criticité (0-5)</li>
+                                <li><strong>Éligibilité :</strong> Cocher Zakat El Fitr et/ou Sadaqa</li>
+                            </ul>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4>✅ Validation et Enregistrement</h4>
+                            <p>Le système valide les données (format téléphone, email, adresse) et crée la famille avec
+                                statut "En cours".</p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h4>📋 Vérification dans la Feuille</h4>
+                            <p>La nouvelle ligne apparaît dans la feuille "Famille" avec un ID unique et toutes les
+                                informations.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3>✏️ Mode Mise à Jour</h3>
+                <div class="workflow">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4>🔍 Sélectionner la Famille</h4>
+                            <p>Choisissez une famille dans la liste déroulante (seules les familles validées sont
+                                disponibles). Les champs se pré-remplissent automatiquement.</p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4>✏️ Modifier les Champs</h4>
+                            <p>Modifiez uniquement les champs à mettre à jour. Les champs vides ne seront pas modifiés.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h4>💾 Enregistrer</h4>
+                            <p>La mise à jour est appliquée et un commentaire est ajouté avec la liste des champs
+                                modifiés.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="success-box">
+                    <h3>✨ Avantages de la Saisie Manuelle</h3>
+                    <ul>
+                        <li>✅ Contrôle total sur la criticité dès la création</li>
+                        <li>✅ Définition immédiate de l'éligibilité (Zakat/Sadaqa)</li>
+                        <li>✅ Pas besoin d'attendre un formulaire</li>
+                        <li>✅ Ajout de notes et observations détaillées</li>
+                        <li>✅ Mise à jour ciblée de champs spécifiques</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- IMPORT EN MASSE -->
+            <div id="bulk" class="section">
+                <h2>📥 Import et Mise à Jour en Masse</h2>
+
+                <div class="info-box">
+                    <h3>🎯 Quand Utiliser l'Import en Masse ?</h3>
+                    <ul>
+                        <li>📋 Import initial d'une liste de familles depuis Excel</li>
+                        <li>🔄 Récupération de données depuis un autre système</li>
+                        <li>📊 Migration de données historiques</li>
+                        <li>⚡ Besoin d'ajouter rapidement plusieurs familles</li>
+                    </ul>
+                </div>
+
+                <h3>📥 Processus d'Import en Masse</h3>
+                <div class="workflow">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4>📋 Préparer les Données</h4>
+                            <p>Créez un fichier avec ces colonnes (dans cet ordre) :
+                            <ol>
+                                <li>Nom</li>
+                                <li>Prénom</li>
+                                <li>Nombre Adulte</li>
+                                <li>Nombre Enfant</li>
+                                <li>Adresse</li>
+                                <li>Code Postal</li>
+                                <li>Ville</li>
+                                <li>Téléphone</li>
+                                <li>Téléphone Bis (optionnel)</li>
+                                <li>Email (optionnel)</li>
+                                <li>Se Déplace (Oui/Non)</li>
+                                <li>Circonstances (optionnel)</li>
+                                <li>Ressentit (optionnel)</li>
+                                <li>Spécificités (optionnel)</li>
+                                <li>Criticité (0-5)</li>
+                                <li>Langue (Français/Arabe/Anglais)</li>
+                            </ol>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4>📋 Coller dans "Bulk Import"</h4>
+                            <p>Ouvrez la feuille "Bulk Import" et collez vos données à partir de la ligne 2 (la ligne 1
+                                contient les en-têtes).</p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h4>⚙️ Lancer le Traitement</h4>
+                            <p><strong>Menu :</strong> 📦 Gestion Familles → 📥 Import en Masse → ⚙️ Traiter Import
+                                <br>Choisissez le nombre de familles à traiter (recommandé : 10-20 par lot).
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h4>👀 Surveiller les Résultats</h4>
+                            <p>La colonne "commentaire" dans "Bulk Import" affiche le statut de chaque ligne :
+                            <ul>
+                                <li>⏳ En attente : Pas encore traitée</li>
+                                <li>✅ Importée : Succès (ID affiché)</li>
+                                <li>❌ Erreur : Problème détaillé</li>
+                            </ul>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">5</div>
+                        <div class="step-content">
+                            <h4>🔄 Relancer si Nécessaire</h4>
+                            <p>Si des lignes restent en attente, relancez le traitement. Les lignes déjà traitées sont
+                                ignorées.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3>✏️ Mise à Jour en Masse</h3>
+                <div class="workflow">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4>📋 Feuille "Bulk Update"</h4>
+                            <p>Première colonne obligatoire : <strong>ID</strong> de la famille
+                                <br>Remplissez uniquement les colonnes à mettre à jour (les colonnes vides sont
+                                ignorées).
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4>⚙️ Traiter les Mises à Jour</h4>
+                            <p><strong>Menu :</strong> 📦 Gestion Familles → ✏️ Mise à Jour en Masse → ⚙️ Traiter Mises
+                                à Jour</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="warning-box">
+                    <h3>⚠️ Points d'Attention</h3>
+                    <ul>
+                        <li><strong>Limite de temps :</strong> Google Apps Script a une limite de ~6 minutes. Traitez
+                            par lots de 10-20 familles.</li>
+                        <li><strong>Validation :</strong> Chaque ligne est validée (téléphone, email, adresse,
+                            criticité, composition foyer).</li>
+                        <li><strong>Doublons :</strong> Les doublons (même téléphone + nom) sont rejetés
+                            automatiquement.</li>
+                        <li><strong>Statut "En cours" :</strong> Toutes les familles importées/mises à jour ont le
+                            statut "En cours" et nécessitent une validation manuelle.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- SYNCHRONISATION -->
+            <div id="sync" class="section">
+                <h2>🔄 Synchronisation avec Google Contacts</h2>
+
+                <div class="success-box">
+                    <h3>✨ Synchronisation Bidirectionnelle</h3>
+                    <p>Le système synchronise automatiquement dans les DEUX sens :
+                    <ul>
+                        <li>📤 <strong>Feuille → Contacts :</strong> Automatique lors de la validation</li>
+                        <li>📥 <strong>Contacts → Feuille :</strong> Manuel via le menu</li>
+                    </ul>
+                    </p>
+                </div>
+
+                <h3>📤 Sync Feuille → Contact (Automatique)</h3>
+                <div class="workflow">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4>✅ Validation dans la Feuille</h4>
+                            <p>Lorsqu'un administrateur change le statut d'une famille à "Validé", le système déclenche
+                                automatiquement la création/mise à jour du contact Google.</p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4>📞 Création du Contact</h4>
+                            <p>Un contact est créé dans Google Contacts avec :
+                            <ul>
+                                <li><strong>Nom :</strong> Format "{ID} - Prénom NOM"</li>
+                                <li><strong>Téléphone(s) :</strong> Mobile principal + fixe/bis</li>
+                                <li><strong>Email :</strong> Si fourni</li>
+                                <li><strong>Adresse structurée :</strong> Rue, CP, Ville</li>
+                                <li><strong>Champs personnalisés :</strong>
+                                    <ul>
+                                        <li>Criticité (0-5)</li>
+                                        <li>Adultes / Enfants</li>
+                                        <li>Zakat El Fitr (Oui/Non)</li>
+                                        <li>Sadaqa (Oui/Non)</li>
+                                        <li>Langue</li>
+                                        <li>Se Déplace (Oui/Non)</li>
+                                        <li>Dernière mise à jour (timestamp)</li>
+                                    </ul>
+                                </li>
+                            </ul>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h4>🏷️ Groupes de Contacts</h4>
+                            <p>Le contact est automatiquement ajouté aux groupes :
+                            <ul>
+                                <li>📋 <strong>"Famille dans le besoin"</strong> (groupe principal)</li>
+                                <li>📍 <strong>"Ville - Secteur"</strong> (ex: "Nantes - Centre")</li>
+                            </ul>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h4>🌐 Disponible Partout</h4>
+                            <p>Le contact se synchronise automatiquement sur tous les appareils connectés au compte
+                                Google (téléphones, tablettes, ordinateurs).</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3>📥 Sync Contact → Feuille (Reverse Sync)</h3>
+                <div class="info-box">
+                    <h3>💡 Pourquoi la Reverse Sync ?</h3>
+                    <p><strong>Scénario :</strong> Un bénévole modifie un contact sur son téléphone (changement
+                        d'adresse, nouveau numéro, etc.). Grâce à la reverse sync, cette modification sera disponible
+                        pour tous les autres utilisateurs !</p>
+                </div>
+
+                <div class="workflow">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4>📱 Modification sur le Téléphone</h4>
+                            <p>Un bénévole ouvre le contact sur son smartphone et modifie :
+                            <ul>
+                                <li>📞 Le numéro de téléphone</li>
+                                <li>📧 L'adresse email</li>
+                                <li>🏠 L'adresse complète</li>
+                                <li>👥 Le nombre d'adultes/enfants</li>
+                                <li>⚡ La criticité</li>
+                                <li>🌙 L'éligibilité Zakat/Sadaqa</li>
+                                <li>🌍 La langue</li>
+                            </ul>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4>☁️ Sync Google Automatique</h4>
+                            <p>La modification se synchronise automatiquement avec le cloud Google (quelques secondes à
+                                quelques minutes selon la connexion).</p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h4>🔄 Lancer la Reverse Sync</h4>
+                            <p><strong>Menu :</strong> 📦 Gestion Familles → 🔄 Synchronisation Contacts → 📥 Sync
+                                Contact → Feuille
+                                <br><br>
+                                Le système :
+                            <ul>
+                                <li>🔍 Récupère tous les contacts du groupe "Famille dans le besoin"</li>
+                                <li>🔄 Compare chaque contact avec les données de la feuille</li>
+                                <li>✏️ Met à jour uniquement les champs modifiés</li>
+                                <li>💬 Ajoute un commentaire "🔄 Sync Contact → Feuille"</li>
+                            </ul>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h4>✅ Résultat</h4>
+                            <p>La feuille est mise à jour avec les dernières informations du contact. Un rapport
+                                détaillé affiche :
+                            <ul>
+                                <li>📊 Nombre total de contacts traités</li>
+                                <li>✅ Nombre de mises à jour effectuées</li>
+                                <li>➖ Nombre de contacts inchangés</li>
+                                <li>📝 Liste des champs modifiés par famille</li>
+                            </ul>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="diagram">
+                    <h3>🔄 Flux de la Reverse Sync</h3>
+                    <div class="flow-box">📱 Bénévole modifie contact sur téléphone</div>
+                    <div class="arrow">⬇️</div>
+                    <div class="flow-box">☁️ Sync automatique Google Cloud</div>
+                    <div class="arrow">⬇️</div>
+                    <div class="flow-box">🖥️ Admin lance Reverse Sync depuis Sheets</div>
+                    <div class="arrow">⬇️</div>
+                    <div class="flow-box">🔍 Comparaison Contact vs Feuille</div>
+                    <div class="arrow">⬇️</div>
+                    <div class="flow-box">✏️ Mise à jour de la Feuille</div>
+                    <div class="arrow">⬇️</div>
+                    <div class="flow-box">✨ Données à jour pour tous</div>
+                </div>
+
+                <div class="success-box">
+                    <h3>✨ Avantages de la Reverse Sync</h3>
+                    <ul>
+                        <li>👥 <strong>Collaboration :</strong> Plusieurs personnes peuvent mettre à jour les contacts
+                        </li>
+                        <li>📱 <strong>Mobilité :</strong> Mise à jour possible depuis n'importe quel téléphone</li>
+                        <li>⚡ <strong>Rapidité :</strong> Pas besoin d'ouvrir Google Sheets sur le terrain</li>
+                        <li>🔄 <strong>Synchronisation :</strong> Garantit que tout le monde a les mêmes données</li>
+                        <li>💾 <strong>Traçabilité :</strong> Chaque sync ajoute un commentaire avec la date</li>
+                    </ul>
+                </div>
+
+                <div class="warning-box">
+                    <h3>⚠️ Points à Retenir</h3>
+                    <ul>
+                        <li><strong>Validation du foyer :</strong> La composition (adultes + enfants) doit être ≥ 1
+                            personne. Les modifications invalides sont rejetées.</li>
+                        <li><strong>Adresse canonique :</strong> Le système utilise un format standard "Rue, CP Ville"
+                            pour éviter les incohérences.</li>
+                        <li><strong>Pas de doublon :</strong> L'ID famille (dans le nom du contact) identifie de manière
+                            unique chaque famille.</li>
+                        <li><strong>Fréquence :</strong> Lancez la reverse sync régulièrement (quotidien ou
+                            hebdomadaire) pour maintenir les données à jour.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- EMAILS -->
+            <div id="email" class="section">
+                <h2>📧 Emails de Vérification</h2>
+
+                <div class="info-box">
+                    <h3>🎯 But des Emails de Vérification</h3>
+                    <p>Envoyer périodiquement aux familles validées un email pour vérifier que leurs informations sont
+                        toujours à jour (adresse, téléphone, composition du foyer).</p>
+                </div>
+
+                <h3>📧 Processus d'Envoi</h3>
+                <div class="workflow">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4>📋 Préparation</h4>
+                            <p><strong>Menu :</strong> 📦 Gestion Familles → 📧 Vérification Email → 📊 Aperçu des
+                                Destinataires
+                                <br>Vérifiez la liste des familles qui recevront un email (familles validées avec
+                                email).
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4>✉️ Envoi</h4>
+                            <p><strong>Menu :</strong> 📦 Gestion Familles → 📧 Vérification Email → ✉️ Envoyer Emails
+                                <br>Confirmez l'envoi. Le système envoie les emails dans la langue préférée de chaque
+                                famille.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h4>📨 Réception par la Famille</h4>
+                            <p>La famille reçoit un email contenant :
+                            <ul>
+                                <li>✅ Ses informations actuelles (nom, téléphone, adresse, composition)</li>
+                                <li>🔘 Bouton "Tout est à jour"</li>
+                                <li>📝 Bouton "Mes informations ont changé" (lien vers formulaire)</li>
+                            </ul>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h4>👆 Action de la Famille</h4>
+                            <p><strong>Option A :</strong> Clic sur "Tout est à jour" → Un commentaire est ajouté dans
+                                la feuille avec la date de confirmation
+                                <br><br>
+                                <strong>Option B :</strong> Clic sur "Mes informations ont changé" → Redirection vers le
+                                formulaire de mise à jour
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">5</div>
+                        <div class="step-content">
+                            <h4>📊 Suivi</h4>
+                            <p>Consultez la colonne "commentaire_dossier" pour voir quelles familles ont confirmé leurs
+                                informations.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="diagram">
+                    <h3>📧 Contenu de l'Email</h3>
+                    <div
+                        style="background: #f8f9fa; padding: 20px; border-radius: 8px; text-align: left; max-width: 500px; margin: 20px auto;">
+                        <div
+                            style="background: #1a73e8; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;">
+                            <h4 style="margin: 0;">🔔 Mise à jour de vos informations</h4>
+                        </div>
+                        <div style="padding: 20px; background: white;">
+                            <p><strong>Bonjour Djallel BOUAKKAZ,</strong></p>
+                            <p>Nous souhaitons vérifier que vos informations sont toujours à jour.</p>
+
+                            <div style="background: #f0f4ff; padding: 15px; border-radius: 8px; margin: 15px 0;">
+                                <strong>Vos informations actuelles :</strong>
+                                <ul style="list-style: none; padding: 10px 0; margin: 0;">
+                                    <li>📞 Téléphone : +33 6 12 34 56 78</li>
+                                    <li>🏠 Adresse : 1 Rue de la Paix, 44000 Nantes</li>
+                                    <li>👥 Composition : 2 adultes, 1 enfant</li>
+                                </ul>
+                            </div>
+
+                            <p style="text-align: center; font-weight: bold;">Vos informations sont-elles toujours
+                                correctes ?</p>
+
+                            <div style="text-align: center; margin: 20px 0;">
+                                <div
+                                    style="display: inline-block; padding: 12px 24px; background: #28a745; color: white; border-radius: 6px; margin: 5px;">
+                                    ✅ Tout est à jour
+                                </div>
+                                <div
+                                    style="display: inline-block; padding: 12px 24px; background: #dc3545; color: white; border-radius: 6px; margin: 5px;">
+                                    📝 Mes informations ont changé
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="success-box">
+                    <h3>✨ Avantages</h3>
+                    <ul>
+                        <li>📊 <strong>Données à jour :</strong> Maintient la base de données actuelle</li>
+                        <li>🌍 <strong>Multilingue :</strong> Email dans la langue préférée de chaque famille</li>
+                        <li>✅ <strong>Simple :</strong> Un clic pour confirmer</li>
+                        <li>🔄 <strong>Automatique :</strong> Mise à jour directe dans la feuille</li>
+                        <li>📅 <strong>Traçabilité :</strong> Date de confirmation enregistrée</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showSection(sectionId) {
+            // Hide all sections
+            const sections = document.querySelectorAll('.section');
+            sections.forEach(section => section.classList.remove('active'));
+
+            // Show selected section
+            document.getElementById(sectionId).classList.add('active');
+
+            // Scroll to top
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    </script>
+</body>
+
+</html>
