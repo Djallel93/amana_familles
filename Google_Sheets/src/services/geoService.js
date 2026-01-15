@@ -137,47 +137,6 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
 }
 
 /**
- * Validate if quartier ID exists in GEO API
- * @param {string} quartierId - Quartier ID to validate
- * @returns {Object} - { isValid: boolean, error?: string }
- */
-function validateQuartierId(quartierId) {
-    if (!quartierId) {
-        return {
-            isValid: false,
-            error: 'Quartier ID is empty'
-        };
-    }
-
-    try {
-        const quartierResult = getQuartierById(quartierId);
-
-        if (quartierResult.error || !quartierResult.id) {
-            return {
-                isValid: false,
-                error: `Quartier ID "${quartierId}" n'existe pas dans l'API GEO`
-            };
-        }
-
-        return {
-            isValid: true,
-            quartier: {
-                id: quartierResult.id,
-                nom: quartierResult.nom,
-                idSecteur: quartierResult.idSecteur
-            }
-        };
-
-    } catch (e) {
-        logError('Failed to validate quartier ID', e);
-        return {
-            isValid: false,
-            error: `Erreur de validation: ${e.toString()}`
-        };
-    }
-}
-
-/**
  * Get complete location hierarchy from quartier ID
  * This is the key function for on-demand resolution
  * 
@@ -271,72 +230,6 @@ function getLocationHierarchyFromQuartier(quartierId) {
             message: e.toString()
         };
     }
-}
-
-/**
- * Validate address and get quartier ID with GEO API validation
- * Returns same structure as before, but checks if quartier exists
- */
-function validateAddressAndGetQuartier(address, postalCode, city) {
-    if (!address || !postalCode || !city) {
-        return {
-            isValid: false,
-            error: 'Adresse complète requise (adresse, code postal, ville)'
-        };
-    }
-
-    const geocodeResult = geocodeAddress(address, city, postalCode);
-
-    if (geocodeResult.error || !geocodeResult.isValid) {
-        return {
-            isValid: false,
-            error: 'Adresse invalide ou introuvable'
-        };
-    }
-
-    const locationResult = resolveLocation(
-        geocodeResult.coordinates.latitude,
-        geocodeResult.coordinates.longitude
-    );
-
-    if (locationResult.error) {
-        return {
-            isValid: true,
-            validated: true,
-            coordinates: geocodeResult.coordinates,
-            formattedAddress: geocodeResult.formattedAddress,
-            quartierId: null,
-            quartierName: null,
-            warning: 'Aucune localisation trouvée dans la base de données'
-        };
-    }
-
-    const quartierId = locationResult.quartier ? locationResult.quartier.id : null;
-    const quartierName = locationResult.quartier ? locationResult.quartier.nom : null;
-
-    let quartierInvalid = false;
-    let warning = null;
-
-    if (quartierId) {
-        const validation = validateQuartierId(quartierId);
-        if (!validation.isValid) {
-            quartierInvalid = true;
-            warning = `⚠️ ATTENTION: Quartier ID "${quartierId}" n'existe pas dans l'API GEO. Vérifier l'adresse avant validation.`;
-            logWarning(`Quartier validation failed: ${validation.error}`);
-        }
-    }
-
-    return {
-        isValid: true,
-        validated: true,
-        coordinates: geocodeResult.coordinates,
-        formattedAddress: geocodeResult.formattedAddress,
-        quartierId: quartierId,
-        quartierName: quartierName,
-        quartierInvalid: quartierInvalid,
-        warning: warning,
-        location: locationResult
-    };
 }
 
 /**

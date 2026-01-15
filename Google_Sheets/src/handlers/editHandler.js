@@ -7,7 +7,7 @@
  * Handle edit events on Famille sheet
  * ENHANCED: Validate household composition
  */
-function handleEdit(e) {
+function onEdit(e) {
     try {
         const sheet = e.range.getSheet();
 
@@ -19,6 +19,8 @@ function handleEdit(e) {
         const col = e.range.getColumn();
 
         if (row === 1) return;
+
+        logInfo(`Processing family ${familyId} at row ${row}...`);
 
         // Handle household composition changes (columns NOMBRE_ADULTE or NOMBRE_ENFANT)
         if (col === OUTPUT_COLUMNS.NOMBRE_ADULTE + 1 || col === OUTPUT_COLUMNS.NOMBRE_ENFANT + 1) {
@@ -309,7 +311,7 @@ function handleArchiveStatus(sheet, row) {
 
         const deleteResult = deleteContactForArchivedFamily(familyId);
         appendSheetComment(sheet, row, '🗄️', 'Archivé');
-        
+
         if (deleteResult.success) {
             logInfo(`Contact deleted successfully for archived family: ${familyId}`);
             appendSheetComment(sheet, row, '📞', 'Contact Google supprimé');
@@ -387,7 +389,7 @@ function processValidatedFamily(sheet, row) {
         };
 
         const contactResult = syncFamilyContact(familyData);
-        
+
         if (contactResult.success) {
             logInfo(`Contact synced for family: ${familyId}`);
             appendSheetComment(sheet, row, '✅', 'Validé et traité');

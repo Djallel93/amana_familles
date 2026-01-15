@@ -113,47 +113,6 @@ function moveAndRenameFile(fileId, targetFolder, newName) {
 }
 
 /**
- * Validate uploaded documents exist (UPDATED with aides_etat)
- */
-function validateDocuments(identityDocUrls, aidesEtatDocUrls, resourceDocUrls) {
-    const errors = [];
-
-    const identityIds = extractFileIds(identityDocUrls);
-    if (identityIds.length === 0) {
-        errors.push('Aucun justificatif d\'identité fourni');
-    } else {
-        identityIds.forEach(id => {
-            if (!fileExists(id)) {
-                errors.push(`Document d'identité introuvable: ${id}`);
-            }
-        });
-    }
-
-    // UPDATED: Changed from cafIds to aidesEtatIds
-    const aidesEtatIds = extractFileIds(aidesEtatDocUrls);
-    aidesEtatIds.forEach(id => {
-        if (!fileExists(id)) {
-            errors.push(`Document aides d'état introuvable: ${id}`);
-        }
-    });
-
-    const resourceIds = extractFileIds(resourceDocUrls);
-    resourceIds.forEach(id => {
-        if (!fileExists(id)) {
-            errors.push(`Document de ressources introuvable: ${id}`);
-        }
-    });
-
-    return {
-        isValid: errors.length === 0,
-        errors: errors,
-        identityIds: identityIds,
-        aidesEtatIds: aidesEtatIds, // RENAMED from cafIds
-        resourceIds: resourceIds
-    };
-}
-
-/**
  * Format document IDs as Drive URLs for sheet storage
  */
 function formatDocumentLinks(fileIds) {
