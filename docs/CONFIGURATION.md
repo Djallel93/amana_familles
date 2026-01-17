@@ -2,14 +2,14 @@
 
 ## Table des matières
 
-- [Propriétés du script](#propriétés-du-script)
-- [Configuration du Google Sheet](#configuration-du-google-sheet)
-- [Configuration des formulaires](#configuration-des-formulaires)
-- [Configuration des triggers](#configuration-des-triggers)
-- [Configuration de Google Drive](#configuration-de-google-drive)
-- [Configuration de l'API externe](#configuration-de-lapi-externe)
-- [Activation des API Google](#activation-des-api-google)
-- [Vérification de la configuration](#vérification-de-la-configuration)
+- [Propriétés du script](#-propriétés-du-script)
+- [Configuration du Google Sheet](#-configuration-du-google-sheet)
+- [Configuration des formulaires](#-configuration-des-formulaires)
+- [Configuration des triggers](#-configuration-des-triggers)
+- [Configuration de Google Drive](#-configuration-de-google-drive)
+- [Configuration de l'API externe](#-configuration-de-lapi-externe)
+- [Activation des API Google](#-activation-des-api-google)
+- [Vérification de la configuration](#-vérification-de-la-configuration)
 
 ---
 
@@ -28,15 +28,15 @@ Les propriétés du script stockent les informations sensibles et les configurat
 
 | Clé                          | Description                  | Exemple                       | Obligatoire |
 | ---------------------------- | ---------------------------- | ----------------------------- | ----------- |
-| `SPREADSHEET_ID`             | ID du Google Sheet principal | `1a2b3c4d...xyz`              | ✅           |
-| `GESTION_FAMILLES_FOLDER_ID` | ID du dossier Drive racine   | `1x2y3z4w...uvw`              | ✅           |
-| `GEO_API_URL`                | URL de l'API de géocodage    | `https://api.example.com/geo` | ✅           |
+| `SPREADSHEET_ID`             | ID du Google Sheet principal | `1a2b3c4d...xyz`              | ✅          |
+| `GESTION_FAMILLES_FOLDER_ID` | ID du dossier Drive racine   | `1x2y3z4w...uvw`              | ✅          |
+| `GEO_API_URL`                | URL de l'API de géocodage    | `https://api.example.com/geo` | ✅          |
 
 ### Comment obtenir les IDs
 
 #### Spreadsheet ID
 
-```
+```txt
 URL du Google Sheet :
 https://docs.google.com/spreadsheets/d/1a2b3c4d5e6f7g8h9i0j/edit
                                         ^^^^^^^^^^^^^^^^^^^
@@ -49,7 +49,7 @@ https://docs.google.com/spreadsheets/d/1a2b3c4d5e6f7g8h9i0j/edit
 2. Ouvrez le dossier
 3. Copiez l'ID depuis l'URL :
 
-```
+```txt
 URL du dossier Drive :
 https://drive.google.com/drive/folders/1x2y3z4w5v6u7t8s9r0q
                                          ^^^^^^^^^^^^^^^^^^^
@@ -135,7 +135,7 @@ Ajoutez ces en-têtes dans la première ligne (A1 à T1) :
 3. Critères : **List from a range**
 4. Saisissez les valeurs :
 
-   ```
+   ```txt
    Recu
    En cours
    En attente
@@ -163,19 +163,19 @@ Pour colorer les lignes selon le statut :
 2. Menu **Format** > **Conditional formatting**
 3. Ajoutez ces règles :
 
-**Règle 1 : Validé (Vert)**
+##### Règle 1 : Validé (Vert)
 
 - Format cells if : Custom formula is
 - Formule : `=$S2="Validé"`
 - Formatting style : Vert clair (#d9ead3)
 
-**Règle 2 : Rejeté (Rouge)**
+##### Règle 2 : Rejeté (Rouge)
 
 - Format cells if : Custom formula is
 - Formule : `=$S2="Rejeté"`
 - Formatting style : Rouge clair (#f4cccc)
 
-**Règle 3 : En cours (Jaune)**
+##### Règle 3 : En cours (Jaune)
 
 - Format cells if : Custom formula is
 - Formule : `=$S2="En cours"`
@@ -309,7 +309,7 @@ Créez trois formulaires Google Forms identiques (un pour chaque langue) :
      - Maximum file size : 10 MB
      - Maximum number of files : 3
 
-**Questions optionnelles** :
+    **Questions optionnelles** :
 
 10. **Autre numéro de téléphone**
     - Type : Short answer
@@ -366,11 +366,11 @@ Créez trois formulaires Google Forms identiques (un pour chaque langue) :
 
 3. **Confirmation message** :
 
-   ```
-   Merci pour votre demande ! 
-   Nous examinerons votre dossier et vous contacterons dans les plus brefs délais.
-   Conservez une copie de votre réponse qui vous a été envoyée par email.
-   ```
+```txt
+Merci pour votre demande ! 
+Nous examinerons votre dossier et vous contacterons dans les plus brefs délais.
+Conservez une copie de votre réponse qui vous a été envoyée par email.
+```
 
 #### Étape 4 : Configuration du stockage des fichiers
 
@@ -385,7 +385,7 @@ Pour les versions AR et EN, traduisez toutes les questions en conservant la mêm
 
 **Exemple pour l'arabe** :
 
-```
+```txt
 1. اللقب (Nom de famille)
 2. إسم الشخص الذي يمكن التواصل معه (Prénom du contact)
 3. رقم هاتف الشخص الذي يمكن التواصل معه (Téléphone)
@@ -394,7 +394,7 @@ Pour les versions AR et EN, traduisez toutes les questions en conservant la mêm
 
 **Exemple pour l'anglais** :
 
-```
+```txt
 1. Last Name
 2. First Name of the Contact Person
 3. Phone Number of the Contact Person
@@ -550,7 +550,7 @@ function listTriggers() {
 
 Créez la structure suivante dans Google Drive :
 
-```
+```txt
 Gestion Familles/               (Dossier racine)
 ├── familles/                   (Dossiers des familles)
 │   ├── FAM_1234567890_123/
@@ -614,7 +614,7 @@ L'API doit exposer deux endpoints :
 
 #### 1. Géocodage
 
-```
+```txt
 GET /geo?action=geocode&address=ADRESSE&country=PAYS
 ```
 
@@ -634,7 +634,7 @@ GET /geo?action=geocode&address=ADRESSE&country=PAYS
 
 #### 2. Recherche de quartier
 
-```
+```txt
 GET /geo?action=findquartier&lat=47.2184&lng=-1.5536&maxDistance=50
 ```
 

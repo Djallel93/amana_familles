@@ -2,16 +2,19 @@
 
 ## Table des matières
 
-- [Vue d'ensemble](#vue-densemble)
-- [Architecture globale](#architecture-globale)
-- [Flux de données](#flux-de-données)
-- [Structure du code](#structure-du-code)
-- [Modèle de données](#modèle-de-données)
-- [Services et intégrations](#services-et-intégrations)
-- [Système de cache](#système-de-cache)
-- [Gestion des événements](#gestion-des-événements)
-- [Sécurité](#sécurité)
-- [Performance et scalabilité](#performance-et-scalabilité)
+- [Vue d'ensemble](#-vue-densemble)
+- [Architecture globale](#-architecture-globale)
+- [Flux de données](#-flux-de-données)
+- [Structure du code](#-structure-du-code)
+- [Modèle de données](#-modèle-de-données)
+- [Services et intégrations](#-services-et-intégrations)
+- [Système de cache](#-système-de-cache)
+- [Gestion des événements](#-gestion-des-événements)
+- [Sécurité](#-sécurité)
+- [Performance et scalabilité](#-performance-et-scalabilité)
+- [Patterns de conception](#-patterns-de-conception)
+- [Diagrammes](#-diagrammes)
+- [Bonnes pratiques](#-bonnes-pratiques)
 
 ---
 
@@ -29,14 +32,14 @@ Le système de gestion des familles est une application serverless construite en
 
 ### Technologies utilisées
 
-| Technologie | Usage | Version |
-|-------------|-------|---------|
-| Google Apps Script | Runtime principal | V8 |
-| Google Sheets | Base de données | Sheets API v4 |
-| Google Drive | Stockage documents | Drive API v3 |
-| Google Contacts | CRM | People API v1 |
-| Google Forms | Collecte données | Forms API |
-| API Géocodage | Validation adresses | Custom |
+| Technologie        | Usage               | Version       |
+| ------------------ | ------------------- | ------------- |
+| Google Apps Script | Runtime principal   | V8            |
+| Google Sheets      | Base de données     | Sheets API v4 |
+| Google Drive       | Stockage documents  | Drive API v3  |
+| Google Contacts    | CRM                 | People API v1 |
+| Google Forms       | Collecte données    | Forms API     |
+| API Géocodage      | Validation adresses | Custom        |
 
 ---
 
@@ -192,12 +195,12 @@ Le système de gestion des familles est une application serverless construite en
 
 ### Flux 2 : Validation d'un dossier
 
-```
-┌──────────────┐
+```txt
+┌───────────────┐
 │ Administrateur│
-│ change statut│
-│ → "Validé"   │
-└──────┬───────┘
+│ change statut │
+│ → "Validé"    │
+└──────┬────────┘
        │ onEdit
        ▼
 ┌─────────────────────────┐
@@ -367,8 +370,7 @@ Google_app_script/
 │       │   └── calculateStatistics()
 │       │
 │       └── helpers.js           # Helpers UI
-│           ├── processManualEntry()
-│           └── updateManualEntryWithFormData()
+│           └── processManualEntry()
 │
 ├── views/                       # Templates HTML
 │   └── dialogs/
@@ -384,7 +386,7 @@ Google_app_script/
 
 ### Dépendances entre modules
 
-```
+```txt
 ┌─────────────────┐
 │   config.js     │ ← Base de tout
 └────────┬────────┘
@@ -575,7 +577,7 @@ file.setName('identity_1.pdf');
 
 **Structure** :
 
-```
+```txt
 Gestion Familles/
 └── familles/
     └── FAM_1703001234567_123/
@@ -654,7 +656,7 @@ Response: {
 
 ### Architecture du cache
 
-```
+```txt
 ┌──────────────────────────────────────┐
 │     ScriptCache (Google Apps Script)  │
 │                                       │
@@ -991,13 +993,13 @@ Scopes requis dans `appsscript.json` :
 
 ### Limites Google Apps Script
 
-| Ressource | Limite gratuite | Limite Workspace |
-|-----------|-----------------|------------------|
-| Exécution | 6 min | 30 min |
-| Triggers total | 90 min/jour | 6 heures/jour |
-| URL Fetches | 20,000/jour | 20,000/jour |
-| Email | 100/jour | 1,500/jour |
-| Script size | 50 MB | 50 MB |
+| Ressource      | Limite gratuite | Limite Workspace |
+| -------------- | --------------- | ---------------- |
+| Exécution      | 6 min           | 30 min           |
+| Triggers total | 90 min/jour     | 6 heures/jour    |
+| URL Fetches    | 20,000/jour     | 20,000/jour      |
+| Email          | 100/jour        | 1,500/jour       |
+| Script size    | 50 MB           | 50 MB            |
 
 ### Monitoring
 
@@ -1246,7 +1248,7 @@ familyEvents.emit('family:validated', familyData);
 
 ### Diagramme de séquence : Validation d'un dossier
 
-```
+```txt
 Utilisateur     Sheet       editHandler    driveService   contactService   Cache
     │             │              │               │               │            │
     │  Change     │              │               │               │            │
@@ -1256,13 +1258,13 @@ Utilisateur     Sheet       editHandler    driveService   contactService   Cache
     │             │<─────────────│               │               │            │
     │             │              │               │               │            │
     │             │              │  organize     │               │            │
-    │             │              │  Documents ───┼─────────────>│            │
+    │             │              │  Documents ───┼──────────────>│            │
     │             │              │               │               │            │
     │             │              │               │   success     │            │
     │             │              │<──────────────┼───────────────│            │
     │             │              │               │               │            │
     │             │              │  sync         │               │            │
-    │             │              │  Contact ─────┼───────────────┼──────────>│
+    │             │              │  Contact ─────┼────────────────┼──────────>│
     │             │              │               │               │            │
     │             │              │               │               │  success   │
     │             │              │<──────────────┼───────────────┼────────────│
@@ -1271,16 +1273,16 @@ Utilisateur     Sheet       editHandler    driveService   contactService   Cache
     │             │  Comment <───│               │               │            │
     │             │              │               │               │            │
     │             │              │  clear        │               │            │
-    │             │              │  Cache ───────┼───────────────┼────────────┼─────>│
-    │             │              │               │               │            │      │
-    │             │              │               │               │            │<─────│
+    │             │              │  Cache ───────┼───────────────────────────>│
+    │             │              │               │               │            │
+    │             │              │               │               │<───────────│
     │   ✓         │              │               │               │            │
     │<────────────┼──────────────│               │               │            │
 ```
 
 ### Diagramme d'état : Cycle de vie d'un dossier
 
-```
+```txt
                     ┌──────────┐
                     │  Soumis  │
                     └────┬─────┘

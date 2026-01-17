@@ -1,24 +1,28 @@
 /**
- * @file src/handlers/editHandler.js (ENHANCED WITH HOUSEHOLD VALIDATION)
- * @description Handle onEdit triggers with household validation
+ * @file src/handlers/editHandler.js (ENHANCED v2.0)
+ * @description Handle onEdit triggers with household validation + Archive/Reject contact handling
  */
 
 /**
  * Handle edit events on Famille sheet
- * ENHANCED: Validate household composition
  */
-function onEdit(e) {
+function onEditHandler(e) {
     try {
         const sheet = e.range.getSheet();
 
         if (sheet.getName() !== CONFIG.SHEETS.FAMILLE) {
+            logInfo(`L'edition ignorée sur la feuille: ${sheet.getName()}`);
             return;
         }
 
         const row = e.range.getRow();
         const col = e.range.getColumn();
 
+        logInfo(`Edition détectée à la ligne ${row}, colonne ${col}`);
         if (row === 1) return;
+
+        const data = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
+        const familyId = safeGetColumn(data, OUTPUT_COLUMNS.ID);
 
         logInfo(`Processing family ${familyId} at row ${row}...`);
 
@@ -32,22 +36,30 @@ function onEdit(e) {
             const newStatus = e.value;
             const oldStatus = e.oldValue;
 
+            // Handle ARCHIVED status
             if (newStatus === CONFIG.STATUS.ARCHIVED) {
                 handleArchiveStatus(sheet, row);
                 return;
             }
 
+            // Handle REJECTED status
+            if (newStatus === CONFIG.STATUS.REJECTED) {
+                handleRejectedStatus(sheet, row);
+                return;
+            }
+
+            // Handle VALIDATED status
             if (newStatus === CONFIG.STATUS.VALIDATED) {
-                const criticite = sheet.getRange(row, OUTPUT_COLUMNS.CRITICITE + 1).getValue();
-                let quartierId = sheet.getRange(row, OUTPUT_COLUMNS.ID_QUARTIER + 1).getValue();
+                const criticite = safeGetColumn(data, OUTPUT_COLUMNS.CRITICITE);
+                let quartierId = safeGetColumn(data, OUTPUT_COLUMNS.ID_QUARTIER);
 
                 // Get zakat and sadaqa values
-                const zakatElFitr = sheet.getRange(row, OUTPUT_COLUMNS.ZAKAT_EL_FITR + 1).getValue();
-                const sadaqa = sheet.getRange(row, OUTPUT_COLUMNS.SADAQA + 1).getValue();
+                const zakatElFitr = safeGetColumn(data, OUTPUT_COLUMNS.ZAKAT_EL_FITR);
+                const sadaqa = safeGetColumn(data, OUTPUT_COLUMNS.SADAQA);
 
                 // Get household composition
-                const nombreAdulte = parseInt(sheet.getRange(row, OUTPUT_COLUMNS.NOMBRE_ADULTE + 1).getValue()) || 0;
-                const nombreEnfant = parseInt(sheet.getRange(row, OUTPUT_COLUMNS.NOMBRE_ENFANT + 1).getValue()) || 0;
+                const nombreAdulte = parseInt(safeGetColumn(data, OUTPUT_COLUMNS.NOMBRE_ADULTE, 0)) || 0;
+                const nombreEnfant = parseInt(safeGetColumn(data, OUTPUT_COLUMNS.NOMBRE_ENFANT, 0)) || 0;
 
                 // VALIDATION 1: Check household composition
                 const householdValidation = validateHouseholdComposition(nombreAdulte, nombreEnfant);
@@ -120,7 +132,7 @@ function onEdit(e) {
                 if (!quartierId) {
                     logInfo(`Attempting to auto-resolve quartier for row ${row}`);
 
-                    const adresse = sheet.getRange(row, OUTPUT_COLUMNS.ADRESSE + 1).getValue();
+                    const adresse = safeGetColumn(data, OUTPUT_COLUMNS.ADRESSE);
 
                     if (!adresse) {
                         const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
@@ -136,10 +148,10 @@ function onEdit(e) {
                         return;
                     }
 
-                    const addressParts = adresse.split(',').map(p => p.trim());
-                    const address = addressParts[0] || '';
-                    const postalCode = addressParts[1] ? addressParts[1].match(/\d{5}/)?.[0] : '';
-                    const city = addressParts[2] || addressParts[1]?.replace(/\d{5}/, '').trim() || '';
+                    const addressParts = parseAddressComponents(adresse);
+                    const address = addressParts.street || '';
+                    const postalCode = addressParts.postalCode || '';
+                    const city = addressParts.city || '';
 
                     if (!address || !postalCode || !city) {
                         const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
@@ -249,20 +261,21 @@ function onEdit(e) {
 }
 
 /**
- * NEW: Handle household composition edits
+ * Handle household composition edits
  */
 function handleHouseholdCompositionEdit(sheet, row, col, e) {
     try {
         const newValue = parseInt(e.value) || 0;
+        const data = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
 
         // Get the other household value
         let nombreAdulte, nombreEnfant;
 
         if (col === OUTPUT_COLUMNS.NOMBRE_ADULTE + 1) {
             nombreAdulte = newValue;
-            nombreEnfant = parseInt(sheet.getRange(row, OUTPUT_COLUMNS.NOMBRE_ENFANT + 1).getValue()) || 0;
+            nombreEnfant = parseInt(safeGetColumn(data, OUTPUT_COLUMNS.NOMBRE_ENFANT, 0)) || 0;
         } else {
-            nombreAdulte = parseInt(sheet.getRange(row, OUTPUT_COLUMNS.NOMBRE_ADULTE + 1).getValue()) || 0;
+            nombreAdulte = parseInt(safeGetColumn(data, OUTPUT_COLUMNS.NOMBRE_ADULTE, 0)) || 0;
             nombreEnfant = newValue;
         }
 
@@ -300,37 +313,156 @@ function handleHouseholdCompositionEdit(sheet, row, col, e) {
 }
 
 /**
- * Handle archive status - delete contact
+ * NEW: Handle rejected status - create/update contact with Rejeté label
+ */
+function handleRejectedStatus(sheet, row) {
+    try {
+        const data = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
+        const familyId = safeGetColumn(data, OUTPUT_COLUMNS.ID);
+
+        logInfo(`Processing rejected status for family ${familyId} at row ${row}`);
+
+        // Check if contact exists
+        const existingContact = findContactByFamilyId(familyId);
+
+        if (existingContact) {
+            // Contact exists - update labels
+            const updateResult = updateContactLabelsForStatus(familyId, 'Rejeté');
+            appendSheetComment(sheet, row, '🚫', 'Marqué comme Rejeté');
+
+            if (updateResult.success) {
+                logInfo(`Contact labels updated successfully for rejected family: ${familyId}`);
+                appendSheetComment(sheet, row, '🏷️', 'Labels Google Contact mis à jour: Rejeté');
+            } else {
+                logError(`Failed to update contact labels for family: ${familyId}`, updateResult.error);
+                appendSheetComment(sheet, row, '⚠️', `Échec mise à jour labels: ${updateResult.error}`);
+            }
+        } else {
+            // Contact doesn't exist - create it with Rejeté label
+            logInfo(`Creating new contact for rejected family: ${familyId}`);
+
+            const rawPhone = String(safeGetColumn(data, OUTPUT_COLUMNS.TELEPHONE, ''));
+            const rawPhoneBis = String(safeGetColumn(data, OUTPUT_COLUMNS.TELEPHONE_BIS, ''));
+
+            const familyData = {
+                id: familyId,
+                nom: safeGetColumn(data, OUTPUT_COLUMNS.NOM),
+                prenom: safeGetColumn(data, OUTPUT_COLUMNS.PRENOM),
+                email: safeGetColumn(data, OUTPUT_COLUMNS.EMAIL),
+                telephone: rawPhone,
+                phoneBis: rawPhoneBis,
+                adresse: safeGetColumn(data, OUTPUT_COLUMNS.ADRESSE),
+                idQuartier: safeGetColumn(data, OUTPUT_COLUMNS.ID_QUARTIER),
+                nombreAdulte: parseInt(safeGetColumn(data, OUTPUT_COLUMNS.NOMBRE_ADULTE, 0)) || 0,
+                nombreEnfant: parseInt(safeGetColumn(data, OUTPUT_COLUMNS.NOMBRE_ENFANT, 0)) || 0,
+                criticite: parseInt(safeGetColumn(data, OUTPUT_COLUMNS.CRITICITE, 0)) || 0,
+                zakatElFitr: safeGetColumn(data, OUTPUT_COLUMNS.ZAKAT_EL_FITR) === true,
+                sadaqa: safeGetColumn(data, OUTPUT_COLUMNS.SADAQA) === true,
+                langue: safeGetColumn(data, OUTPUT_COLUMNS.LANGUE, CONFIG.LANGUAGES.FR),
+                seDeplace: safeGetColumn(data, OUTPUT_COLUMNS.SE_DEPLACE) === true
+            };
+
+            const createResult = createContactWithStatusLabel(familyData, 'Rejeté');
+
+            if (createResult.success) {
+                logInfo(`Contact created successfully for rejected family: ${familyId}`);
+                appendSheetComment(sheet, row, '🚫', 'Marqué comme Rejeté');
+                appendSheetComment(sheet, row, '📞', 'Contact créé avec label: Rejeté');
+            } else {
+                logError(`Failed to create contact for rejected family: ${familyId}`, createResult.error);
+                appendSheetComment(sheet, row, '🚫', 'Marqué comme Rejeté');
+                appendSheetComment(sheet, row, '⚠️', `Échec création contact: ${createResult.error}`);
+            }
+        }
+
+        const nom = safeGetColumn(data, OUTPUT_COLUMNS.NOM);
+        const prenom = safeGetColumn(data, OUTPUT_COLUMNS.PRENOM);
+
+        notifyAdmin(
+            '🚫 Famille rejetée',
+            `ID: ${familyId}\nNom: ${nom} ${prenom}\nContact: ${existingContact ? 'Mis à jour' : 'Créé'}`
+        );
+
+    } catch (error) {
+        logError('Failed to process rejected status', error);
+        appendSheetComment(sheet, row, '❌', `Erreur traitement rejet: ${error.toString()}`);
+    }
+}
+
+/**
+ * Handle archive status - create/update contact with Archivé label
  */
 function handleArchiveStatus(sheet, row) {
     try {
         const data = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
-        const familyId = data[OUTPUT_COLUMNS.ID];
+        const familyId = safeGetColumn(data, OUTPUT_COLUMNS.ID);
 
         logInfo(`Processing archive for family ${familyId} at row ${row}`);
 
-        const deleteResult = deleteContactForArchivedFamily(familyId);
-        appendSheetComment(sheet, row, '🗄️', 'Archivé');
+        // Check if contact exists
+        const existingContact = findContactByFamilyId(familyId);
 
-        if (deleteResult.success) {
-            logInfo(`Contact deleted successfully for archived family: ${familyId}`);
-            appendSheetComment(sheet, row, '📞', 'Contact Google supprimé');
+        if (existingContact) {
+            // Contact exists - update labels
+            const updateResult = updateContactLabelsForStatus(familyId, 'Archivé');
+            appendSheetComment(sheet, row, '🗄️', 'Archivé');
+
+            if (updateResult.success) {
+                logInfo(`Contact labels updated successfully for archived family: ${familyId}`);
+                appendSheetComment(sheet, row, '🏷️', 'Labels Google Contact mis à jour: Archivé');
+            } else {
+                logError(`Failed to update contact labels for family: ${familyId}`, updateResult.error);
+                appendSheetComment(sheet, row, '⚠️', `Échec mise à jour labels: ${updateResult.error}`);
+            }
         } else {
-            logError(`Failed to delete contact for family: ${familyId}`, deleteResult.error);
-            appendSheetComment(sheet, row, '⚠️', `Échec suppression contact: ${deleteResult.error}`);
+            // Contact doesn't exist - create it with Archivé label
+            logInfo(`Creating new contact for archived family: ${familyId}`);
+
+            const rawPhone = String(safeGetColumn(data, OUTPUT_COLUMNS.TELEPHONE, ''));
+            const rawPhoneBis = String(safeGetColumn(data, OUTPUT_COLUMNS.TELEPHONE_BIS, ''));
+
+            const familyData = {
+                id: familyId,
+                nom: safeGetColumn(data, OUTPUT_COLUMNS.NOM),
+                prenom: safeGetColumn(data, OUTPUT_COLUMNS.PRENOM),
+                email: safeGetColumn(data, OUTPUT_COLUMNS.EMAIL),
+                telephone: rawPhone,
+                phoneBis: rawPhoneBis,
+                adresse: safeGetColumn(data, OUTPUT_COLUMNS.ADRESSE),
+                idQuartier: safeGetColumn(data, OUTPUT_COLUMNS.ID_QUARTIER),
+                nombreAdulte: parseInt(safeGetColumn(data, OUTPUT_COLUMNS.NOMBRE_ADULTE, 0)) || 0,
+                nombreEnfant: parseInt(safeGetColumn(data, OUTPUT_COLUMNS.NOMBRE_ENFANT, 0)) || 0,
+                criticite: parseInt(safeGetColumn(data, OUTPUT_COLUMNS.CRITICITE, 0)) || 0,
+                zakatElFitr: safeGetColumn(data, OUTPUT_COLUMNS.ZAKAT_EL_FITR) === true,
+                sadaqa: safeGetColumn(data, OUTPUT_COLUMNS.SADAQA) === true,
+                langue: safeGetColumn(data, OUTPUT_COLUMNS.LANGUE, CONFIG.LANGUAGES.FR),
+                seDeplace: safeGetColumn(data, OUTPUT_COLUMNS.SE_DEPLACE) === true
+            };
+
+            const createResult = createContactWithStatusLabel(familyData, 'Archivé');
+
+            if (createResult.success) {
+                logInfo(`Contact created successfully for archived family: ${familyId}`);
+                appendSheetComment(sheet, row, '🗄️', 'Archivé');
+                appendSheetComment(sheet, row, '📞', 'Contact créé avec label: Archivé');
+            } else {
+                logError(`Failed to create contact for archived family: ${familyId}`, createResult.error);
+                appendSheetComment(sheet, row, '🗄️', 'Archivé');
+                appendSheetComment(sheet, row, '⚠️', `Échec création contact: ${createResult.error}`);
+            }
         }
+
+        const nom = safeGetColumn(data, OUTPUT_COLUMNS.NOM);
+        const prenom = safeGetColumn(data, OUTPUT_COLUMNS.PRENOM);
 
         notifyAdmin(
             '🗄️ Famille archivée',
-            `ID: ${familyId}\nNom: ${data[OUTPUT_COLUMNS.NOM]} ${data[OUTPUT_COLUMNS.PRENOM]}\nContact supprimé: ${deleteResult.success ? 'Oui' : 'Non'}`
+            `ID: ${familyId}\nNom: ${nom} ${prenom}\nContact: ${existingContact ? 'Mis à jour' : 'Créé'}`
         );
 
     } catch (error) {
         logError('Failed to process archive status', error);
-
-        const comment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
-        const newComment = addComment(comment, formatComment('❌', `Erreur archivage: ${error.toString()}`));
-        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
+        appendSheetComment(sheet, row, '❌', `Erreur archivage: ${error.toString()}`);
     }
 }
 
@@ -343,9 +475,9 @@ function processValidatedFamily(sheet, row) {
 
         const data = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
 
-        const familyId = data[OUTPUT_COLUMNS.ID];
-        const identityUrls = data[OUTPUT_COLUMNS.IDENTITE];
-        const aidesEtatUrls = data[OUTPUT_COLUMNS.AIDES_ETAT];
+        const familyId = safeGetColumn(data, OUTPUT_COLUMNS.ID);
+        const identityUrls = safeGetColumn(data, OUTPUT_COLUMNS.IDENTITE);
+        const aidesEtatUrls = safeGetColumn(data, OUTPUT_COLUMNS.AIDES_ETAT);
 
         const identityIds = extractFileIds(identityUrls);
         const aidesEtatIds = extractFileIds(aidesEtatUrls);
@@ -367,25 +499,25 @@ function processValidatedFamily(sheet, row) {
             logInfo(`Documents organized for family: ${familyId}`);
         }
 
-        const rawPhone = String(data[OUTPUT_COLUMNS.TELEPHONE] || '');
-        const rawPhoneBis = String(data[OUTPUT_COLUMNS.TELEPHONE_BIS] || '');
+        const rawPhone = String(safeGetColumn(data, OUTPUT_COLUMNS.TELEPHONE, ''));
+        const rawPhoneBis = String(safeGetColumn(data, OUTPUT_COLUMNS.TELEPHONE_BIS, ''));
 
         const familyData = {
             id: familyId,
-            nom: data[OUTPUT_COLUMNS.NOM],
-            prenom: data[OUTPUT_COLUMNS.PRENOM],
-            email: data[OUTPUT_COLUMNS.EMAIL],
+            nom: safeGetColumn(data, OUTPUT_COLUMNS.NOM),
+            prenom: safeGetColumn(data, OUTPUT_COLUMNS.PRENOM),
+            email: safeGetColumn(data, OUTPUT_COLUMNS.EMAIL),
             telephone: rawPhone,
             phoneBis: rawPhoneBis,
-            adresse: data[OUTPUT_COLUMNS.ADRESSE],
-            idQuartier: data[OUTPUT_COLUMNS.ID_QUARTIER],
-            nombreAdulte: parseInt(data[OUTPUT_COLUMNS.NOMBRE_ADULTE]) || 0,
-            nombreEnfant: parseInt(data[OUTPUT_COLUMNS.NOMBRE_ENFANT]) || 0,
-            criticite: parseInt(data[OUTPUT_COLUMNS.CRITICITE]) || 0,
-            zakatElFitr: data[OUTPUT_COLUMNS.ZAKAT_EL_FITR] === true,
-            sadaqa: data[OUTPUT_COLUMNS.SADAQA] === true,
-            langue: data[OUTPUT_COLUMNS.LANGUE] || CONFIG.LANGUAGES.FR,
-            seDeplace: data[OUTPUT_COLUMNS.SE_DEPLACE] === true
+            adresse: safeGetColumn(data, OUTPUT_COLUMNS.ADRESSE),
+            idQuartier: safeGetColumn(data, OUTPUT_COLUMNS.ID_QUARTIER),
+            nombreAdulte: parseInt(safeGetColumn(data, OUTPUT_COLUMNS.NOMBRE_ADULTE, 0)) || 0,
+            nombreEnfant: parseInt(safeGetColumn(data, OUTPUT_COLUMNS.NOMBRE_ENFANT, 0)) || 0,
+            criticite: parseInt(safeGetColumn(data, OUTPUT_COLUMNS.CRITICITE, 0)) || 0,
+            zakatElFitr: safeGetColumn(data, OUTPUT_COLUMNS.ZAKAT_EL_FITR) === true,
+            sadaqa: safeGetColumn(data, OUTPUT_COLUMNS.SADAQA) === true,
+            langue: safeGetColumn(data, OUTPUT_COLUMNS.LANGUE, CONFIG.LANGUAGES.FR),
+            seDeplace: safeGetColumn(data, OUTPUT_COLUMNS.SE_DEPLACE) === true
         };
 
         const contactResult = syncFamilyContact(familyData);
@@ -399,9 +531,6 @@ function processValidatedFamily(sheet, row) {
         }
     } catch (error) {
         logError('Failed to process validated family', error);
-
-        const comment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
-        const newComment = addComment(comment, formatComment('❌', `Erreur de traitement: ${error.toString()}`));
-        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(newComment);
+        appendSheetComment(sheet, row, '❌', `Erreur de traitement: ${error.toString()}`);
     }
 }

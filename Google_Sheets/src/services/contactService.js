@@ -490,3 +490,332 @@ function updateContactGroups(contactResourceName, idQuartier) {
         logError('Failed to update contact groups', e);
     }
 }
+
+/**
+ * Update contact labels for Archive/Reject status
+ * Removes all existing labels and adds the appropriate status label
+ * 
+ * @param {string} familyId - Family ID
+ * @param {string} statusLabel - Label to add ('Archivé' or 'Rejeté')
+ * @returns {Object} {success: boolean, message?: string, error?: string}
+ */
+function updateContactLabelsForStatus(familyId, statusLabel) {
+    try {
+        logInfo(`Updating contact labels for family ${familyId} to: ${statusLabel}`);
+
+        // Find the contact
+        const contact = findContactByFamilyId(familyId);
+
+        if (!contact) {
+            logWarning(`No contact found for family ${familyId}, skipping label update`);
+            return { 
+                success: true, 
+                message: 'No contact to update' 
+            };
+        }
+
+        const contactResourceName = contact.resourceName;
+
+        // Get current memberships
+        const currentMemberships = contact.memberships || [];
+        
+        // Get or create the status label group
+        const statusGroupId = getOrCreateContactGroup(statusLabel);
+        
+        if (!statusGroupId) {
+            return { 
+                success: false, 
+                error: `Failed to create/get group: ${statusLabel}` 
+            };
+        }
+
+        // Collect all contact group memberships to remove
+        const groupsToRemove = [];
+        
+        currentMemberships.forEach(membership => {
+            if (membership.contactGroupMembership) {
+                const groupResourceName = membership.contactGroupMembership.contactGroupResourceName;
+                
+                // Don't remove the status group if it's already the right one
+                if (groupResourceName !== statusGroupId) {
+                    groupsToRemove.push(groupResourceName);
+                }
+            }
+        });
+
+        // Remove all existing labels
+        if (groupsToRemove.length > 0) {
+            logInfo(`Removing ${groupsToRemove.length} existing labels from contact ${familyId}`);
+            
+            groupsToRemove.forEach(groupId => {
+                try {
+                    People.ContactGroups.Members.modify({
+                        resourceName: groupId,
+                        modifyContactGroupMembersRequest: {
+                            resourceNamesToRemove: [contactResourceName]
+                        }
+                    });
+                    logInfo(`Removed contact from group: ${groupId}`);
+                } catch (e) {
+                    logWarning(`Failed to remove contact from group ${groupId}`, e);
+                }
+            });
+            
+            // Small delay to avoid rate limits
+            Utilities.sleep(500);
+        }
+
+        // Check if contact already has the status label
+        const hasStatusLabel = currentMemberships.some(m =>
+            m.contactGroupMembership &&
+            m.contactGroupMembership.contactGroupResourceName === statusGroupId
+        );
+
+        // Add the status label if not already present
+        if (!hasStatusLabel) {
+            People.ContactGroups.Members.modify({
+                resourceName: statusGroupId,
+                modifyContactGroupMembersRequest: {
+                    resourceNamesToAdd: [contactResourceName]
+                }
+            });
+            logInfo(`Added contact to ${statusLabel} group`);
+        } else {
+            logInfo(`Contact already has ${statusLabel} label`);
+        }
+
+        return { 
+            success: true, 
+            message: `Labels updated: ${statusLabel}` 
+        };
+
+    } catch (e) {
+        logError(`Failed to update contact labels for family ${familyId}`, e);
+        return { 
+            success: false, 
+            error: e.toString() 
+        };
+    }
+}
+
+/**
+ * NEW FUNCTION: Add this to the END of src/services/contactService.js
+ * Update contact labels for archived/rejected families
+ */
+
+/**
+ * Update contact labels for Archive/Reject status
+ * Removes all existing labels and adds the appropriate status label
+ * 
+ * @param {string} familyId - Family ID
+ * @param {string} statusLabel - Label to add ('Archivé' or 'Rejeté')
+ * @returns {Object} {success: boolean, message?: string, error?: string}
+ */
+function updateContactLabelsForStatus(familyId, statusLabel) {
+    try {
+        logInfo(`Updating contact labels for family ${familyId} to: ${statusLabel}`);
+
+        // Find the contact
+        const contact = findContactByFamilyId(familyId);
+
+        if (!contact) {
+            logWarning(`No contact found for family ${familyId}, skipping label update`);
+            return { 
+                success: true, 
+                message: 'No contact to update' 
+            };
+        }
+
+        const contactResourceName = contact.resourceName;
+
+        // Get current memberships
+        const currentMemberships = contact.memberships || [];
+        
+        // Get or create the status label group
+        const statusGroupId = getOrCreateContactGroup(statusLabel);
+        
+        if (!statusGroupId) {
+            return { 
+                success: false, 
+                error: `Failed to create/get group: ${statusLabel}` 
+            };
+        }
+
+        // Collect all contact group memberships to remove
+        const groupsToRemove = [];
+        
+        currentMemberships.forEach(membership => {
+            if (membership.contactGroupMembership) {
+                const groupResourceName = membership.contactGroupMembership.contactGroupResourceName;
+                
+                // Don't remove the status group if it's already the right one
+                if (groupResourceName !== statusGroupId) {
+                    groupsToRemove.push(groupResourceName);
+                }
+            }
+        });
+
+        // Remove all existing labels
+        if (groupsToRemove.length > 0) {
+            logInfo(`Removing ${groupsToRemove.length} existing labels from contact ${familyId}`);
+            
+            groupsToRemove.forEach(groupId => {
+                try {
+                    People.ContactGroups.Members.modify({
+                        resourceName: groupId,
+                        modifyContactGroupMembersRequest: {
+                            resourceNamesToRemove: [contactResourceName]
+                        }
+                    });
+                    logInfo(`Removed contact from group: ${groupId}`);
+                } catch (e) {
+                    logWarning(`Failed to remove contact from group ${groupId}`, e);
+                }
+            });
+            
+            // Small delay to avoid rate limits
+            Utilities.sleep(500);
+        }
+
+        // Check if contact already has the status label
+        const hasStatusLabel = currentMemberships.some(m =>
+            m.contactGroupMembership &&
+            m.contactGroupMembership.contactGroupResourceName === statusGroupId
+        );
+
+        // Add the status label if not already present
+        if (!hasStatusLabel) {
+            People.ContactGroups.Members.modify({
+                resourceName: statusGroupId,
+                modifyContactGroupMembersRequest: {
+                    resourceNamesToAdd: [contactResourceName]
+                }
+            });
+            logInfo(`Added contact to ${statusLabel} group`);
+        } else {
+            logInfo(`Contact already has ${statusLabel} label`);
+        }
+
+        return { 
+            success: true, 
+            message: `Labels updated: ${statusLabel}` 
+        };
+
+    } catch (e) {
+        logError(`Failed to update contact labels for family ${familyId}`, e);
+        return { 
+            success: false, 
+            error: e.toString() 
+        };
+    }
+}
+
+/**
+ * NEW: Create contact with specific status label (for Archive/Reject on new families)
+ * 
+ * @param {Object} familyData - Family data
+ * @param {string} statusLabel - Label to add ('Archivé' or 'Rejeté')
+ * @returns {Object} {success: boolean, error?: string}
+ */
+function createContactWithStatusLabel(familyData, statusLabel) {
+    try {
+        const { id, nom, prenom, email, telephone, phoneBis, adresse, idQuartier } = familyData;
+
+        logInfo(`Creating contact for family ${id} with status label: ${statusLabel}`);
+
+        const contactResource = {
+            names: [{
+                givenName: `${id} -`,  // ID in givenName
+                middleName: prenom || '',
+                familyName: nom || '',
+                displayName: `${id} - ${prenom} ${nom}`
+            }],
+            userDefined: buildCustomFields(familyData)  // No ID in custom fields
+        };
+
+        if (telephone) {
+            const normalizedPhone = normalizePhone(telephone);
+
+            if (!normalizedPhone) {
+                logWarning(`Invalid phone for family ${id}: ${telephone}`);
+            } else {
+                contactResource.phoneNumbers = [{
+                    value: normalizedPhone,
+                    type: 'mobile'
+                }];
+
+                if (phoneBis) {
+                    const normalizedPhoneBis = normalizePhone(phoneBis);
+                    if (normalizedPhoneBis) {
+                        contactResource.phoneNumbers.push({
+                            value: normalizedPhoneBis,
+                            type: 'home'
+                        });
+                    }
+                }
+            }
+        }
+
+        if (email && isValidEmail(email)) {
+            contactResource.emailAddresses = [{
+                value: email,
+                type: 'home'
+            }];
+        }
+
+        // CRITICAL FIX: Use canonical address formatting
+        if (adresse) {
+            const parsedAddress = parseAddressComponents(adresse);
+
+            // Store in canonical format using formatAddressCanonical
+            const canonicalAddress = formatAddressCanonical(
+                parsedAddress.street,
+                parsedAddress.postalCode,
+                parsedAddress.city
+            );
+
+            logInfo(`Storing contact address in canonical format: "${canonicalAddress}"`);
+
+            contactResource.addresses = [{
+                streetAddress: parsedAddress.street,
+                city: parsedAddress.city,
+                postalCode: parsedAddress.postalCode,
+                country: parsedAddress.country,
+                type: 'home',
+                formattedValue: canonicalAddress  // Store canonical format
+            }];
+        }
+
+        // Add ONLY the status label (Archivé or Rejeté)
+        const memberships = [];
+        const statusGroupId = getOrCreateContactGroup(statusLabel);
+        
+        if (statusGroupId) {
+            memberships.push({
+                contactGroupMembership: {
+                    contactGroupResourceName: statusGroupId
+                }
+            });
+        }
+
+        if (memberships.length > 0) {
+            contactResource.memberships = memberships;
+        }
+
+        logInfo(`Creating contact for family ${id} with label: ${statusLabel}`, {
+            displayName: `${id} - ${prenom} ${nom}`,
+            phone: contactResource.phoneNumbers ? contactResource.phoneNumbers[0].value : 'none',
+            email: email || 'none',
+            label: statusLabel
+        });
+
+        People.People.createContact(contactResource);
+        logInfo(`Contact created with ${statusLabel} label for family: ${id}`);
+
+        return { success: true };
+
+    } catch (e) {
+        logError('Failed to create contact with status label', e);
+        return { success: false, error: e.toString() };
+    }
+}

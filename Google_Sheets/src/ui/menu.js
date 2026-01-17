@@ -6,7 +6,7 @@
 /**
  * Create custom menu on spreadsheet open
  */
-function onOpen() {
+function onOpenHandler() {
     const ui = SpreadsheetApp.getUi();
     ui.createMenu('📦 Gestion Familles')
         .addItem('➕ Nouvelle Famille / ✏️ Mise à Jour', 'showManualEntryDialog')

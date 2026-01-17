@@ -2,15 +2,15 @@
 
 ## Table des matières
 
-- [Vue d'ensemble](#vue-densemble)
-- [Déploiement](#déploiement)
-- [Authentification](#authentification)
-- [Endpoints](#endpoints)
-- [Exemples d'utilisation](#exemples-dutilisation)
-- [Gestion du cache](#gestion-du-cache)
-- [Codes d'erreur](#codes-derreur)
-- [Limites et quotas](#limites-et-quotas)
-- [Bonnes pratiques](#bonnes-pratiques)
+- [Vue d'ensemble](#-vue-densemble)
+- [Déploiement](#-déploiement)
+- [Authentification](#-authentification)
+- [Endpoints](#-endpoints)
+- [Exemples d'utilisation](#-exemples-dutilisation)
+- [Gestion du cache](#-gestion-du-cache)
+- [Codes d'erreur](#-codes-derreur)
+- [Limites et quotas](#-limites-et-quotas)
+- [Bonnes pratiques](#-bonnes-pratiques)
 
 ---
 

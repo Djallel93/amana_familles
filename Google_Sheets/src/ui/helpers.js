@@ -1,7 +1,6 @@
 /**
  * @file src/ui/helpers.js (UPDATED v3.0)
  * @description UI helpers using canonical address formatting
- * CHANGE: Uses formatAddressCanonical throughout
  */
 
 /**
@@ -177,48 +176,6 @@ function processManualEntry(formData) {
 }
 
 /**
- * Update manual entry if form is submitted later with documents
- * @param {string} manualFamilyId - Family ID
- * @param {Object} formData - Form data
- * @param {Object} docValidation - Document validation result
- * @returns {boolean} Success status
- */
-function updateManualEntryWithFormData(manualFamilyId, formData, docValidation) {
-    const result = findFamilyRowById(manualFamilyId);
-
-    if (!result) {
-        logError('Manual family not found', manualFamilyId);
-        return false;
-    }
-
-    const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
-    if (!sheet) return false;
-
-    const targetRow = result.row;
-
-    if (docValidation.identityIds.length > 0) {
-        updateFamilyCell(targetRow - 1, OUTPUT_COLUMNS.IDENTITE, formatDocumentLinks(docValidation.identityIds));
-    }
-
-    if (docValidation.aidesEtatIds.length > 0) {
-        updateFamilyCell(targetRow - 1, OUTPUT_COLUMNS.AIDES_ETAT, formatDocumentLinks(docValidation.aidesEtatIds));
-    }
-
-    organizeDocuments(
-        manualFamilyId,
-        docValidation.identityIds,
-        docValidation.aidesEtatIds,
-        docValidation.resourceIds
-    );
-
-    appendSheetComment(sheet, targetRow, '📄', 'Documents ajoutés via formulaire');
-    autoFormatFamilleRow(sheet, targetRow);
-
-    logInfo('Manual entry updated with form documents', manualFamilyId);
-    return true;
-}
-
-/**
  * Include file content (for HTML templates)
  * @param {string} filename - Filename to include
  * @returns {string} File content
@@ -352,12 +309,35 @@ function writeToFamilySheet(formData, options = {}) {
  * @param {Object} addressValidation - Address validation result
  * @param {Object} docValidation - Document validation result
  */
+
 function updateExistingFamily(duplicate, formData, addressValidation, docValidation) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
     if (!sheet) return;
 
     const row = duplicate.row;
     const existingData = duplicate.data;
+    
+    // CHECK: If family is rejected, ignore update completely
+    const currentStatus = safeGetColumn(existingData, OUTPUT_COLUMNS.ETAT_DOSSIER);
+    
+    if (currentStatus === CONFIG.STATUS.REJECTED) {
+        logInfo(`Family ${duplicate.id} is rejected - ignoring update from form submission`);
+        appendSheetComment(
+            sheet,
+            row,
+            '🚫',
+            'Tentative de mise à jour ignorée: famille rejetée'
+        );
+        
+        notifyAdmin(
+            '🚫 Mise à jour ignorée - Famille rejetée',
+            `ID: ${duplicate.id}\nNom: ${safeGetColumn(existingData, OUTPUT_COLUMNS.NOM)} ${safeGetColumn(existingData, OUTPUT_COLUMNS.PRENOM)}\nStatut: Rejeté\n\nLa tentative de mise à jour via formulaire a été ignorée car la famille est rejetée.`
+        );
+        
+        return;
+    }
+
+    // If not rejected, proceed with normal update
     const changes = [];
 
     const newPhone = normalizePhone(formData.phone);
@@ -414,11 +394,15 @@ function updateExistingFamily(duplicate, formData, addressValidation, docValidat
         }
     }
 
-    appendSheetComment(sheet, row, '🔄', `Mis à jour: ${changes.join(', ')}`);
-    updateFamilyCell(row, OUTPUT_COLUMNS.ETAT_DOSSIER, CONFIG.STATUS.IN_PROGRESS);
-    autoFormatFamilleRow(sheet, row);
+    if (changes.length > 0) {
+        appendSheetComment(sheet, row, '🔄', `Mis à jour: ${changes.join(', ')}`);
+        updateFamilyCell(row, OUTPUT_COLUMNS.ETAT_DOSSIER, CONFIG.STATUS.IN_PROGRESS);
+        autoFormatFamilleRow(sheet, row);
 
-    logInfo('Family updated', { id: duplicate.id, changes });
+        logInfo('Family updated', { id: duplicate.id, changes });
+    } else {
+        logInfo('No changes detected for family', { id: duplicate.id });
+    }
 }
 
 /**
@@ -465,4 +449,43 @@ function getAllFamilyIds(filterValidated = false) {
     }
 
     return families;
+}
+
+/**
+ * ADD THIS FUNCTION to src/ui/helpers.js (anywhere in the file)
+ * Check if a family is already rejected
+ */
+
+/**
+ * Check if family ID exists and is rejected
+ * @param {string} familyId - Family ID to check
+ * @returns {Object} {isRejected: boolean, row?: number}
+ */
+function isFamilyRejected(familyId) {
+    try {
+        const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
+        if (!sheet) {
+            return { isRejected: false };
+        }
+
+        const data = sheet.getDataRange().getValues();
+
+        for (let i = 1; i < data.length; i++) {
+            const row = data[i];
+            const rowId = safeGetColumn(row, OUTPUT_COLUMNS.ID);
+            const status = safeGetColumn(row, OUTPUT_COLUMNS.ETAT_DOSSIER);
+
+            if (rowId == familyId && status === CONFIG.STATUS.REJECTED) {
+                return {
+                    isRejected: true,
+                    row: i + 1
+                };
+            }
+        }
+
+        return { isRejected: false };
+    } catch (error) {
+        logError('Error checking if family is rejected', error);
+        return { isRejected: false };
+    }
 }

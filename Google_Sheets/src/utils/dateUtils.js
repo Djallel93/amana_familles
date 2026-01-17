@@ -1,7 +1,6 @@
 /**
  * @file src/utils/dateUtils.js (UPDATED v2.0)
  * @description Date formatting utilities - YYYY-MM-DD HH:MM:SS format
- * CHANGE: Removed addComment() - now handled by appendSheetComment()
  */
 
 /**
