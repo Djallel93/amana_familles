@@ -1,11 +1,8 @@
 /**
- * @file src/handlers/editHandler.js (ENHANCED v2.0)
+ * @file src/handlers/editHandler.js
  * @description Handle onEdit triggers with household validation + Archive/Reject contact handling
  */
 
-/**
- * Handle edit events on Famille sheet
- */
 function onEditHandler(e) {
     try {
         const sheet = e.range.getSheet();
@@ -26,7 +23,6 @@ function onEditHandler(e) {
 
         logInfo(`Processing family ${familyId} at row ${row}...`);
 
-        // Handle household composition changes (columns NOMBRE_ADULTE or NOMBRE_ENFANT)
         if (col === OUTPUT_COLUMNS.NOMBRE_ADULTE + 1 || col === OUTPUT_COLUMNS.NOMBRE_ENFANT + 1) {
             handleHouseholdCompositionEdit(sheet, row, col, e);
             return;
@@ -36,32 +32,26 @@ function onEditHandler(e) {
             const newStatus = e.value;
             const oldStatus = e.oldValue;
 
-            // Handle ARCHIVED status
             if (newStatus === CONFIG.STATUS.ARCHIVED) {
                 handleArchiveStatus(sheet, row);
                 return;
             }
 
-            // Handle REJECTED status
             if (newStatus === CONFIG.STATUS.REJECTED) {
                 handleRejectedStatus(sheet, row);
                 return;
             }
 
-            // Handle VALIDATED status
             if (newStatus === CONFIG.STATUS.VALIDATED) {
                 const criticite = safeGetColumn(data, OUTPUT_COLUMNS.CRITICITE);
                 let quartierId = safeGetColumn(data, OUTPUT_COLUMNS.ID_QUARTIER);
 
-                // Get zakat and sadaqa values
                 const zakatElFitr = safeGetColumn(data, OUTPUT_COLUMNS.ZAKAT_EL_FITR);
                 const sadaqa = safeGetColumn(data, OUTPUT_COLUMNS.SADAQA);
 
-                // Get household composition
                 const nombreAdulte = parseInt(safeGetColumn(data, OUTPUT_COLUMNS.NOMBRE_ADULTE, 0)) || 0;
                 const nombreEnfant = parseInt(safeGetColumn(data, OUTPUT_COLUMNS.NOMBRE_ENFANT, 0)) || 0;
 
-                // VALIDATION 1: Check household composition
                 const householdValidation = validateHouseholdComposition(nombreAdulte, nombreEnfant);
                 if (!householdValidation.isValid) {
                     const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
@@ -78,7 +68,6 @@ function onEditHandler(e) {
                     return;
                 }
 
-                // VALIDATION 2: Check criticite
                 if (!criticite || criticite === 0) {
                     const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
                     sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatusValue);
@@ -110,7 +99,6 @@ function onEditHandler(e) {
                     return;
                 }
 
-                // VALIDATION 3: Check zakat_el_fitr and sadaqa
                 if (zakatElFitr !== true && sadaqa !== true) {
                     const oldStatusValue = oldStatus || CONFIG.STATUS.IN_PROGRESS;
                     sheet.getRange(row, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(oldStatusValue);
@@ -128,7 +116,6 @@ function onEditHandler(e) {
                     return;
                 }
 
-                // VALIDATION 4: Check quartier (auto-resolve if missing)
                 if (!quartierId) {
                     logInfo(`Attempting to auto-resolve quartier for row ${row}`);
 
@@ -229,7 +216,6 @@ function onEditHandler(e) {
                     return;
                 }
 
-                // All validations passed - process validated family
                 processValidatedFamily(sheet, row);
             }
         }
@@ -260,15 +246,11 @@ function onEditHandler(e) {
     }
 }
 
-/**
- * Handle household composition edits
- */
 function handleHouseholdCompositionEdit(sheet, row, col, e) {
     try {
         const newValue = parseInt(e.value) || 0;
         const data = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
 
-        // Get the other household value
         let nombreAdulte, nombreEnfant;
 
         if (col === OUTPUT_COLUMNS.NOMBRE_ADULTE + 1) {
@@ -279,11 +261,9 @@ function handleHouseholdCompositionEdit(sheet, row, col, e) {
             nombreEnfant = newValue;
         }
 
-        // Validate household composition
         const validation = validateHouseholdComposition(nombreAdulte, nombreEnfant);
 
         if (!validation.isValid) {
-            // Revert to old value
             sheet.getRange(row, col).setValue(parseInt(e.oldValue) || 0);
 
             SpreadsheetApp.getUi().alert(
@@ -297,7 +277,6 @@ function handleHouseholdCompositionEdit(sheet, row, col, e) {
             return;
         }
 
-        // Add comment about household 
         const fieldName = col === OUTPUT_COLUMNS.NOMBRE_ADULTE + 1 ? 'Adultes' : 'Enfants';
         appendSheetComment(
             sheet,
@@ -312,9 +291,6 @@ function handleHouseholdCompositionEdit(sheet, row, col, e) {
     }
 }
 
-/**
- * NEW: Handle rejected status - create/update contact with Rejeté label
- */
 function handleRejectedStatus(sheet, row) {
     try {
         const data = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
@@ -322,11 +298,9 @@ function handleRejectedStatus(sheet, row) {
 
         logInfo(`Processing rejected status for family ${familyId} at row ${row}`);
 
-        // Check if contact exists
         const existingContact = findContactByFamilyId(familyId);
 
         if (existingContact) {
-            // Contact exists - update labels
             const updateResult = updateContactLabelsForStatus(familyId, 'Rejeté');
             appendSheetComment(sheet, row, '🚫', 'Marqué comme Rejeté');
 
@@ -338,7 +312,6 @@ function handleRejectedStatus(sheet, row) {
                 appendSheetComment(sheet, row, '⚠️', `Échec mise à jour labels: ${updateResult.error}`);
             }
         } else {
-            // Contact doesn't exist - create it with Rejeté label
             logInfo(`Creating new contact for rejected family: ${familyId}`);
 
             const rawPhone = String(safeGetColumn(data, OUTPUT_COLUMNS.TELEPHONE, ''));
@@ -389,9 +362,6 @@ function handleRejectedStatus(sheet, row) {
     }
 }
 
-/**
- * Handle archive status - create/update contact with Archivé label
- */
 function handleArchiveStatus(sheet, row) {
     try {
         const data = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
@@ -399,11 +369,9 @@ function handleArchiveStatus(sheet, row) {
 
         logInfo(`Processing archive for family ${familyId} at row ${row}`);
 
-        // Check if contact exists
         const existingContact = findContactByFamilyId(familyId);
 
         if (existingContact) {
-            // Contact exists - update labels
             const updateResult = updateContactLabelsForStatus(familyId, 'Archivé');
             appendSheetComment(sheet, row, '🗄️', 'Archivé');
 
@@ -415,7 +383,6 @@ function handleArchiveStatus(sheet, row) {
                 appendSheetComment(sheet, row, '⚠️', `Échec mise à jour labels: ${updateResult.error}`);
             }
         } else {
-            // Contact doesn't exist - create it with Archivé label
             logInfo(`Creating new contact for archived family: ${familyId}`);
 
             const rawPhone = String(safeGetColumn(data, OUTPUT_COLUMNS.TELEPHONE, ''));
@@ -466,9 +433,6 @@ function handleArchiveStatus(sheet, row) {
     }
 }
 
-/**
- * Process family when status changes to "Validé"
- */
 function processValidatedFamily(sheet, row) {
     try {
         logInfo(`Processing validated family at row ${row}`);

@@ -1,11 +1,8 @@
 /**
  * @file src/services/contactService.js
- * @description Contact management
+ * @description Contact management with FIXED label update logic
  */
 
-/**
- * Create or update Google contact for a family
- */
 function syncFamilyContact(familyData) {
     try {
         const { id, nom, prenom, email, telephone, adresse } = familyData;
@@ -30,9 +27,6 @@ function syncFamilyContact(familyData) {
     }
 }
 
-/**
- * Delete contact for archived family
- */
 function deleteContactForArchivedFamily(familyId) {
     try {
         const contact = findContactByFamilyId(familyId);
@@ -52,10 +46,6 @@ function deleteContactForArchivedFamily(familyId) {
     }
 }
 
-/**
- * Find contact by family ID parsed from givenName (first name)
- * Format: "{ID} -" in givenName field
- */
 function findContactByFamilyId(familyId) {
     try {
         const searchId = String(familyId);
@@ -73,7 +63,6 @@ function findContactByFamilyId(familyId) {
                 if (contact.names && contact.names.length > 0) {
                     const givenName = contact.names[0].givenName || '';
 
-                    // Parse ID from givenName format: "{ID} -"
                     const match = givenName.match(/^(\d+)\s*-/);
                     if (match && match[1] === searchId) {
                         logInfo(`Contact found for family ${searchId}`);
@@ -92,16 +81,23 @@ function findContactByFamilyId(familyId) {
     }
 }
 
-/**
- * Get or create contact group
- */
 function getOrCreateContactGroup(groupName) {
     const cache = CacheService.getScriptCache();
     const cacheKey = `contact_group_${groupName}`;
 
     const cachedGroupId = cache.get(cacheKey);
     if (cachedGroupId) {
-        return cachedGroupId;
+        try {
+            People.ContactGroups.get(cachedGroupId);
+            return cachedGroupId;
+        } catch (e) {
+            if (e.message && e.message.includes('404')) {
+                logInfo(`Cached group ${groupName} no longer exists, clearing cache`);
+                cache.remove(cacheKey);
+            } else {
+                logWarning(`Error validating cached group ${groupName}`, e);
+            }
+        }
     }
 
     try {
@@ -113,6 +109,7 @@ function getOrCreateContactGroup(groupName) {
             for (const group of groups.contactGroups) {
                 if (group.name === groupName) {
                     cache.put(cacheKey, group.resourceName, CONFIG.CACHE.VERY_LONG);
+                    logInfo(`Found existing contact group: ${groupName}`);
                     return group.resourceName;
                 }
             }
@@ -135,9 +132,6 @@ function getOrCreateContactGroup(groupName) {
     }
 }
 
-/**
- * Get location group name based on quartier
- */
 function getLocationGroupName(quartierId) {
     if (!quartierId) {
         return null;
@@ -159,9 +153,6 @@ function getLocationGroupName(quartierId) {
     }
 }
 
-/**
- * Build custom fields for a contact (WITHOUT ID - ID is in givenName)
- */
 function buildCustomFields(familyData) {
     const {
         criticite = 0,
@@ -173,11 +164,9 @@ function buildCustomFields(familyData) {
         seDeplace = false
     } = familyData;
 
-    // Format current timestamp for last update
     const lastUpdate = formatDateTime(new Date());
 
     const customFields = [
-        // ID REMOVED - now in givenName
         { key: 'Criticité', value: String(criticite) },
         { key: 'Adultes', value: String(nombreAdulte) },
         { key: 'Enfants', value: String(nombreEnfant) },
@@ -191,13 +180,8 @@ function buildCustomFields(familyData) {
     return customFields;
 }
 
-/**
- * Parse family metadata from contact custom fields (ID parsed from givenName separately)
- * CRITICAL FIX: Properly parse 'Oui'/'Non' strings to boolean
- */
 function parseFamilyMetadataFromContact(userDefined) {
     const metadata = {
-        // familyId NOT parsed here - parsed from givenName instead
         criticite: 0,
         nombreAdulte: 0,
         nombreEnfant: 0,
@@ -217,7 +201,6 @@ function parseFamilyMetadataFromContact(userDefined) {
         const value = field.value;
 
         switch (key) {
-            // ID REMOVED - no longer in custom fields
             case 'Criticité':
                 metadata.criticite = parseInt(value) || 0;
                 break;
@@ -228,18 +211,15 @@ function parseFamilyMetadataFromContact(userDefined) {
                 metadata.nombreEnfant = parseInt(value) || 0;
                 break;
             case 'Zakat El Fitr':
-                // CRITICAL FIX: Properly handle 'Oui'/'Non' strings
                 metadata.zakatElFitr = parseOuiNonToBoolean(value);
                 break;
             case 'Sadaqa':
-                // CRITICAL FIX: Properly handle 'Oui'/'Non' strings
                 metadata.sadaqa = parseOuiNonToBoolean(value);
                 break;
             case 'Langue':
                 metadata.langue = value;
                 break;
             case 'Se Déplace':
-                // CRITICAL FIX: Properly handle 'Oui'/'Non' strings
                 metadata.seDeplace = parseOuiNonToBoolean(value);
                 break;
             case 'Dernière mise à jour':
@@ -251,51 +231,35 @@ function parseFamilyMetadataFromContact(userDefined) {
     return metadata;
 }
 
-/**
- * CRITICAL NEW FUNCTION: Parse 'Oui'/'Non' strings to boolean
- * Handles French, English, Arabic, and boolean values
- * 
- * @param {*} value - Value to parse (string, boolean, or other)
- * @returns {boolean} - Parsed boolean value
- */
 function parseOuiNonToBoolean(value) {
-    // If already boolean, return as-is
     if (typeof value === 'boolean') {
         return value;
     }
 
-    // Convert to lowercase string for comparison
     const strValue = String(value).trim().toLowerCase();
 
-    // Check for positive values (French, English, Arabic)
     if (strValue === 'oui' || strValue === 'yes' || strValue === 'نعم') {
         return true;
     }
 
-    // Check for negative values (French, English, Arabic)
     if (strValue === 'non' || strValue === 'no' || strValue === 'لا') {
         return false;
     }
 
-    // Default to false for unrecognized values
     return false;
 }
 
-/**
- * Create new contact with complete structure (ID in givenName)
- * UPDATED: Uses formatAddressCanonical for consistent address storage
- */
 function createContact(familyData) {
     const { id, nom, prenom, email, telephone, phoneBis, adresse, idQuartier } = familyData;
 
     const contactResource = {
         names: [{
-            givenName: `${id} -`,  // ID in givenName
+            givenName: `${id} -`,
             middleName: prenom || '',
             familyName: nom || '',
             displayName: `${id} - ${prenom} ${nom}`
         }],
-        userDefined: buildCustomFields(familyData)  // No ID in custom fields
+        userDefined: buildCustomFields(familyData)
     };
 
     if (telephone) {
@@ -328,11 +292,9 @@ function createContact(familyData) {
         }];
     }
 
-    // CRITICAL FIX: Use canonical address formatting
     if (adresse) {
         const parsedAddress = parseAddressComponents(adresse);
 
-        // Store in canonical format using formatAddressCanonical
         const canonicalAddress = formatAddressCanonical(
             parsedAddress.street,
             parsedAddress.postalCode,
@@ -347,7 +309,7 @@ function createContact(familyData) {
             postalCode: parsedAddress.postalCode,
             country: parsedAddress.country,
             type: 'home',
-            formattedValue: canonicalAddress  // Store canonical format
+            formattedValue: canonicalAddress
         }];
     }
 
@@ -393,13 +355,9 @@ function createContact(familyData) {
     logInfo(`Contact created with custom fields for family: ${id}`);
 }
 
-/**
- * Update contact groups
- */
 function updateContactGroups(contactResourceName, idQuartier) {
     try {
-        const contact = People.People.get({
-            resourceName: contactResourceName,
+        const contact = People.People.get(contactResourceName, {
             personFields: 'memberships'
         });
 
@@ -424,9 +382,7 @@ function updateContactGroups(contactResourceName, idQuartier) {
                 }
 
                 try {
-                    const groupInfo = People.ContactGroups.get({
-                        resourceName: groupResourceName
-                    });
+                    const groupInfo = People.ContactGroups.get(groupResourceName);
 
                     if (groupInfo.name && locationGroupPattern.test(groupInfo.name)) {
                         oldLocationGroups.push(groupResourceName);
@@ -441,11 +397,8 @@ function updateContactGroups(contactResourceName, idQuartier) {
         if (oldLocationGroups.length > 0) {
             oldLocationGroups.forEach(oldGroupId => {
                 try {
-                    People.ContactGroups.Members.modify({
-                        resourceName: oldGroupId,
-                        modifyContactGroupMembersRequest: {
-                            resourceNamesToRemove: [contactResourceName]
-                        }
+                    People.ContactGroups.Members.modify(oldGroupId, {
+                        resourceNamesToRemove: [contactResourceName]
                     });
                     logInfo(`Contact removed from old location group: ${oldGroupId}`);
                 } catch (e) {
@@ -460,11 +413,8 @@ function updateContactGroups(contactResourceName, idQuartier) {
         );
 
         if (!hasMainGroup && mainGroupId) {
-            People.ContactGroups.Members.modify({
-                resourceName: mainGroupId,
-                modifyContactGroupMembersRequest: {
-                    resourceNamesToAdd: [contactResourceName]
-                }
+            People.ContactGroups.Members.modify(mainGroupId, {
+                resourceNamesToAdd: [contactResourceName]
             });
             logInfo(`Contact added to main group: Famille dans le besoin`);
         }
@@ -476,11 +426,8 @@ function updateContactGroups(contactResourceName, idQuartier) {
             );
 
             if (!hasNewLocationGroup) {
-                People.ContactGroups.Members.modify({
-                    resourceName: newLocationGroupId,
-                    modifyContactGroupMembersRequest: {
-                        resourceNamesToAdd: [contactResourceName]
-                    }
+                People.ContactGroups.Members.modify(newLocationGroupId, {
+                    resourceNamesToAdd: [contactResourceName]
                 });
                 logInfo(`Contact added to new location group: ${newLocationGroupName}`);
             }
@@ -491,232 +438,91 @@ function updateContactGroups(contactResourceName, idQuartier) {
     }
 }
 
-/**
- * Update contact labels for Archive/Reject status
- * Removes all existing labels and adds the appropriate status label
- * 
- * @param {string} familyId - Family ID
- * @param {string} statusLabel - Label to add ('Archivé' or 'Rejeté')
- * @returns {Object} {success: boolean, message?: string, error?: string}
- */
 function updateContactLabelsForStatus(familyId, statusLabel) {
     try {
         logInfo(`Updating contact labels for family ${familyId} to: ${statusLabel}`);
 
-        // Find the contact
         const contact = findContactByFamilyId(familyId);
 
         if (!contact) {
             logWarning(`No contact found for family ${familyId}, skipping label update`);
-            return { 
-                success: true, 
-                message: 'No contact to update' 
+            return {
+                success: true,
+                message: 'No contact to update'
             };
         }
 
         const contactResourceName = contact.resourceName;
 
-        // Get current memberships
-        const currentMemberships = contact.memberships || [];
-        
-        // Get or create the status label group
-        const statusGroupId = getOrCreateContactGroup(statusLabel);
-        
+        let statusGroupId = getOrCreateContactGroup(statusLabel);
+
         if (!statusGroupId) {
-            return { 
-                success: false, 
-                error: `Failed to create/get group: ${statusLabel}` 
+            logError(`Failed to get/create group: ${statusLabel}`);
+            return {
+                success: false,
+                error: `Failed to create/get group: ${statusLabel}`
             };
         }
 
-        // Collect all contact group memberships to remove
-        const groupsToRemove = [];
-        
-        currentMemberships.forEach(membership => {
-            if (membership.contactGroupMembership) {
-                const groupResourceName = membership.contactGroupMembership.contactGroupResourceName;
-                
-                // Don't remove the status group if it's already the right one
-                if (groupResourceName !== statusGroupId) {
-                    groupsToRemove.push(groupResourceName);
-                }
-            }
-        });
+        logInfo(`Updating contact ${contactResourceName} to have only status label: ${statusLabel}`);
 
-        // Remove all existing labels
-        if (groupsToRemove.length > 0) {
-            logInfo(`Removing ${groupsToRemove.length} existing labels from contact ${familyId}`);
-            
-            groupsToRemove.forEach(groupId => {
-                try {
-                    People.ContactGroups.Members.modify({
-                        resourceName: groupId,
-                        modifyContactGroupMembersRequest: {
-                            resourceNamesToRemove: [contactResourceName]
+        try {
+            const updatedContact = {
+                resourceName: contactResourceName,
+                memberships: [
+                    {
+                        contactGroupMembership: {
+                            contactGroupResourceName: statusGroupId
                         }
-                    });
-                    logInfo(`Removed contact from group: ${groupId}`);
-                } catch (e) {
-                    logWarning(`Failed to remove contact from group ${groupId}`, e);
+                    }
+                ],
+                etag: contact.etag
+            };
+
+            People.People.updateContact(
+                updatedContact,
+                contactResourceName,
+                {
+                    updatePersonFields: 'memberships',
+                    personFields: 'memberships'
                 }
-            });
-            
-            // Small delay to avoid rate limits
-            Utilities.sleep(500);
+            );
+
+            logInfo(`Successfully updated contact ${familyId} with ${statusLabel} label`);
+
+            return {
+                success: true,
+                message: `Labels updated: ${statusLabel}`
+            };
+
+        } catch (e) {
+            logError(`Failed to update contact memberships for family ${familyId}`, e);
+            return {
+                success: false,
+                error: `Failed to update contact: ${e.toString()}`
+            };
         }
-
-        // Check if contact already has the status label
-        const hasStatusLabel = currentMemberships.some(m =>
-            m.contactGroupMembership &&
-            m.contactGroupMembership.contactGroupResourceName === statusGroupId
-        );
-
-        // Add the status label if not already present
-        if (!hasStatusLabel) {
-            People.ContactGroups.Members.modify({
-                resourceName: statusGroupId,
-                modifyContactGroupMembersRequest: {
-                    resourceNamesToAdd: [contactResourceName]
-                }
-            });
-            logInfo(`Added contact to ${statusLabel} group`);
-        } else {
-            logInfo(`Contact already has ${statusLabel} label`);
-        }
-
-        return { 
-            success: true, 
-            message: `Labels updated: ${statusLabel}` 
-        };
 
     } catch (e) {
         logError(`Failed to update contact labels for family ${familyId}`, e);
-        return { 
-            success: false, 
-            error: e.toString() 
+        return {
+            success: false,
+            error: e.toString()
         };
     }
 }
 
-/**
- * NEW FUNCTION: Add this to the END of src/services/contactService.js
- * Update contact labels for archived/rejected families
- */
-
-/**
- * Update contact labels for Archive/Reject status
- * Removes all existing labels and adds the appropriate status label
- * 
- * @param {string} familyId - Family ID
- * @param {string} statusLabel - Label to add ('Archivé' or 'Rejeté')
- * @returns {Object} {success: boolean, message?: string, error?: string}
- */
-function updateContactLabelsForStatus(familyId, statusLabel) {
+function clearContactGroupCache(groupName) {
     try {
-        logInfo(`Updating contact labels for family ${familyId} to: ${statusLabel}`);
-
-        // Find the contact
-        const contact = findContactByFamilyId(familyId);
-
-        if (!contact) {
-            logWarning(`No contact found for family ${familyId}, skipping label update`);
-            return { 
-                success: true, 
-                message: 'No contact to update' 
-            };
-        }
-
-        const contactResourceName = contact.resourceName;
-
-        // Get current memberships
-        const currentMemberships = contact.memberships || [];
-        
-        // Get or create the status label group
-        const statusGroupId = getOrCreateContactGroup(statusLabel);
-        
-        if (!statusGroupId) {
-            return { 
-                success: false, 
-                error: `Failed to create/get group: ${statusLabel}` 
-            };
-        }
-
-        // Collect all contact group memberships to remove
-        const groupsToRemove = [];
-        
-        currentMemberships.forEach(membership => {
-            if (membership.contactGroupMembership) {
-                const groupResourceName = membership.contactGroupMembership.contactGroupResourceName;
-                
-                // Don't remove the status group if it's already the right one
-                if (groupResourceName !== statusGroupId) {
-                    groupsToRemove.push(groupResourceName);
-                }
-            }
-        });
-
-        // Remove all existing labels
-        if (groupsToRemove.length > 0) {
-            logInfo(`Removing ${groupsToRemove.length} existing labels from contact ${familyId}`);
-            
-            groupsToRemove.forEach(groupId => {
-                try {
-                    People.ContactGroups.Members.modify({
-                        resourceName: groupId,
-                        modifyContactGroupMembersRequest: {
-                            resourceNamesToRemove: [contactResourceName]
-                        }
-                    });
-                    logInfo(`Removed contact from group: ${groupId}`);
-                } catch (e) {
-                    logWarning(`Failed to remove contact from group ${groupId}`, e);
-                }
-            });
-            
-            // Small delay to avoid rate limits
-            Utilities.sleep(500);
-        }
-
-        // Check if contact already has the status label
-        const hasStatusLabel = currentMemberships.some(m =>
-            m.contactGroupMembership &&
-            m.contactGroupMembership.contactGroupResourceName === statusGroupId
-        );
-
-        // Add the status label if not already present
-        if (!hasStatusLabel) {
-            People.ContactGroups.Members.modify({
-                resourceName: statusGroupId,
-                modifyContactGroupMembersRequest: {
-                    resourceNamesToAdd: [contactResourceName]
-                }
-            });
-            logInfo(`Added contact to ${statusLabel} group`);
-        } else {
-            logInfo(`Contact already has ${statusLabel} label`);
-        }
-
-        return { 
-            success: true, 
-            message: `Labels updated: ${statusLabel}` 
-        };
-
+        const cache = CacheService.getScriptCache();
+        const cacheKey = `contact_group_${groupName}`;
+        cache.remove(cacheKey);
+        logInfo(`Cleared cache for contact group: ${groupName}`);
     } catch (e) {
-        logError(`Failed to update contact labels for family ${familyId}`, e);
-        return { 
-            success: false, 
-            error: e.toString() 
-        };
+        logWarning(`Failed to clear cache for group ${groupName}`, e);
     }
 }
 
-/**
- * NEW: Create contact with specific status label (for Archive/Reject on new families)
- * 
- * @param {Object} familyData - Family data
- * @param {string} statusLabel - Label to add ('Archivé' or 'Rejeté')
- * @returns {Object} {success: boolean, error?: string}
- */
 function createContactWithStatusLabel(familyData, statusLabel) {
     try {
         const { id, nom, prenom, email, telephone, phoneBis, adresse, idQuartier } = familyData;
@@ -725,12 +531,12 @@ function createContactWithStatusLabel(familyData, statusLabel) {
 
         const contactResource = {
             names: [{
-                givenName: `${id} -`,  // ID in givenName
+                givenName: `${id} -`,
                 middleName: prenom || '',
                 familyName: nom || '',
                 displayName: `${id} - ${prenom} ${nom}`
             }],
-            userDefined: buildCustomFields(familyData)  // No ID in custom fields
+            userDefined: buildCustomFields(familyData)
         };
 
         if (telephone) {
@@ -763,11 +569,9 @@ function createContactWithStatusLabel(familyData, statusLabel) {
             }];
         }
 
-        // CRITICAL FIX: Use canonical address formatting
         if (adresse) {
             const parsedAddress = parseAddressComponents(adresse);
 
-            // Store in canonical format using formatAddressCanonical
             const canonicalAddress = formatAddressCanonical(
                 parsedAddress.street,
                 parsedAddress.postalCode,
@@ -782,14 +586,13 @@ function createContactWithStatusLabel(familyData, statusLabel) {
                 postalCode: parsedAddress.postalCode,
                 country: parsedAddress.country,
                 type: 'home',
-                formattedValue: canonicalAddress  // Store canonical format
+                formattedValue: canonicalAddress
             }];
         }
 
-        // Add ONLY the status label (Archivé or Rejeté)
         const memberships = [];
         const statusGroupId = getOrCreateContactGroup(statusLabel);
-        
+
         if (statusGroupId) {
             memberships.push({
                 contactGroupMembership: {
