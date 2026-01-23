@@ -79,7 +79,7 @@ function buildFamilyRow(formData, options = {}) {
     row[OUTPUT_COLUMNS.SADAQA] = sadaqa;
     row[OUTPUT_COLUMNS.NOMBRE_ADULTE] = parseInt(formData.nombreAdulte) || 0;
     row[OUTPUT_COLUMNS.NOMBRE_ENFANT] = parseInt(formData.nombreEnfant) || 0;
-    row[OUTPUT_COLUMNS.ADRESSE] = formatAddressFromComponents(
+    row[OUTPUT_COLUMNS.ADRESSE] = formatAddressCanonical(
         formData.address,
         formData.postalCode,
         formData.city

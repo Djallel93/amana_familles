@@ -1,14 +1,9 @@
 /**
- * @file src/core/utils.js (UPDATED v6.0)
+ * @file src/core/utils.js (FIXED v6.1)
  * @description Utilitaires principaux - CANONICAL ADDRESS FORMATTING
- * CHANGE: Single source of truth for address formatting to fix sync issues
+ * FIX: Added type coercion to string before trim() in formatAddressCanonical
  */
 
-/**
- * Parse une adresse complète en composants (CANONIQUE - fonction unique)
- * @param {string} fullAddress - Adresse complète
- * @returns {Object} {street, postalCode, city, country}
- */
 function parseAddressComponents(fullAddress) {
     if (!fullAddress) {
         return { street: '', postalCode: '', city: '', country: 'France' };
@@ -37,64 +32,41 @@ function parseAddressComponents(fullAddress) {
     return { street, postalCode, city, country };
 }
 
-/**
- * CANONICAL ADDRESS FORMATTER - Used EVERYWHERE (Sheet, Contact, Comparison)
- * This is the SINGLE SOURCE OF TRUTH for address formatting
- * Format: "Street, PostalCode City" (NO comma between postal code and city)
- * 
- * @param {string} street - Rue
- * @param {string} postalCode - Code postal
- * @param {string} city - Ville
- * @returns {string} Adresse formatée canoniquement
- */
 function formatAddressCanonical(street, postalCode, city) {
     const parts = [];
 
-    if (street && street.trim()) {
-        parts.push(street.trim());
+    const streetStr = street ? String(street).trim() : '';
+    if (streetStr) {
+        parts.push(streetStr);
     }
 
-    // CRITICAL: PostalCode and City go together WITHOUT comma between them
     const cityPart = [];
-    if (postalCode && postalCode.trim()) {
-        cityPart.push(postalCode.trim());
+    const postalCodeStr = postalCode ? String(postalCode).trim() : '';
+    const cityStr = city ? String(city).trim() : '';
+
+    if (postalCodeStr) {
+        cityPart.push(postalCodeStr);
     }
-    if (city && city.trim()) {
-        cityPart.push(city.trim());
+    if (cityStr) {
+        cityPart.push(cityStr);
     }
 
     if (cityPart.length > 0) {
-        parts.push(cityPart.join(' ')); // Space, NOT comma
+        parts.push(cityPart.join(' '));
     }
 
     return parts.join(', ');
 }
 
-/**
- * DEPRECATED - Use formatAddressCanonical instead
- * Kept for backward compatibility, redirects to canonical version
- */
 function formatAddressFromComponents(street, postalCode, city) {
     return formatAddressCanonical(street, postalCode, city);
 }
 
-/**
- * Formate l'adresse pour le géocodage (ajoute France)
- * @param {string} address - Rue
- * @param {string} postalCode - Code postal
- * @param {string} city - Ville
- * @returns {string} Adresse complète avec France
- */
 function formatAddressForGeocoding(address, postalCode, city) {
     const formatted = formatAddressCanonical(address, postalCode, city);
     return formatted ? `${formatted}, France` : 'France';
 }
 
-/**
- * Normalise un numéro de téléphone français en format +33 X XX XX XX XX
- * @param {string} phone - Numéro à normaliser
- * @returns {string} Numéro normalisé
- */
 function normalizePhone(phone) {
     if (!phone) return '';
 
@@ -143,11 +115,6 @@ function normalizePhone(phone) {
     return `+33 ${localNumber[0]} ${localNumber.substring(1, 3)} ${localNumber.substring(3, 5)} ${localNumber.substring(5, 7)} ${localNumber.substring(7, 9)}`;
 }
 
-/**
- * Valide un numéro de téléphone français
- * @param {string} phone - Numéro à valider
- * @returns {boolean} Est valide
- */
 function isValidPhone(phone) {
     if (!phone) return false;
 
@@ -166,11 +133,6 @@ function isValidPhone(phone) {
     return false;
 }
 
-/**
- * Normalise un nom de champ (trim + apostrophes)
- * @param {string} fieldName - Nom du champ
- * @returns {string} Nom normalisé
- */
 function normalizeFieldName(fieldName) {
     if (!fieldName) return '';
 
@@ -179,23 +141,12 @@ function normalizeFieldName(fieldName) {
         .replace(/[\u2018\u2019]/g, "'");
 }
 
-/**
- * Valide le format d'un email
- * @param {string} email - Email à valider
- * @returns {boolean} Est valide
- */
 function isValidEmail(email) {
     if (!email) return false;
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return re.test(email);
 }
 
-/**
- * Parse une réponse de formulaire en objet standardisé
- * @param {Array} headers - Ligne d'en-têtes
- * @param {Array} values - Ligne de valeurs
- * @returns {Object} Données parsées
- */
 function parseFormResponse(headers, values) {
     const parsed = {};
 
@@ -212,11 +163,6 @@ function parseFormResponse(headers, values) {
     return parsed;
 }
 
-/**
- * Log avec timestamp et emoji
- * @param {string} message - Message
- * @param {*} [data=null] - Données optionnelles
- */
 function logInfo(message, data = null) {
     console.log(`[${formatDateTime()}] ℹ️ INFO: ${message}`);
     if (data) {
@@ -224,11 +170,6 @@ function logInfo(message, data = null) {
     }
 }
 
-/**
- * Log warning
- * @param {string} message - Message
- * @param {*} [data=null] - Données optionnelles
- */
 function logWarning(message, data = null) {
     console.warn(`[${formatDateTime()}] ⚠️ WARN: ${message}`);
     if (data) {
@@ -236,11 +177,6 @@ function logWarning(message, data = null) {
     }
 }
 
-/**
- * Log erreur
- * @param {string} message - Message
- * @param {*} [error=null] - Objet erreur
- */
 function logError(message, error = null) {
     console.error(`[${formatDateTime()}] ❌ ERREUR: ${message}`);
     if (error) {
@@ -248,21 +184,11 @@ function logError(message, error = null) {
     }
 }
 
-/**
- * Récupère une feuille par nom
- * @param {string} sheetName - Nom de la feuille
- * @returns {Sheet|null} Objet feuille ou null
- */
 function getSheetByName(sheetName) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     return ss.getSheetByName(sheetName);
 }
 
-/**
- * Vérifie si un fichier Drive existe
- * @param {string} fileId - ID du fichier
- * @returns {boolean} Existe
- */
 function fileExists(fileId) {
     try {
         DriveApp.getFileById(fileId);
@@ -272,12 +198,6 @@ function fileExists(fileId) {
     }
 }
 
-/**
- * Récupère ou crée un dossier
- * @param {Folder} parentFolder - Dossier parent
- * @param {string} folderName - Nom du dossier
- * @returns {Folder} Objet dossier
- */
 function getOrCreateFolder(parentFolder, folderName) {
     const folders = parentFolder.getFoldersByName(folderName);
 
@@ -288,11 +208,6 @@ function getOrCreateFolder(parentFolder, folderName) {
     return parentFolder.createFolder(folderName);
 }
 
-/**
- * Extrait les IDs de fichier depuis des URLs Drive
- * @param {string} urlString - URLs séparées par des virgules
- * @returns {Array<string>} Tableau d'IDs
- */
 function extractFileIds(urlString) {
     if (!urlString) return [];
 
@@ -311,13 +226,6 @@ function extractFileIds(urlString) {
     return fileIds;
 }
 
-/**
- * Cherche une famille en doublon (téléphone + nom ou email)
- * @param {string} phone - Téléphone
- * @param {string} lastName - Nom
- * @param {string} [email=null] - Email optionnel
- * @returns {Object} {exists: boolean, row?: number, id?: string, data?: Array}
- */
 function findDuplicateFamily(phone, lastName, email = null) {
     try {
         const normalizedPhone = normalizePhone(phone).replace(/[\s\(\)]/g, '');
@@ -376,12 +284,6 @@ function findDuplicateFamily(phone, lastName, email = null) {
     }
 }
 
-/**
- * Wrapper pour réessayer une opération
- * @param {Function} operation - Opération à réessayer
- * @param {number} [maxRetries=3] - Nombre max de tentatives
- * @returns {*} Résultat de l'opération
- */
 function retryOperation(operation, maxRetries = 3) {
     let lastError;
 
@@ -401,11 +303,6 @@ function retryOperation(operation, maxRetries = 3) {
     throw lastError;
 }
 
-/**
- * Notifie l'admin par email
- * @param {string} subject - Sujet
- * @param {string} message - Message
- */
 function notifyAdmin(subject, message) {
     try {
         const config = getScriptConfig();
@@ -458,13 +355,6 @@ function notifyAdmin(subject, message) {
     }
 }
 
-/**
- * Construit une URL avec paramètres
- * @param {string} baseUrl - URL de base
- * @param {string} action - Paramètre action
- * @param {Object} params - Paramètres additionnels
- * @returns {string} URL complète
- */
 function buildUrlWithParams(baseUrl, action, params) {
     const queryParams = ['action=' + encodeURIComponent(action)];
 
@@ -477,11 +367,6 @@ function buildUrlWithParams(baseUrl, action, params) {
     return baseUrl + '?' + queryParams.join('&');
 }
 
-/**
- * Récupère la dernière ligne vide d'une feuille
- * @param {Sheet} sheet - Objet feuille
- * @returns {number} Numéro de ligne vide
- */
 function getLastEmptyRow(sheet) {
     const data = sheet.getDataRange().getValues();
 
@@ -496,11 +381,6 @@ function getLastEmptyRow(sheet) {
     return 1;
 }
 
-/**
- * Vérifie si le consentement est refusé
- * @param {Object} formData - Données du formulaire
- * @returns {boolean} Consentement refusé
- */
 function isConsentRefused(formData) {
     const consent = formData.personalDataProtection || '';
 
