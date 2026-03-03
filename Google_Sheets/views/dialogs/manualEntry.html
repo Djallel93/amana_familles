@@ -123,7 +123,6 @@
     <div class="form-container">
         <h2>📝 Gestion Famille</h2>
 
-        <!-- Mode Toggle -->
         <div class="toggle-container">
             <div class="toggle-option active" id="modeInsert" onclick="setMode('insert')">
                 <span class="icon">➕</span>
@@ -138,7 +137,6 @@
         <div id="alertBox" class="alert"></div>
 
         <form id="familyForm">
-            <!-- 🆔 Dropdown ID Famille (only for update mode) -->
             <div class="form-group" id="familyIdGroup" style="display: none;">
                 <label class="required">Sélectionner une Famille</label>
                 <select id="familyId" name="familyId" onchange="loadFamilyData()">
@@ -149,7 +147,6 @@
                 </small>
             </div>
 
-            <!-- Informations Personnelles -->
             <div class="section-title">Informations Personnelles</div>
 
             <div class="form-group">
@@ -177,7 +174,6 @@
                 <input type="email" id="email" name="email" placeholder="Optionnel">
             </div>
 
-            <!-- Adresse -->
             <div class="section-title">Adresse</div>
 
             <div class="form-group">
@@ -195,7 +191,6 @@
                 <input type="text" id="city" name="city" required placeholder="Ex: Nantes">
             </div>
 
-            <!-- Composition du foyer -->
             <div class="section-title">Composition du Foyer</div>
 
             <div class="form-group">
@@ -208,7 +203,6 @@
                 <input type="number" id="nombreEnfant" name="nombreEnfant" min="0" required value="0">
             </div>
 
-            <!-- Se Déplace Checkbox -->
             <div class="checkbox-group">
                 <input type="checkbox" id="seDeplace" name="seDeplace">
                 <label for="seDeplace">
@@ -219,7 +213,6 @@
                 💡 Cocher si la famille peut venir chercher son colis si aucun bénévole n'est disponible
             </small>
 
-            <!-- NEW: Eligibility Section -->
             <div class="section-title">Priorité et Éligibilité</div>
 
             <div class="eligibility-container">
@@ -267,7 +260,6 @@
                 </small>
             </div>
 
-            <!-- Informations Complémentaires -->
             <div class="section-title">Informations Complémentaires (Optionnel)</div>
 
             <div class="form-group">
@@ -287,13 +279,11 @@
                     placeholder="Besoins particuliers, allergies, etc."></textarea>
             </div>
 
-            <!-- Buttons -->
             <div class="button-group">
                 <button type="button" class="btn-secondary" onclick="google.script.host.close()">Annuler</button>
                 <button type="submit" class="btn-primary" id="submitBtn">Enregistrer</button>
             </div>
 
-            <!-- Loading positioned below buttons -->
             <div id="loadingBox" class="loading-inline">
                 <div class="spinner"></div>
                 <p>Traitement en cours...</p>
@@ -304,6 +294,20 @@
     <script>
         let currentMode = 'insert';
         let allFamilies = [];
+        let originalAddressData = {};
+
+        function parseCanonicalAddress(canonical) {
+            if (!canonical) return { street: '', postalCode: '', city: '' };
+            const commaIndex = canonical.indexOf(',');
+            if (commaIndex === -1) return { street: canonical.trim(), postalCode: '', city: '' };
+            const street = canonical.substring(0, commaIndex).trim();
+            const rest = canonical.substring(commaIndex + 1).trim();
+            const postalMatch = rest.match(/^(\d{5})\s*(.*)/);
+            if (postalMatch) {
+                return { street, postalCode: postalMatch[1], city: postalMatch[2].trim() };
+            }
+            return { street, postalCode: '', city: rest };
+        }
 
         function loadFamiliesForMode(filterValidated) {
             google.script.run
@@ -320,7 +324,6 @@
         function populateFamilyDropdown() {
             const select = document.getElementById('familyId');
             select.innerHTML = '<option value="">-- Choisir une famille --</option>';
-
             allFamilies.forEach(family => {
                 const option = document.createElement('option');
                 option.value = family.id;
@@ -340,32 +343,32 @@
             }
 
             const family = JSON.parse(selectedOption.dataset.family);
+            const parsed = parseCanonicalAddress(family.adresse);
 
             document.getElementById('lastName').value = family.nom || '';
             document.getElementById('firstName').value = family.prenom || '';
             document.getElementById('phone').value = family.telephone || '';
+            document.getElementById('phoneBis').value = family.telephoneBis || '';
             document.getElementById('email').value = family.email || '';
+            document.getElementById('address').value = parsed.street;
+            document.getElementById('postalCode').value = parsed.postalCode;
+            document.getElementById('city').value = parsed.city;
             document.getElementById('nombreAdulte').value = family.nombreAdulte || 0;
             document.getElementById('nombreEnfant').value = family.nombreEnfant || 0;
             document.getElementById('seDeplace').checked = family.seDeplace || false;
             document.getElementById('zakatElFitr').checked = family.zakatElFitr || false;
             document.getElementById('sadaqa').checked = family.sadaqa || false;
-            document.getElementById('criticite').value = family.criticite || '';
+            document.getElementById('criticite').value = family.criticite !== undefined ? family.criticite : '';
             document.getElementById('langue').value = family.langue || 'Français';
             document.getElementById('circonstances').value = family.circonstances || '';
             document.getElementById('ressentit').value = family.ressentit || '';
             document.getElementById('specificites').value = family.specificites || '';
 
-            if (family.adresse) {
-                const addressParts = family.adresse.split(',');
-                if (addressParts.length >= 3) {
-                    document.getElementById('address').value = addressParts[0].trim();
-                    document.getElementById('postalCode').value = addressParts[1].trim();
-                    document.getElementById('city').value = addressParts[2].trim();
-                } else {
-                    document.getElementById('address').value = family.adresse;
-                }
-            }
+            originalAddressData = {
+                address: parsed.street,
+                postalCode: parsed.postalCode,
+                city: parsed.city
+            };
 
             showAlert('success', '✅ Données de la famille chargées');
         }
@@ -378,6 +381,7 @@
             document.getElementById('zakatElFitr').checked = false;
             document.getElementById('sadaqa').checked = false;
             document.getElementById('langue').value = 'Français';
+            originalAddressData = {};
         }
 
         function setMode(mode) {
@@ -385,7 +389,6 @@
 
             document.getElementById('modeInsert').classList.toggle('active', mode === 'insert');
             document.getElementById('modeUpdate').classList.toggle('active', mode === 'update');
-
             document.getElementById('familyIdGroup').style.display = mode === 'update' ? 'block' : 'none';
 
             if (mode === 'update') {
@@ -399,12 +402,12 @@
 
             requiredFields.forEach(fieldId => {
                 const field = document.getElementById(fieldId);
-                const label = document.getElementById(`label${fieldId.charAt(0).toUpperCase() + fieldId.slice(1)}`);
+                const labelId = 'label' + fieldId.charAt(0).toUpperCase() + fieldId.slice(1);
+                const label = document.getElementById(labelId);
 
                 if (mode === 'update') {
                     field.required = false;
                     label.classList.remove('required');
-
                     if (!label.querySelector('.field-optional')) {
                         const optional = document.createElement('span');
                         optional.className = 'field-optional';
@@ -414,30 +417,20 @@
                 } else {
                     field.required = true;
                     label.classList.add('required');
-
                     const optional = label.querySelector('.field-optional');
-                    if (optional) {
-                        optional.remove();
-                    }
+                    if (optional) optional.remove();
                 }
             });
 
-            if (mode === 'update') {
-                document.getElementById('familyId').required = true;
-            } else {
-                document.getElementById('familyId').required = false;
-                clearForm();
-            }
-
-            document.getElementById('submitBtn').textContent =
-                mode === 'insert' ? 'Enregistrer' : 'Mettre à Jour';
-
+            document.getElementById('familyId').required = mode === 'update';
+            document.getElementById('submitBtn').textContent = mode === 'insert' ? 'Enregistrer' : 'Mettre à Jour';
             document.getElementById('alertBox').style.display = 'none';
+
+            if (mode === 'insert') clearForm();
         }
 
         document.getElementById('familyForm').addEventListener('submit', function (e) {
             e.preventDefault();
-
             if (currentMode === 'update') {
                 handleUpdate();
             } else {
@@ -447,7 +440,6 @@
 
         function handleInsert() {
             const criticite = parseInt(document.getElementById('criticite').value);
-
             if (isNaN(criticite) || criticite < 0 || criticite > 5) {
                 showAlert('error', 'La criticité doit être entre 0 et 5');
                 return;
@@ -485,7 +477,6 @@
 
         function handleUpdate() {
             const familyId = document.getElementById('familyId').value;
-
             if (!familyId) {
                 showAlert('error', 'Veuillez sélectionner une famille');
                 return;
@@ -494,36 +485,48 @@
             const updateData = {};
             let hasData = false;
 
-            const fields = {
+            const textFields = {
                 lastName: 'lastName',
                 firstName: 'firstName',
                 phone: 'phone',
                 phoneBis: 'phoneBis',
                 email: 'email',
-                address: 'address',
-                postalCode: 'postalCode',
-                city: 'city',
-                nombreAdulte: 'nombreAdulte',
-                nombreEnfant: 'nombreEnfant',
                 circonstances: 'circonstances',
                 ressentit: 'ressentit',
                 specificites: 'specificites',
-                criticite: 'criticite',
                 langue: 'langue'
             };
 
-            Object.keys(fields).forEach(fieldId => {
-                const value = document.getElementById(fieldId).value;
-                if (value !== '' && value !== null) {
-                    updateData[fields[fieldId]] = fieldId === 'nombreAdulte' ||
-                        fieldId === 'nombreEnfant' ||
-                        fieldId === 'criticite'
-                        ? parseInt(value)
-                        : value.trim();
+            Object.keys(textFields).forEach(fieldId => {
+                const value = document.getElementById(fieldId).value.trim();
+                if (value !== '') {
+                    updateData[textFields[fieldId]] = value;
                     hasData = true;
                 }
             });
 
+            const numericFields = { nombreAdulte: 'nombreAdulte', nombreEnfant: 'nombreEnfant', criticite: 'criticite' };
+            Object.keys(numericFields).forEach(fieldId => {
+                const value = document.getElementById(fieldId).value;
+                if (value !== '') {
+                    updateData[numericFields[fieldId]] = parseInt(value);
+                    hasData = true;
+                }
+            });
+
+            const currentAddress = document.getElementById('address').value.trim();
+            const currentPostalCode = document.getElementById('postalCode').value.trim();
+            const currentCity = document.getElementById('city').value.trim();
+
+            const addressChanged = currentAddress !== originalAddressData.address ||
+                currentPostalCode !== originalAddressData.postalCode ||
+                currentCity !== originalAddressData.city;
+
+            if (addressChanged) {
+                if (currentAddress) { updateData.address = currentAddress; hasData = true; }
+                if (currentPostalCode) { updateData.postalCode = currentPostalCode; hasData = true; }
+                if (currentCity) { updateData.city = currentCity; hasData = true; }
+            }
 
             updateData.seDeplace = document.getElementById('seDeplace').checked;
             updateData.zakatElFitr = document.getElementById('zakatElFitr').checked;
@@ -560,11 +563,7 @@
                 alertBox.style.display = 'block';
                 alertBox.innerHTML = `<strong>✅ Succès!</strong><br>Famille enregistrée avec succès.<br>ID: <strong>${result.familyId}</strong><br>${result.quartierName ? 'Quartier: ' + result.quartierName : ''}<br>Criticité: ${result.criticite}<br>Langue: ${result.langue}<br>Zakat El Fitr: ${result.zakatElFitr ? 'Oui' : 'Non'}<br>Sadaqa: ${result.sadaqa ? 'Oui' : 'Non'}<br>Se Déplace: ${result.seDeplace ? 'Oui' : 'Non'}`;
                 clearForm();
-
-                setTimeout(() => {
-                    google.script.host.close();
-                }, 3000);
-
+                setTimeout(() => { google.script.host.close(); }, 3000);
             } else if (result.duplicate) {
                 alertBox.className = 'alert alert-warning';
                 alertBox.style.display = 'block';
@@ -585,11 +584,7 @@
                 alertBox.style.display = 'block';
                 alertBox.innerHTML = `<strong>✅ Mise à jour réussie!</strong><br>Famille ID: <strong>${result.familyId}</strong><br>Champs mis à jour: ${result.updatedFields.join(', ')}`;
                 clearForm();
-
-                setTimeout(() => {
-                    google.script.host.close();
-                }, 3000);
-
+                setTimeout(() => { google.script.host.close(); }, 3000);
             } else {
                 alertBox.className = 'alert alert-error';
                 alertBox.style.display = 'block';

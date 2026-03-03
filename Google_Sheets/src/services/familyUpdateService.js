@@ -1,11 +1,3 @@
-/**
- * @file src/services/familyUpdateService.js (ENHANCED WITH LANGUAGE SUPPORT)
- * @description Core family update functionality with language field
- */
-
-/**
- * Update family by ID with partial data
- */
 function updateFamilyById(familyId, updateData) {
     try {
         const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -13,13 +5,12 @@ function updateFamilyById(familyId, updateData) {
             return { success: false, error: 'Feuille Famille introuvable' };
         }
 
-        // Find family row
         const data = sheet.getDataRange().getValues();
         let targetRow = -1;
 
         for (let i = 1; i < data.length; i++) {
-            if (data[i][OUTPUT_COLUMNS.ID] === familyId) {
-                targetRow = i + 1; // Convert to 1-based
+            if (data[i][OUTPUT_COLUMNS.ID] === familyId || data[i][OUTPUT_COLUMNS.ID] == familyId) {
+                targetRow = i + 1;
                 break;
             }
         }
@@ -30,14 +21,10 @@ function updateFamilyById(familyId, updateData) {
 
         const existingData = data[targetRow - 1];
         const changes = [];
-        let needsAddressValidation = false;
-        let quartierWarning = null;
-
-        // Check if we should force status to "En cours" (for bulk updates)
         const forceInProgress = updateData.forceInProgress === true;
         delete updateData.forceInProgress;
+        let quartierWarning = null;
 
-        // Update name fields
         if (updateData.lastName) {
             sheet.getRange(targetRow, OUTPUT_COLUMNS.NOM + 1).setValue(updateData.lastName);
             changes.push('nom');
@@ -48,7 +35,6 @@ function updateFamilyById(familyId, updateData) {
             changes.push('prenom');
         }
 
-        // Update contact fields
         if (updateData.phone) {
             const normalizedPhone = normalizePhone(updateData.phone);
             if (!isValidPhone(normalizedPhone)) {
@@ -72,11 +58,10 @@ function updateFamilyById(familyId, updateData) {
             changes.push('email');
         }
 
-        // Update household composition
         if (updateData.nombreAdulte !== undefined && updateData.nombreAdulte !== null) {
             const adultes = parseInt(updateData.nombreAdulte);
             if (isNaN(adultes) || adultes < 0) {
-                return { success: false, error: 'Nombre d\'adultes invalide' };
+                return { success: false, error: "Nombre d'adultes invalide" };
             }
             sheet.getRange(targetRow, OUTPUT_COLUMNS.NOMBRE_ADULTE + 1).setValue(adultes);
             changes.push('nombre_adulte');
@@ -85,34 +70,34 @@ function updateFamilyById(familyId, updateData) {
         if (updateData.nombreEnfant !== undefined && updateData.nombreEnfant !== null) {
             const enfants = parseInt(updateData.nombreEnfant);
             if (isNaN(enfants) || enfants < 0) {
-                return { success: false, error: 'Nombre d\'enfants invalide' };
+                return { success: false, error: "Nombre d'enfants invalide" };
             }
             sheet.getRange(targetRow, OUTPUT_COLUMNS.NOMBRE_ENFANT + 1).setValue(enfants);
             changes.push('nombre_enfant');
         }
 
-        // Update address fields (requires validation)
         if (updateData.address || updateData.postalCode || updateData.city) {
-            needsAddressValidation = true;
+            const newAddress = updateData.address;
+            const newPostalCode = updateData.postalCode;
+            const newCity = updateData.city;
 
-            const currentAddress = updateData.address || existingData[OUTPUT_COLUMNS.ADRESSE];
-            const currentPostalCode = updateData.postalCode ||
-                (existingData[OUTPUT_COLUMNS.ADRESSE] ? existingData[OUTPUT_COLUMNS.ADRESSE].match(/\b\d{5}\b/)?.[0] : '');
-            const currentCity = updateData.city ||
-                (existingData[OUTPUT_COLUMNS.ADRESSE] ? existingData[OUTPUT_COLUMNS.ADRESSE].split(',').pop().trim() : '');
+            const existingParsed = parseAddressComponents(existingData[OUTPUT_COLUMNS.ADRESSE]);
+            const resolvedAddress = newAddress || existingParsed.street || '';
+            const resolvedPostalCode = newPostalCode || existingParsed.postalCode || '';
+            const resolvedCity = newCity || existingParsed.city || '';
 
-            if (currentAddress && currentPostalCode && currentCity) {
+            if (resolvedAddress && resolvedPostalCode && resolvedCity) {
                 const addressValidation = validateAddressAndGetQuartier(
-                    currentAddress,
-                    currentPostalCode,
-                    currentCity
+                    resolvedAddress,
+                    resolvedPostalCode,
+                    resolvedCity
                 );
 
                 if (!addressValidation.isValid) {
                     return { success: false, error: `Adresse invalide: ${addressValidation.error}` };
                 }
 
-                const fullAddress = formatAddressForGeocoding(currentAddress, currentPostalCode, currentCity);
+                const fullAddress = formatAddressCanonical(resolvedAddress, resolvedPostalCode, resolvedCity);
                 sheet.getRange(targetRow, OUTPUT_COLUMNS.ADRESSE + 1).setValue(fullAddress);
                 sheet.getRange(targetRow, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue(addressValidation.quartierId || '');
                 changes.push('adresse');
@@ -123,7 +108,6 @@ function updateFamilyById(familyId, updateData) {
             }
         }
 
-        // Update text fields
         if (updateData.circonstances) {
             sheet.getRange(targetRow, OUTPUT_COLUMNS.CIRCONSTANCES + 1).setValue(updateData.circonstances);
             changes.push('circonstances');
@@ -139,7 +123,6 @@ function updateFamilyById(familyId, updateData) {
             changes.push('specificites');
         }
 
-        // Update criticite
         if (updateData.criticite !== undefined && updateData.criticite !== null) {
             const criticite = parseInt(updateData.criticite);
             if (isNaN(criticite) || criticite < CONFIG.CRITICITE.MIN || criticite > CONFIG.CRITICITE.MAX) {
@@ -152,33 +135,45 @@ function updateFamilyById(familyId, updateData) {
             changes.push('criticite');
         }
 
-        // Update language
         if (updateData.langue) {
-            if (!['fr', 'ar', 'en'].includes(updateData.langue)) {
-                return { success: false, error: 'Langue invalide (doit être: fr, ar, ou en)' };
+            const validLanguages = [CONFIG.LANGUAGES.FR, CONFIG.LANGUAGES.AR, CONFIG.LANGUAGES.EN];
+            if (!validLanguages.includes(updateData.langue)) {
+                return { success: false, error: 'Langue invalide (doit être: Français, Arabe, ou Anglais)' };
             }
             sheet.getRange(targetRow, OUTPUT_COLUMNS.LANGUE + 1).setValue(updateData.langue);
             changes.push('langue');
         }
 
-        // Force status to "En cours" if requested (bulk updates) or if quartier is invalid
+        if (updateData.seDeplace !== undefined) {
+            sheet.getRange(targetRow, OUTPUT_COLUMNS.SE_DEPLACE + 1).setValue(updateData.seDeplace === true);
+            changes.push('se_deplace');
+        }
+
+        if (updateData.zakatElFitr !== undefined) {
+            sheet.getRange(targetRow, OUTPUT_COLUMNS.ZAKAT_EL_FITR + 1).setValue(updateData.zakatElFitr === true);
+            changes.push('zakat_el_fitr');
+        }
+
+        if (updateData.sadaqa !== undefined) {
+            sheet.getRange(targetRow, OUTPUT_COLUMNS.SADAQA + 1).setValue(updateData.sadaqa === true);
+            changes.push('sadaqa');
+        }
+
         const currentStatus = existingData[OUTPUT_COLUMNS.ETAT_DOSSIER];
         if (forceInProgress || (quartierWarning && currentStatus === CONFIG.STATUS.VALIDATED)) {
             sheet.getRange(targetRow, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(CONFIG.STATUS.IN_PROGRESS);
-            if (!changes.includes('statut')) {
-                changes.push('statut (changé à En cours)');
+            changes.push('statut (changé à En cours)');
+        }
+
+        if (changes.length > 0) {
+            let commentMsg = `Mis à jour: ${changes.join(', ')}`;
+            if (forceInProgress) {
+                commentMsg += ' | Statut → En cours (màj en masse)';
             }
-        }
-        let updateComment = `Mis à jour: ${changes.join(', ')} - ${new Date().toLocaleString('fr-FR')}`;
-        
-        if (forceInProgress) {
-            updateComment += `\n Statut changé à "En cours" après mise à jour en masse`;
-            appendSheetComment(sheet, row, '📝', updateComment);
-        }
-        
-        if (quartierWarning) {
-            updateComment += `\n ${quartierWarning}`;
-            appendSheetComment(sheet, row, '⚠️', updateComment);
+            if (quartierWarning) {
+                commentMsg += ` | ${quartierWarning}`;
+            }
+            appendSheetComment(sheet, targetRow, '📝', commentMsg);
         }
 
         const finalStatus = sheet.getRange(targetRow, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).getValue();
@@ -193,11 +188,9 @@ function updateFamilyById(familyId, updateData) {
                 adresse: updateData.address || existingData[OUTPUT_COLUMNS.ADRESSE],
                 idQuartier: existingData[OUTPUT_COLUMNS.ID_QUARTIER]
             };
-
             syncFamilyContact(contactData);
         }
 
-        // Clear relevant caches
         const cache = CacheService.getScriptCache();
         cache.remove(`api_family_${familyId}`);
         cache.remove(`folder_${familyId}`);
@@ -213,41 +206,27 @@ function updateFamilyById(familyId, updateData) {
 
     } catch (error) {
         logError('Failed to update family', error);
-        return {
-            success: false,
-            error: error.toString()
-        };
+        return { success: false, error: error.toString() };
     }
 }
 
-/**
- * Process manual update entry (called from UI)
- */
 function processManualUpdate(familyId, updateData) {
     try {
         logInfo('Processing manual update', { familyId, updateData });
 
         if (!familyId) {
-            return {
-                success: false,
-                error: 'ID famille obligatoire'
-            };
+            return { success: false, error: 'ID famille obligatoire' };
         }
 
-        // Check if at least one field is provided
         const hasData = Object.keys(updateData).some(key => {
             const value = updateData[key];
             return value !== '' && value !== null && value !== undefined;
         });
 
         if (!hasData) {
-            return {
-                success: false,
-                error: 'Au moins un champ doit être renseigné pour la mise à jour'
-            };
+            return { success: false, error: 'Au moins un champ doit être renseigné pour la mise à jour' };
         }
 
-        // Perform update (no force status for manual updates)
         const result = updateFamilyById(familyId, updateData);
 
         if (result.success) {
@@ -259,17 +238,11 @@ function processManualUpdate(familyId, updateData) {
                 quartierWarning: result.quartierWarning
             };
         } else {
-            return {
-                success: false,
-                error: result.error
-            };
+            return { success: false, error: result.error };
         }
 
     } catch (error) {
         logError('Manual update processing failed', error);
-        return {
-            success: false,
-            error: error.toString()
-        };
+        return { success: false, error: error.toString() };
     }
 }

@@ -1,11 +1,3 @@
-/**
- * @file src/ui/menu.js
- * @description Main menu structure with core functionality
- */
-
-/**
- * Create custom menu on spreadsheet open
- */
 function onOpenHandler() {
     const ui = SpreadsheetApp.getUi();
     ui.createMenu('📦 Gestion Familles')
@@ -26,27 +18,18 @@ function onOpenHandler() {
         .addToUi();
 }
 
-/**
- * Create synchronization submenu
- */
 function createSyncMenu(ui) {
     return ui.createMenu('🔄 Synchronisation Contacts')
         .addItem('📥 Sync Contact → Feuille', 'showReverseContactSyncDialog')
         .addItem('📤 Sync Feuille → Contact (Auto)', 'showSyncInfo');
 }
 
-/**
- * Create email verification submenu
- */
 function createEmailMenu(ui) {
     return ui.createMenu('📧 Vérification Email')
         .addItem('✉️ Envoyer Emails de Vérification', 'sendVerificationEmailsWithConfirm')
         .addItem('📊 Aperçu des Destinataires', 'showEmailPreview');
 }
 
-/**
- * Create bulk import submenu
- */
 function createBulkImportMenu(ui) {
     return ui.createMenu('📥 Import en Masse')
         .addItem('⚙️ Traiter Import', 'showBulkImportDialog')
@@ -55,9 +38,6 @@ function createBulkImportMenu(ui) {
         .addItem('🔄 Réinitialiser "Processing"', 'resetProcessingStatusWithConfirm');
 }
 
-/**
- * Create bulk update submenu
- */
 function createBulkUpdateMenu(ui) {
     return ui.createMenu('✏️ Mise à Jour en Masse')
         .addItem('⚙️ Traiter Mises à Jour', 'showBulkUpdateDialog')
@@ -66,9 +46,6 @@ function createBulkUpdateMenu(ui) {
         .addItem('🔄 Réinitialiser "Processing"', 'resetUpdateProcessingStatusWithConfirm');
 }
 
-/**
- * Create validation submenu
- */
 function createValidationMenu(ui) {
     return ui.createMenu('🔍 Validation & Diagnostic')
         .addItem('✅ Valider Configuration Complète', 'runFullValidation')
@@ -79,55 +56,29 @@ function createValidationMenu(ui) {
         .addItem('🔧 Correction Automatique', 'runAutoFix');
 }
 
-/**
- * Generic dialog renderer using HTML templates
- */
 function showDialog(viewPath, title, width, height, data) {
     const template = HtmlService.createTemplateFromFile(viewPath);
-
-    if (data && typeof data === 'object') {
-        Object.assign(template, data);
-    }
-
-    const html = template.evaluate()
-        .setWidth(width)
-        .setHeight(height)
-        .setTitle(title);
-
+    if (data && typeof data === 'object') Object.assign(template, data);
+    const html = template.evaluate().setWidth(width).setHeight(height).setTitle(title);
     SpreadsheetApp.getUi().showModalDialog(html, title);
 }
 
-/**
- * Show manual entry/update dialog (unified)
- */
 function showManualEntryDialog() {
     showDialog('views/dialogs/manualEntry', 'Gestion Famille', 600, 850);
 }
 
-/**
- * Show bulk import dialog
- */
 function showBulkImportDialog() {
     showDialog('views/dialogs/bulkImport', 'Import en Masse', 600, 750);
 }
 
-/**
- * Show bulk update dialog
- */
 function showBulkUpdateDialog() {
     showDialog('views/dialogs/bulkUpdate', 'Mise à Jour en Masse', 600, 750);
 }
 
-/**
- * Show reverse contact sync dialog
- */
 function showReverseContactSyncDialog() {
     showDialog('views/dialogs/reverseContactSync', 'Sync Contact → Feuille', 600, 850);
 }
 
-/**
- * Show info about automatic Sheet → Contact sync
- */
 function showSyncInfo() {
     const ui = SpreadsheetApp.getUi();
     ui.alert(
@@ -146,9 +97,6 @@ function showSyncInfo() {
     );
 }
 
-/**
- * Show statistics dialog
- */
 function showStatistics() {
     const stats = calculateStatistics();
     const message = `
@@ -172,6 +120,5 @@ Langues:
   Arabe: ${stats.byLangue['Arabe']}
   Anglais: ${stats.byLangue['Anglais']}
 `;
-
     SpreadsheetApp.getUi().alert('Statistiques', message, SpreadsheetApp.getUi().ButtonSet.OK);
 }

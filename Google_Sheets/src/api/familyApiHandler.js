@@ -15,7 +15,7 @@ function doGet(e) {
             return jsonResponse({ error: 'Paramètre action manquant' }, 400);
         }
 
-        const publicActions = ['confirmfamilyinfo', 'ping'];
+        const publicActions = ['ping'];
 
         if (!publicActions.includes(action.toLowerCase())) {
             const authResult = authenticateRequest(e);
