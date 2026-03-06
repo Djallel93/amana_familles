@@ -1,24 +1,20 @@
 /**
  * @file src/ui/helpers.js
- * @description Helpers UI - formatage, écriture feuille, mise à jour famille
+ * @description Helpers UI - formatage, écriture feuille, mise à jour famille existante
  */
 
 function autoFormatFamilleRow(sheet, row) {
     try {
         const numColumns = sheet.getLastColumn();
-
         for (let col = 1; col <= numColumns; col++) {
             sheet.autoResizeColumn(col);
             const currentWidth = sheet.getColumnWidth(col);
             if (currentWidth < 80) sheet.setColumnWidth(col, 80);
             if (currentWidth > 400) sheet.setColumnWidth(col, 400);
         }
-
         sheet.autoResizeRows(row, 1);
-        logInfo(`Ligne ${row} formatée dans ${sheet.getName()}`);
-
     } catch (error) {
-        logWarning(`Échec formatage ligne ${row}`, error);
+        logAvertissement(`Échec formatage ligne ${row}`, error);
     }
 }
 
@@ -28,7 +24,6 @@ function include(filename) {
 
 function calculateStatistics() {
     const data = getFamilySheetData();
-
     if (!data) {
         return {
             total: 0, validated: 0, inProgress: 0, rejected: 0,
@@ -67,16 +62,9 @@ function calculateStatistics() {
         if (row[OUTPUT_COLUMNS.SADAQA] === true) stats.sadaqa++;
 
         if (criticite >= 0 && criticite <= 5) stats.byCriticite[criticite]++;
-
-        if (quartierId) {
-            stats.byQuartier[quartierId] = (stats.byQuartier[quartierId] || 0) + 1;
-        }
-
-        if (['Français', 'Arabe', 'Anglais'].includes(langue)) {
-            stats.byLangue[langue]++;
-        } else {
-            stats.byLangue.inconnu++;
-        }
+        if (quartierId) stats.byQuartier[quartierId] = (stats.byQuartier[quartierId] || 0) + 1;
+        if (['Français', 'Arabe', 'Anglais'].includes(langue)) stats.byLangue[langue]++;
+        else stats.byLangue.inconnu++;
     }
 
     return stats;
@@ -96,7 +84,7 @@ function writeToFamilySheet(formData, options = {}) {
     sheet.getRange(lastEmptyRow, 1, 1, row.length).setValues([row]);
 
     const normalizedPhone = normalizePhone(formData.phone);
-    const cacheKey = `dup_${normalizedPhone.replace(/[\s\(\)]/g, '')}_${formData.lastName.toLowerCase().trim()}`;
+    const cacheKey = `dup_${normalizedPhone.replace(/[\s\(\)]/g, '')}_${(formData.lastName || '').toLowerCase().trim()}`;
     removeCached(cacheKey);
 
     logInfo(`Famille écrite en feuille ligne ${lastEmptyRow}`, {
@@ -109,58 +97,88 @@ function writeToFamilySheet(formData, options = {}) {
 }
 
 /**
- * Met à jour une famille existante suite à une soumission de formulaire (doublon détecté).
- * Met à jour téléphone, adresse, se_deplace, nombre_adulte, nombre_enfant,
- * documents, email et langue si des changements sont détectés.
+ * Met à jour une famille existante suite à une soumission de formulaire.
+ * Compare champ par champ, valide l'adresse si elle change.
+ * Retourne { changes: string[] }
  */
-function updateExistingFamily(duplicate, formData, addressValidation, docValidation) {
+function updateExistingFamily(duplicate, formData, addressValidationHint, docValidation) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
-    if (!sheet) return;
+    if (!sheet) return { changes: [] };
 
     const row = duplicate.row;
     const existingData = duplicate.data;
-
     const currentStatus = safeGetColumn(existingData, OUTPUT_COLUMNS.ETAT_DOSSIER);
 
     if (currentStatus === CONFIG.STATUS.REJECTED) {
         logInfo(`Famille ${duplicate.id} rejetée - mise à jour ignorée`);
         appendSheetComment(sheet, row, '🚫', 'Tentative de mise à jour ignorée: famille rejetée');
-
         notifyAdmin(
             '🚫 Mise à jour ignorée - Famille rejetée',
-            `ID: ${duplicate.id}\nNom: ${safeGetColumn(existingData, OUTPUT_COLUMNS.NOM)} ${safeGetColumn(existingData, OUTPUT_COLUMNS.PRENOM)}\nStatut: Rejeté\n\nLa tentative de mise à jour via formulaire a été ignorée.`
+            `ID: ${duplicate.id}\nNom: ${safeGetColumn(existingData, OUTPUT_COLUMNS.NOM)} ${safeGetColumn(existingData, OUTPUT_COLUMNS.PRENOM)}\nStatut: Rejeté`
         );
-
-        return;
+        return { changes: [] };
     }
 
     const changes = [];
 
-    const newPhone = normalizePhone(formData.phone);
-    const oldPhone = normalizePhone(String(safeGetColumn(existingData, OUTPUT_COLUMNS.TELEPHONE))).replace(/[\s\(\)]/g, '');
-
-    if (newPhone !== oldPhone) {
+    // Téléphone principal
+    const newPhone = normalizePhone(formData.phone || '');
+    const oldPhone = normalizePhone(String(safeGetColumn(existingData, OUTPUT_COLUMNS.TELEPHONE) || ''));
+    if (newPhone && newPhone !== oldPhone) {
         updateFamilyCell(row, OUTPUT_COLUMNS.TELEPHONE, newPhone);
         changes.push('téléphone');
     }
 
-    const newAddress = formatAddressCanonical(formData.address, formData.postalCode, formData.city);
-    const oldAddress = safeGetColumn(existingData, OUTPUT_COLUMNS.ADRESSE);
-
-    if (newAddress !== oldAddress) {
-        updateFamilyCell(row, OUTPUT_COLUMNS.ADRESSE, newAddress);
-        updateFamilyCell(row, OUTPUT_COLUMNS.ID_QUARTIER, addressValidation.quartierId || '');
-        changes.push('adresse');
+    // Téléphone secondaire
+    if (formData.phoneBis) {
+        const newPhoneBis = normalizePhone(formData.phoneBis);
+        const oldPhoneBis = normalizePhone(String(safeGetColumn(existingData, OUTPUT_COLUMNS.TELEPHONE_BIS) || ''));
+        if (newPhoneBis && newPhoneBis !== oldPhoneBis) {
+            updateFamilyCell(row, OUTPUT_COLUMNS.TELEPHONE_BIS, newPhoneBis);
+            changes.push('téléphone_bis');
+        }
     }
 
+    // Email
+    if (formData.email) {
+        const newEmail = formData.email.toLowerCase().trim();
+        const oldEmail = safeGetColumn(existingData, OUTPUT_COLUMNS.EMAIL, '').toLowerCase().trim();
+        if (newEmail !== oldEmail) {
+            updateFamilyCell(row, OUTPUT_COLUMNS.EMAIL, formData.email);
+            changes.push('email');
+        }
+    }
+
+    // Adresse - validation GEO si changement détecté
+    if (formData.address && formData.postalCode && formData.city) {
+        const newAddress = formatAddressCanonical(formData.address, formData.postalCode, formData.city);
+        const oldAddress = safeGetColumn(existingData, OUTPUT_COLUMNS.ADRESSE, '');
+        if (newAddress !== oldAddress) {
+            const addressValidation = validateAddressAndGetQuartier(formData.address, formData.postalCode, formData.city);
+            if (addressValidation.isValid) {
+                updateFamilyCell(row, OUTPUT_COLUMNS.ADRESSE, newAddress);
+                updateFamilyCell(row, OUTPUT_COLUMNS.ID_QUARTIER, addressValidation.quartierId || '');
+                changes.push('adresse');
+                if (addressValidation.quartierInvalid) {
+                    appendSheetComment(sheet, row, '⚠️', addressValidation.warning);
+                }
+            } else {
+                logAvertissement(`Adresse invalide lors de la mise à jour famille ${duplicate.id}: ${addressValidation.error}`);
+                appendSheetComment(sheet, row, '⚠️', `Adresse soumise invalide, conservée: ${addressValidation.error}`);
+            }
+        }
+    }
+
+    // Se déplace
     if (formData.seDeplace !== undefined) {
         const oldSeDeplace = existingData[OUTPUT_COLUMNS.SE_DEPLACE] === true;
         if (formData.seDeplace !== oldSeDeplace) {
             updateFamilyCell(row, OUTPUT_COLUMNS.SE_DEPLACE, formData.seDeplace);
-            changes.push('se_deplace');
+            changes.push('se_déplace');
         }
     }
 
+    // Composition du foyer
     if (formData.nombreAdulte !== undefined && formData.nombreAdulte !== null) {
         const newAdultes = parseInt(formData.nombreAdulte) || 0;
         const oldAdultes = parseInt(safeGetColumn(existingData, OUTPUT_COLUMNS.NOMBRE_ADULTE, 0)) || 0;
@@ -179,25 +197,17 @@ function updateExistingFamily(duplicate, formData, addressValidation, docValidat
         }
     }
 
-    if (docValidation.identityIds && docValidation.identityIds.length > 0) {
+    // Documents
+    if (docValidation && docValidation.identityIds && docValidation.identityIds.length > 0) {
         updateFamilyCell(row, OUTPUT_COLUMNS.IDENTITE, formatDocumentLinks(docValidation.identityIds));
-        changes.push('documents d\'identité');
+        changes.push('documents_identité');
     }
-
-    if (docValidation.aidesEtatIds && docValidation.aidesEtatIds.length > 0) {
+    if (docValidation && docValidation.aidesEtatIds && docValidation.aidesEtatIds.length > 0) {
         updateFamilyCell(row, OUTPUT_COLUMNS.AIDES_ETAT, formatDocumentLinks(docValidation.aidesEtatIds));
-        changes.push('documents aides d\'état');
+        changes.push('documents_aides_état');
     }
 
-    if (formData.email) {
-        const newEmail = formData.email.toLowerCase().trim();
-        const oldEmail = safeGetColumn(existingData, OUTPUT_COLUMNS.EMAIL, '').toLowerCase().trim();
-        if (newEmail !== oldEmail) {
-            updateFamilyCell(row, OUTPUT_COLUMNS.EMAIL, formData.email);
-            changes.push('email');
-        }
-    }
-
+    // Langue
     if (formData.langue) {
         const oldLangue = safeGetColumn(existingData, OUTPUT_COLUMNS.LANGUE);
         if (formData.langue !== oldLangue) {
@@ -206,14 +216,25 @@ function updateExistingFamily(duplicate, formData, addressValidation, docValidat
         }
     }
 
-    if (changes.length > 0) {
-        appendSheetComment(sheet, row, '🔄', `Mis à jour: ${changes.join(', ')}`);
-        updateFamilyCell(row, OUTPUT_COLUMNS.ETAT_DOSSIER, CONFIG.STATUS.IN_PROGRESS);
-        autoFormatFamilleRow(sheet, row);
-        logInfo('Famille mise à jour', { id: duplicate.id, changes });
-    } else {
-        logInfo('Aucun changement détecté pour la famille', { id: duplicate.id });
+    // Circonstances
+    if (formData.circonstances) {
+        const oldCirconstances = safeGetColumn(existingData, OUTPUT_COLUMNS.CIRCONSTANCES, '');
+        if (formData.circonstances !== oldCirconstances) {
+            updateFamilyCell(row, OUTPUT_COLUMNS.CIRCONSTANCES, formData.circonstances);
+            changes.push('circonstances');
+        }
     }
+
+    if (changes.length > 0) {
+        updateFamilyCell(row, OUTPUT_COLUMNS.ETAT_DOSSIER, CONFIG.STATUS.IN_PROGRESS);
+        appendSheetComment(sheet, row, '🔄', `Mis à jour: ${changes.join(', ')}`);
+        autoFormatFamilleRow(sheet, row);
+        logInfo(`Famille ${duplicate.id} mise à jour`, { changes });
+    } else {
+        logInfo(`Aucun changement détecté pour la famille ${duplicate.id}`);
+    }
+
+    return { changes };
 }
 
 function getAllFamilyIds(filterValidated = false) {
@@ -221,11 +242,9 @@ function getAllFamilyIds(filterValidated = false) {
     if (!data) return [];
 
     const families = [];
-
     for (let i = 1; i < data.length; i++) {
         const row = data[i];
         const status = safeGetColumn(row, OUTPUT_COLUMNS.ETAT_DOSSIER);
-
         if (filterValidated && status !== CONFIG.STATUS.VALIDATED) continue;
 
         const familyId = safeGetColumn(row, OUTPUT_COLUMNS.ID);
@@ -259,19 +278,14 @@ function isFamilyRejected(familyId) {
     try {
         const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
         if (!sheet) return { isRejected: false };
-
         const data = sheet.getDataRange().getValues();
-
         for (let i = 1; i < data.length; i++) {
             const row = data[i];
-            const rowId = safeGetColumn(row, OUTPUT_COLUMNS.ID);
-            const status = safeGetColumn(row, OUTPUT_COLUMNS.ETAT_DOSSIER);
-
-            if (rowId == familyId && status === CONFIG.STATUS.REJECTED) {
+            if (safeGetColumn(row, OUTPUT_COLUMNS.ID) == familyId &&
+                safeGetColumn(row, OUTPUT_COLUMNS.ETAT_DOSSIER) === CONFIG.STATUS.REJECTED) {
                 return { isRejected: true, row: i + 1 };
             }
         }
-
         return { isRejected: false };
     } catch (error) {
         logError('Erreur vérification famille rejetée', error);

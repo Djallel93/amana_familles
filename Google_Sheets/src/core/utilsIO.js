@@ -1,6 +1,6 @@
 /**
- * @file src/core/utils_io.js
- * @description Utilitaires I/O - accès fichiers/feuilles, doublons, notifications, URL, consentement
+ * @file src/core/utilsIO.js
+ * @description Utilitaires I/O - accès feuilles, recherche famille, notifications, consentement
  */
 
 function getSheetByName(sheetName) {
@@ -24,59 +24,71 @@ function getOrCreateFolder(parentFolder, folderName) {
 
 function extractFileIds(urlString) {
     if (!urlString) return [];
-
     const urls = urlString.split(',').map(u => u.trim());
     const fileIds = [];
-
     urls.forEach(url => {
         const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
         if (match && match[1]) fileIds.push(match[1]);
     });
-
     return fileIds;
 }
 
-function findDuplicateFamily(phone, lastName, email = null) {
+/**
+ * Recherche une famille par email d'abord, puis par téléphone + nom.
+ * Retourne { exists, row, id, data, matchType } ou { exists: false }
+ */
+function findDuplicateFamily(phone, lastName, email) {
     try {
-        const normalizedPhone = normalizePhone(phone).replace(/[\s\(\)]/g, '');
-        const normalizedLastName = lastName.toLowerCase().trim();
-
-        const cacheKey = `dup_${normalizedPhone}_${normalizedLastName}`;
-        const cached = getCached(cacheKey);
-
-        if (cached) {
-            try {
-                return JSON.parse(cached);
-            } catch (e) {
-                logAvertissement('Erreur parsing cache doublon, ignoré', e);
-            }
-        }
-
         const data = getFamilySheetData();
         if (!data) {
             logAvertissement('Feuille Famille introuvable pour vérification doublon');
             return { exists: false };
         }
 
-        for (let i = 1; i < data.length; i++) {
-            const row = data[i];
-            if (!row || row.length === 0) continue;
+        const normalizedPhone = normalizePhone(phone).replace(/[\s\(\)]/g, '');
+        const normalizedLastName = (lastName || '').toLowerCase().trim();
+        const normalizedEmail = (email || '').toLowerCase().trim();
 
-            const rowPhone = normalizePhone(String(row[OUTPUT_COLUMNS.TELEPHONE] || '')).replace(/[\s\(\)]/g, '');
-            const rowLastName = (row[OUTPUT_COLUMNS.NOM] || '').toLowerCase().trim();
-            const rowEmail = (row[OUTPUT_COLUMNS.EMAIL] || '').toLowerCase().trim();
-
-            if ((rowPhone === normalizedPhone && rowLastName === normalizedLastName) ||
-                (email && rowEmail && rowEmail === email.toLowerCase().trim())) {
-                const result = { exists: true, row: i + 1, id: row[OUTPUT_COLUMNS.ID], data: row };
-                setCached(cacheKey, JSON.stringify(result), CONFIG.CACHE.MEDIUM);
-                return result;
+        // Priorité 1 : correspondance par email
+        if (normalizedEmail) {
+            for (let i = 1; i < data.length; i++) {
+                const row = data[i];
+                if (!row || row.length === 0) continue;
+                const rowEmail = (row[OUTPUT_COLUMNS.EMAIL] || '').toLowerCase().trim();
+                if (rowEmail && rowEmail === normalizedEmail) {
+                    logInfo(`Doublon trouvé par email: ${normalizedEmail}`);
+                    return {
+                        exists: true,
+                        row: i + 1,
+                        id: row[OUTPUT_COLUMNS.ID],
+                        data: row,
+                        matchType: 'email'
+                    };
+                }
             }
         }
 
-        const result = { exists: false };
-        setCached(cacheKey, JSON.stringify(result), CONFIG.CACHE.SHORT);
-        return result;
+        // Priorité 2 : correspondance par téléphone + nom
+        if (normalizedPhone) {
+            for (let i = 1; i < data.length; i++) {
+                const row = data[i];
+                if (!row || row.length === 0) continue;
+                const rowPhone = normalizePhone(String(row[OUTPUT_COLUMNS.TELEPHONE] || '')).replace(/[\s\(\)]/g, '');
+                const rowLastName = (row[OUTPUT_COLUMNS.NOM] || '').toLowerCase().trim();
+                if (rowPhone === normalizedPhone && rowLastName === normalizedLastName) {
+                    logInfo(`Doublon trouvé par téléphone+nom: ${normalizedPhone} / ${normalizedLastName}`);
+                    return {
+                        exists: true,
+                        row: i + 1,
+                        id: row[OUTPUT_COLUMNS.ID],
+                        data: row,
+                        matchType: 'phone_name'
+                    };
+                }
+            }
+        }
+
+        return { exists: false };
 
     } catch (error) {
         logError('Erreur dans findDuplicateFamily', error);
@@ -86,7 +98,6 @@ function findDuplicateFamily(phone, lastName, email = null) {
 
 function retryOperation(operation, maxRetries = 3) {
     let lastError;
-
     for (let i = 0; i < maxRetries; i++) {
         try {
             return operation();
@@ -96,7 +107,6 @@ function retryOperation(operation, maxRetries = 3) {
             if (i < maxRetries - 1) Utilities.sleep(1000 * (i + 1));
         }
     }
-
     throw lastError;
 }
 
@@ -104,7 +114,6 @@ function notifyAdmin(subject, message) {
     try {
         const config = getScriptConfig();
         const adminEmail = config.adminEmail;
-
         if (!adminEmail) {
             logAvertissement('Email admin non configuré');
             return;
@@ -141,7 +150,6 @@ function notifyAdmin(subject, message) {
         });
 
         logInfo(`Email envoyé à l'admin: ${subject}`);
-
     } catch (error) {
         logError('Échec envoi email admin', error);
     }
@@ -149,35 +157,28 @@ function notifyAdmin(subject, message) {
 
 function buildUrlWithParams(baseUrl, action, params) {
     const queryParams = ['action=' + encodeURIComponent(action)];
-
     Object.keys(params).forEach(key => {
         if (params[key] !== null && params[key] !== undefined) {
             queryParams.push(encodeURIComponent(key) + '=' + encodeURIComponent(params[key]));
         }
     });
-
     return baseUrl + '?' + queryParams.join('&');
 }
 
 function getLastEmptyRow(sheet) {
     const data = sheet.getDataRange().getValues();
-
     for (let i = data.length - 1; i >= 0; i--) {
         const rowIsEmpty = data[i].every(cell => cell === '' || cell === null);
         if (!rowIsEmpty) return i + 2;
     }
-
     return 1;
 }
 
 function isConsentRefused(formData) {
     const consent = formData.personalDataProtection || '';
-
     const isRefused = CONFIG.REFUSAL_PHRASES.some(phrase =>
         consent.toLowerCase().includes(phrase.toLowerCase())
     );
-
     if (isRefused) logInfo('Soumission ignorée: consentement refusé');
-
     return isRefused;
 }
