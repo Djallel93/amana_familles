@@ -41,9 +41,7 @@
             color: #1a73e8;
             text-align: center;
             font-size: 1.6em;
-            margin-top: 0;
             margin-bottom: 20px;
-            position: relative;
         }
 
         h2::after {
@@ -63,19 +61,6 @@
             display: none;
             font-size: 14px;
             line-height: 1.5;
-            animation: slideIn 0.3s ease;
-        }
-
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(-5px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
         }
 
         .alert-success {
@@ -90,39 +75,55 @@
             border-left: 4px solid #ea4335;
         }
 
-        .alert-warning {
-            background: #fef7e0;
-            color: #b06b00;
-            border-left: 4px solid #fbbc04;
-        }
-
         .info-box {
             background: #e3f2fd;
             padding: 20px;
             border-radius: 8px;
             margin-bottom: 25px;
             border-left: 4px solid #1a73e8;
+            font-size: 14px;
+            line-height: 1.7;
         }
 
         .info-box h3 {
             color: #1a73e8;
-            font-size: 16px;
-            margin-bottom: 12px;
-        }
-
-        .info-box p {
-            margin: 8px 0;
-            font-size: 14px;
-            line-height: 1.6;
+            font-size: 15px;
+            margin-bottom: 10px;
         }
 
         .info-box ul {
-            margin: 10px 0 10px 20px;
-            font-size: 14px;
+            margin: 8px 0 0 18px;
         }
 
         .info-box li {
-            margin: 5px 0;
+            margin: 4px 0;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 30px 0;
+        }
+
+        .spinner {
+            border: 3px solid #e0e0e0;
+            border-top: 3px solid #1a73e8;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 12px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .loading p {
+            font-size: 14px;
+            color: #5f6368;
         }
 
         .button-group {
@@ -145,12 +146,10 @@
         .btn-primary {
             background: linear-gradient(135deg, #1a73e8, #1669c1);
             color: white;
-            box-shadow: 0 2px 4px rgba(26, 115, 232, 0.3);
         }
 
         .btn-primary:hover {
             background: linear-gradient(135deg, #1669c1, #1557b0);
-            box-shadow: 0 3px 6px rgba(26, 115, 232, 0.4);
             transform: translateY(-1px);
         }
 
@@ -163,102 +162,6 @@
         .btn-secondary:hover {
             background: #e8eaed;
         }
-
-        .loading {
-            display: none;
-            text-align: center;
-            padding: 25px 0;
-        }
-
-        .spinner {
-            border: 3px solid #e0e0e0;
-            border-top: 3px solid #1a73e8;
-            border-radius: 50%;
-            width: 32px;
-            height: 32px;
-            animation: spin 0.8s linear infinite;
-            margin: 0 auto 10px auto;
-        }
-
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-
-        .loading p {
-            font-size: 14px;
-            color: #5f6368;
-            margin: 0;
-        }
-
-        .results-box {
-            display: none;
-            margin-top: 20px;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 8px;
-        }
-
-        .results-box h3 {
-            margin-bottom: 15px;
-            color: #333;
-        }
-
-        .results-stats {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-bottom: 15px;
-        }
-
-        .stat-item {
-            padding: 10px;
-            background: white;
-            border-radius: 6px;
-            border-left: 3px solid #1a73e8;
-        }
-
-        .stat-label {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 4px;
-        }
-
-        .stat-value {
-            font-size: 20px;
-            font-weight: 700;
-            color: #333;
-        }
-
-        .details-list {
-            max-height: 300px;
-            overflow-y: auto;
-            background: white;
-            padding: 15px;
-            border-radius: 6px;
-            margin-top: 15px;
-        }
-
-        .detail-item {
-            padding: 10px;
-            border-bottom: 1px solid #e0e0e0;
-        }
-
-        .detail-item:last-child {
-            border-bottom: none;
-        }
-
-        .detail-id {
-            font-weight: 600;
-            color: #1a73e8;
-        }
-
-        .detail-changes {
-            font-size: 13px;
-            color: #666;
-            margin-top: 5px;
-        }
     </style>
 </head>
 
@@ -270,135 +173,71 @@
 
         <div class="info-box">
             <h3>ℹ️ Comment ça marche ?</h3>
-            <p><strong>Cette fonction synchronise vos contacts Google vers la feuille.</strong></p>
             <ul>
-                <li>Récupère tous les contacts du groupe "Famille dans le besoin"</li>
-                <li>Compare les données des contacts avec celles de la feuille</li>
-                <li>Met à jour automatiquement la feuille si des différences sont détectées</li>
-                <li>Ajoute un commentaire pour chaque modification</li>
+                <li>Analyse tous les contacts du groupe "Famille dans le besoin"</li>
+                <li>Détecte les différences champ par champ avec la feuille</li>
+                <li>Vous présente un récapitulatif pour valider chaque modification</li>
+                <li>Applique uniquement les décisions que vous confirmez</li>
             </ul>
-            <p><strong>📝 Champs synchronisés :</strong></p>
-            <ul>
-                <li>Nom, prénom</li>
-                <li>Téléphone(s), email</li>
-                <li>Adresse complète</li>
-                <li>Criticité</li>
-                <li>Nombre d'adultes/enfants</li>
-                <li>Éligibilité Zakat/Sadaqa</li>
-                <li>Langue</li>
-            </ul>
-            <p style="margin-top: 15px;">
-                <strong>⏱️ Durée estimée :</strong> ~5-30 secondes selon le nombre de familles
-            </p>
         </div>
 
         <div class="button-group" id="actionButtons">
-            <button type="button" class="btn-secondary" onclick="google.script.host.close()">Annuler</button>
-            <button type="button" class="btn-primary" onclick="startSync()">▶️ Lancer la synchronisation</button>
+            <button class="btn-secondary" onclick="google.script.host.close()">Annuler</button>
+            <button class="btn-primary" onclick="startScan()">🔍 Analyser les contacts</button>
         </div>
 
-        <div id="loadingBox" class="loading">
+        <div class="loading" id="loadingBox">
             <div class="spinner"></div>
-            <p>Synchronisation en cours...</p>
-        </div>
-
-        <div id="resultsBox" class="results-box">
-            <h3>📊 Résultats de la synchronisation</h3>
-            <div class="results-stats" id="resultsStats"></div>
-            <div id="detailsList"></div>
+            <p>Analyse en cours, veuillez patienter...</p>
         </div>
     </div>
 
     <script>
-        function startSync() {
+        function startScan() {
             document.getElementById('alertBox').style.display = 'none';
-            document.getElementById('loadingBox').style.display = 'block';
             document.getElementById('actionButtons').style.display = 'none';
-            document.getElementById('resultsBox').style.display = 'none';
+            document.getElementById('loadingBox').style.display = 'block';
 
             google.script.run
-                .withSuccessHandler(onSyncSuccess)
-                .withFailureHandler(onSyncError)
-                .reverseContactSync();
+                .withSuccessHandler(onScanComplete)
+                .withFailureHandler(onScanError)
+                .scanContactChanges();
         }
 
-        function onSyncSuccess(result) {
+        function onScanComplete(result) {
             document.getElementById('loadingBox').style.display = 'none';
 
             if (!result.success) {
-                showAlert('error', `❌ Erreur: ${result.error}`);
+                showAlert('error', '❌ Erreur lors de l\'analyse : ' + result.error);
                 document.getElementById('actionButtons').style.display = 'flex';
                 return;
             }
 
-            const results = result.results;
-
-            // Show stats
-            const statsHtml = `
-                <div class="stat-item">
-                    <div class="stat-label">Total traité</div>
-                    <div class="stat-value">${results.total}</div>
-                </div>
-                <div class="stat-item" style="border-left-color: #34a853;">
-                    <div class="stat-label">✅ Mis à jour</div>
-                    <div class="stat-value">${results.updated}</div>
-                </div>
-                <div class="stat-item" style="border-left-color: #9aa0a6;">
-                    <div class="stat-label">➖ Inchangés</div>
-                    <div class="stat-value">${results.unchanged}</div>
-                </div>
-                <div class="stat-item" style="border-left-color: #ea4335;">
-                    <div class="stat-label">❌ Erreurs</div>
-                    <div class="stat-value">${results.errors}</div>
-                </div>
-            `;
-
-            document.getElementById('resultsStats').innerHTML = statsHtml;
-
-            // Show details if there are updates
-            if (results.updated > 0 && results.details && results.details.length > 0) {
-                const updatedDetails = results.details.filter(d => d.status === 'updated');
-
-                let detailsHtml = '<div class="details-list"><strong>📝 Familles mises à jour :</strong>';
-                updatedDetails.forEach(detail => {
-                    detailsHtml += `
-                        <div class="detail-item">
-                            <div class="detail-id">Famille ID: ${detail.familyId}</div>
-                            <div class="detail-changes">${detail.changes.map(c => c.field).join(', ')}</div>
-                        </div>
-                    `;
-                });
-                detailsHtml += '</div>';
-
-                document.getElementById('detailsList').innerHTML = detailsHtml;
+            if (!result.changes || result.changes.length === 0) {
+                showAlert('success', '✅ Tout est synchronisé — aucune modification détectée.');
+                document.getElementById('actionButtons').innerHTML =
+                    '<button class="btn-primary" style="flex:1" onclick="google.script.host.close()">Fermer</button>';
+                document.getElementById('actionButtons').style.display = 'flex';
+                return;
             }
 
-            document.getElementById('resultsBox').style.display = 'block';
-
-            if (results.updated > 0) {
-                showAlert('success', `✅ Synchronisation terminée ! ${results.updated} famille(s) mise(s) à jour.`);
-            } else {
-                showAlert('success', '✅ Synchronisation terminée ! Aucune modification détectée.');
-            }
-
-            // Show close button
-            document.getElementById('actionButtons').innerHTML = `
-                <button type="button" class="btn-primary" onclick="google.script.host.close()" style="width: 100%;">Fermer</button>
-            `;
-            document.getElementById('actionButtons').style.display = 'flex';
+            google.script.run
+                .withSuccessHandler(() => google.script.host.close())
+                .withFailureHandler(onScanError)
+                .showConfirmationDialog(result.changes);
         }
 
-        function onSyncError(error) {
+        function onScanError(error) {
             document.getElementById('loadingBox').style.display = 'none';
             document.getElementById('actionButtons').style.display = 'flex';
-            showAlert('error', `❌ Erreur système: ${error.message}`);
+            showAlert('error', '❌ Erreur système : ' + error.message);
         }
 
         function showAlert(type, message) {
-            const alertBox = document.getElementById('alertBox');
-            alertBox.className = `alert alert-${type}`;
-            alertBox.innerHTML = message;
-            alertBox.style.display = 'block';
+            const box = document.getElementById('alertBox');
+            box.className = 'alert alert-' + type;
+            box.innerHTML = message;
+            box.style.display = 'block';
         }
     </script>
 </body>

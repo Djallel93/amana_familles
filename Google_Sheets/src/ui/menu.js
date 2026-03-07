@@ -63,6 +63,16 @@ function showDialog(viewPath, title, width, height, data) {
     SpreadsheetApp.getUi().showModalDialog(html, title);
 }
 
+function showConfirmationDialog(changes) {
+    const template = HtmlService.createTemplateFromFile('views/dialogs/confirmationDialog');
+    template.changes = changes;
+    const html = template.evaluate()
+        .setWidth(1000)
+        .setHeight(700)
+        .setTitle('Confirmation de synchronisation');
+    SpreadsheetApp.getUi().showModalDialog(html, 'Confirmation de synchronisation');
+}
+
 function showManualEntryDialog() {
     showDialog('views/dialogs/manualEntry', 'Gestion Famille', 600, 850);
 }
@@ -76,7 +86,7 @@ function showBulkUpdateDialog() {
 }
 
 function showReverseContactSyncDialog() {
-    showDialog('views/dialogs/reverseContactSync', 'Sync Contact → Feuille', 600, 850);
+    showDialog('views/dialogs/reverseContactSync', 'Sync Contact → Feuille', 600, 500);
 }
 
 function showSyncInfo() {
@@ -112,13 +122,13 @@ Enfants: ${stats.totalChildren}
 Peuvent se déplacer: ${stats.seDeplace}
 
 Éligibilité:
-  Zakat El Fitr: ${stats.zakatElFitr}
-  Sadaqa: ${stats.sadaqa}
+    Zakat El Fitr: ${stats.zakatElFitr}
+    Sadaqa: ${stats.sadaqa}
 
 Langues:
-  Français: ${stats.byLangue['Français']}
-  Arabe: ${stats.byLangue['Arabe']}
-  Anglais: ${stats.byLangue['Anglais']}
+    Français: ${stats.byLangue['Français']}
+    Arabe: ${stats.byLangue['Arabe']}
+    Anglais: ${stats.byLangue['Anglais']}
 `;
     SpreadsheetApp.getUi().alert('Statistiques', message, SpreadsheetApp.getUi().ButtonSet.OK);
 }
