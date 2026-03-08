@@ -21,7 +21,6 @@ function onOpenHandler() {
 function createSyncMenu(ui) {
     return ui.createMenu('🔄 Synchronisation Contacts')
         .addItem('📥 Sync Contact → Feuille', 'showReverseContactSyncDialog')
-        .addItem('📤 Sync Feuille → Contact (Auto)', 'showSyncInfo');
 }
 
 function createEmailMenu(ui) {
@@ -77,24 +76,6 @@ function showBulkUpdateDialog() {
 
 function showReverseContactSyncDialog() {
     showDialog('views/dialogs/reverseContactSync', 'Sync Contact → Feuille', 1000, 700);
-}
-
-function showSyncInfo() {
-    const ui = SpreadsheetApp.getUi();
-    ui.alert(
-        '📤 Sync Feuille → Contact (Automatique)',
-        'La synchronisation Feuille → Contact se fait automatiquement :\n\n' +
-        '✅ Lorsqu\'une famille passe au statut "Validé"\n' +
-        '✅ Lorsqu\'une famille validée est modifiée\n\n' +
-        '📝 Le contact Google est créé/mis à jour avec :\n' +
-        '• Nom, prénom, téléphone(s), email\n' +
-        '• Adresse structurée\n' +
-        '• Criticité, composition du foyer\n' +
-        '• Éligibilité Zakat/Sadaqa\n' +
-        '• Langue préférée\n\n' +
-        '💡 Ces informations sont stockées dans les champs personnalisés du contact.',
-        ui.ButtonSet.OK
-    );
 }
 
 function showStatistics() {

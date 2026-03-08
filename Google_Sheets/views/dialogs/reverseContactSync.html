@@ -30,7 +30,6 @@
             display: flex;
         }
 
-        /* ── Intro ── */
         #screenIntro {
             align-items: center;
             justify-content: center;
@@ -131,7 +130,6 @@
             background: #e8eaed;
         }
 
-        /* ── Chargement ── */
         #screenLoading {
             align-items: center;
             justify-content: center;
@@ -159,7 +157,6 @@
             color: #5f6368;
         }
 
-        /* ── Confirmation ── */
         #screenConfirm {
             background: #f8f9fa;
         }
@@ -185,7 +182,6 @@
             margin-top: 1px;
         }
 
-        /* ── Barre progression globale ── */
         .progress-bar-wrap {
             background: #1558b0;
             padding: 0 20px 10px;
@@ -214,7 +210,6 @@
             text-align: right;
         }
 
-        /* ── Navigation famille ── */
         .nav-bar {
             background: #fff;
             padding: 10px 20px;
@@ -291,7 +286,6 @@
             background: #f5c6cb;
         }
 
-        /* ── Status famille ── */
         .family-status {
             font-size: 11px;
             padding: 3px 8px;
@@ -315,7 +309,6 @@
             color: #80868b;
         }
 
-        /* ── Carte famille ── */
         .card-area {
             flex: 1;
             overflow-y: auto;
@@ -435,7 +428,6 @@
             border-color: #ea4335;
         }
 
-        /* ── Pied ── */
         .confirm-footer {
             background: #fff;
             padding: 12px 20px;
@@ -494,7 +486,6 @@
             font-weight: 600;
         }
 
-        /* ── Résultat ── */
         #screenResult {
             align-items: center;
             justify-content: center;
@@ -581,9 +572,8 @@
         <p id="loadingMsg">Analyse en cours, veuillez patienter...</p>
     </div>
 
-    <!-- Écran 3 : Confirmation (famille par famille) -->
+    <!-- Écran 3 : Confirmation famille par famille -->
     <div id="screenConfirm" class="screen">
-
         <div class="confirm-header">
             <div>
                 <h1>🔄 Confirmation de synchronisation</h1>
@@ -637,13 +627,11 @@
         let currentIndex = 0;
         let totalFields = 0;
 
-        // ── Navigation écrans ─────────────────────────────────────────────────
         function showScreen(id) {
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
             document.getElementById(id).classList.add('active');
         }
 
-        // ── Scan ──────────────────────────────────────────────────────────────
         function startScan() {
             showScreen('screenLoading');
             google.script.run
@@ -658,6 +646,7 @@
                 showAlert('error', '❌ Erreur lors de l\'analyse : ' + (result.error || 'inconnue'));
                 return;
             }
+
             if (!result.changes || result.changes.length === 0) {
                 showScreen('screenIntro');
                 showAlert('success', '✅ Tout est synchronisé — aucune modification détectée.');
@@ -684,7 +673,6 @@
             showAlert('error', '❌ Erreur système : ' + (err.message || err));
         }
 
-        // ── Rendu famille courante ────────────────────────────────────────────
         function renderCurrentFamily() {
             const family = RAW_CHANGES[currentIndex];
 
@@ -715,7 +703,12 @@
                 <div class="family-card">
                     <table>
                         <thead>
-                            <tr><th>Champ</th><th>Valeur feuille</th><th>Valeur contact</th><th>Décision</th></tr>
+                            <tr>
+                                <th>Champ</th>
+                                <th>Valeur feuille</th>
+                                <th>Valeur contact</th>
+                                <th>Décision</th>
+                            </tr>
                         </thead>
                         <tbody>${rows}</tbody>
                     </table>
@@ -730,13 +723,14 @@
             renderCurrentFamily();
         }
 
-        // ── Décisions ─────────────────────────────────────────────────────────
         function decide(familyId, field, action) {
             decisions[familyId][field] = action;
+
             const accBtn = document.getElementById('acc-' + familyId + '-' + field);
             const rejBtn = document.getElementById('rej-' + familyId + '-' + field);
             if (accBtn) accBtn.classList.toggle('active', action === 'accept');
             if (rejBtn) rejBtn.classList.toggle('active', action === 'reject');
+
             updateFamilyStatus(RAW_CHANGES[currentIndex]);
             updateGlobalProgress();
         }
@@ -744,9 +738,14 @@
         function bulkCurrentFamily(action) {
             const family = RAW_CHANGES[currentIndex];
             family.changes.forEach(c => decide(family.familyId, c.field, action));
+
+            // Navigation automatique vers la famille suivante
+            // Si c'est la dernière famille, on reste sur place
+            if (currentIndex < RAW_CHANGES.length - 1) {
+                setTimeout(() => navigate(1), 300);
+            }
         }
 
-        // ── Statut famille ────────────────────────────────────────────────────
         function updateFamilyStatus(family) {
             const decided = Object.keys(decisions[family.familyId]).length;
             const total = family.changes.length;
@@ -764,7 +763,6 @@
             }
         }
 
-        // ── Progression globale ───────────────────────────────────────────────
         function updateGlobalProgress() {
             const totalDecided = RAW_CHANGES.reduce((s, f) => s + Object.keys(decisions[f.familyId]).length, 0);
             const familiesDone = RAW_CHANGES.filter(f =>
@@ -773,7 +771,8 @@
 
             document.getElementById('progressFill').style.width = pct + '%';
             document.getElementById('progressLabel').textContent =
-                familiesDone + '/' + RAW_CHANGES.length + ' familles complétées · ' + totalDecided + '/' + totalFields + ' champs';
+                familiesDone + '/' + RAW_CHANGES.length + ' familles complétées · ' +
+                totalDecided + '/' + totalFields + ' champs';
 
             const allDone = totalDecided >= totalFields;
             document.getElementById('applyBtn').disabled = !allDone;
@@ -786,7 +785,6 @@
                 totalDecided + ' / ' + totalFields + ' champs décidés';
         }
 
-        // ── Application ───────────────────────────────────────────────────────
         function applyDecisions() {
             const payload = RAW_CHANGES.map(family => ({
                 familyId: family.familyId,
@@ -815,11 +813,14 @@
                 alert('❌ Erreur : ' + (result.error || 'inconnue'));
                 return;
             }
+
             const r = result.results;
             document.getElementById('resStats').innerHTML = `
                 <div class="stat stat-a"><div class="n">${r.accepted}</div><div class="l">Accepté(s)</div></div>
                 <div class="stat stat-r"><div class="n">${r.rejected}</div><div class="l">Conservé(s)</div></div>
-                ${r.errors > 0 ? `<div class="stat stat-e"><div class="n">${r.errors}</div><div class="l">Erreur(s)</div></div>` : ''}
+                ${r.errors > 0
+                    ? `<div class="stat stat-e"><div class="n">${r.errors}</div><div class="l">Erreur(s)</div></div>`
+                    : ''}
             `;
             showScreen('screenResult');
         }
@@ -829,7 +830,6 @@
             alert('❌ Erreur système : ' + (err.message || err));
         }
 
-        // ── Utilitaires ───────────────────────────────────────────────────────
         function showAlert(type, msg) {
             const b = document.getElementById('alertBox');
             b.className = 'alert alert-' + type;
@@ -838,7 +838,11 @@
         }
 
         function esc(s) {
-            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
         }
     </script>
 </body>
