@@ -63,16 +63,6 @@ function showDialog(viewPath, title, width, height, data) {
     SpreadsheetApp.getUi().showModalDialog(html, title);
 }
 
-function showConfirmationDialog(changes) {
-    const template = HtmlService.createTemplateFromFile('views/dialogs/confirmationDialog');
-    template.changes = changes;
-    const html = template.evaluate()
-        .setWidth(1000)
-        .setHeight(700)
-        .setTitle('Confirmation de synchronisation');
-    SpreadsheetApp.getUi().showModalDialog(html, 'Confirmation de synchronisation');
-}
-
 function showManualEntryDialog() {
     showDialog('views/dialogs/manualEntry', 'Gestion Famille', 600, 850);
 }
@@ -86,7 +76,7 @@ function showBulkUpdateDialog() {
 }
 
 function showReverseContactSyncDialog() {
-    showDialog('views/dialogs/reverseContactSync', 'Sync Contact → Feuille', 600, 500);
+    showDialog('views/dialogs/reverseContactSync', 'Sync Contact → Feuille', 1000, 700);
 }
 
 function showSyncInfo() {

@@ -83,12 +83,13 @@ function processGoogleFormSubmission(sheet, row, language = CONFIG.LANGUAGES.FR)
 
         logInfo('✅ Adresse validée');
         const familyId = generateFamilyId();
-        let comment = `Soumis via formulaire admin le ${new Date().toLocaleString('fr-FR')}`;
-        if (addressValidation.quartierInvalid) comment += `\n⚠️ ${addressValidation.warning}`;
+        let initialComment = '';
+        if (addressValidation.quartierInvalid) initialComment = formatComment('⚠️', addressValidation.warning);
 
-        writeToFamilySheet(formData, {
+        const familleSheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
+        const newRow = writeToFamilySheet(formData, {
             status: CONFIG.STATUS.IN_PROGRESS,
-            comment: comment,
+            comment: initialComment,
             familyId: familyId,
             quartierId: addressValidation.quartierId,
             quartierName: addressValidation.quartierName,
@@ -100,9 +101,11 @@ function processGoogleFormSubmission(sheet, row, language = CONFIG.LANGUAGES.FR)
             sadaqa: formData.sadaqa || false
         });
 
+        appendSheetComment(familleSheet, newRow, '📋', 'Soumis via formulaire admin');
+
         sheet.getRange(row, statusColumn).setValue(`✅ Créé: ${familyId}`);
         notifyAdmin('✅ Nouvelle famille (formulaire admin)', _buildInsertNotification(familyId, formData, addressValidation));
-        logInfo('✅ Formulaire admin traité avec succès');
+        logInfo('Formulaire admin traité avec succès');
 
     } catch (error) {
         logError('Échec traitement formulaire admin', error);
@@ -157,14 +160,15 @@ function processInsert(formData) {
         logInfo('✅ Documents validés');
 
         const familyId = generateFamilyId();
-        let comment = '';
+        let initialComment = '';
         if (addressValidation.quartierInvalid) {
-            comment = `⚠️ ATTENTION: ${addressValidation.warning}\nVérifier l'adresse avant validation.`;
+            initialComment = formatComment('⚠️', `${addressValidation.warning}\nVérifier l'adresse avant validation.`);
         }
 
-        writeToFamilySheet(formData, {
+        const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
+        const newRow = writeToFamilySheet(formData, {
             status: CONFIG.STATUS.IN_PROGRESS,
-            comment: comment,
+            comment: initialComment,
             familyId: familyId,
             quartierId: addressValidation.quartierId,
             quartierName: addressValidation.quartierName,
@@ -177,6 +181,8 @@ function processInsert(formData) {
             zakatElFitr: formData.zakatElFitr || false,
             sadaqa: formData.sadaqa || false
         });
+
+        appendSheetComment(sheet, newRow, '📋', `Soumis via formulaire (${formData.langue || CONFIG.LANGUAGES.FR})`);
 
         notifyAdmin('✅ Nouvelle soumission', _buildInsertNotification(familyId, formData, addressValidation));
         logInfo('✅ Soumission INSERT traitée avec succès');

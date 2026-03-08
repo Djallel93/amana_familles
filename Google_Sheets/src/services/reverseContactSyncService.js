@@ -1,206 +1,40 @@
 /**
- * @file src/services/reverseContactSyncService.js (v8.0)
- * Partie 1 : Scan des différences et synchronisation directe
+ * @file src/services/reverseContactSyncService2.js (v8.0)
+ * Partie 2 : Application des décisions, extraction et détection des changements
  */
 
-// ─── Scan lecture seule ───────────────────────────────────────────────────────
+// ─── Application des décisions admin ─────────────────────────────────────────
 
-function scanContactChanges() {
+function applyContactSyncDecisions(decisions) {
     try {
-        logInfo('Démarrage du scan Contact → Feuille (lecture seule)');
-        const contacts = fetchAllFamilyContacts();
+        logInfo(`Application des décisions : ${decisions.length} famille(s)`);
+        const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
+        if (!sheet) return { success: false, error: 'Feuille Famille introuvable' };
 
-        if (!contacts || contacts.length === 0) {
-            logInfo('Aucun contact famille trouvé dans le groupe');
-            return { success: true, changes: [] };
-        }
+        const data = sheet.getDataRange().getValues();
+        const results = { accepted: 0, rejected: 0, errors: 0 };
 
-        const results = [];
-
-        contacts.forEach(contact => {
+        decisions.forEach(familyDecision => {
             try {
-                const diff = computeContactDiff(contact);
-                if (diff && diff.changes.length > 0) {
-                    results.push(diff);
-                }
+                _applyFamilyDecision(sheet, data, familyDecision, results);
             } catch (e) {
-                logError('Erreur lors du scan du contact', e);
-            }
-        });
-
-        logInfo(`Scan terminé : ${results.length} famille(s) avec des modifications`);
-        return { success: true, changes: results };
-
-    } catch (e) {
-        logError('Échec du scan des contacts', e);
-        return { success: false, error: e.toString() };
-    }
-}
-
-function computeContactDiff(contact) {
-    let familyId = null;
-
-    if (contact.names && contact.names.length > 0) {
-        const match = (contact.names[0].givenName || '').match(/^(\d+)\s*-/);
-        if (match) familyId = match[1];
-    }
-
-    if (!familyId) return null;
-
-    const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
-    if (!sheet) throw new Error('Feuille Famille introuvable');
-
-    const data = sheet.getDataRange().getValues();
-    let existingData = null;
-
-    for (let i = 1; i < data.length; i++) {
-        if (data[i][OUTPUT_COLUMNS.ID] == familyId) {
-            existingData = data[i];
-            break;
-        }
-    }
-
-    if (!existingData) return null;
-
-    const contactData = extractContactData(contact);
-    const metadata = parseFamilyMetadataFromContact(contact.userDefined);
-    const changes = detectChanges(existingData, contactData, metadata);
-
-    if (changes.length === 0) return null;
-
-    const prenom = existingData[OUTPUT_COLUMNS.PRENOM] || '';
-    const nom = existingData[OUTPUT_COLUMNS.NOM] || '';
-
-    return {
-        familyId: familyId,
-        familyName: `${familyId} - ${prenom} ${nom}`.trim(),
-        changes: changes.map(c => ({
-            field: c.field,
-            column: c.column,
-            label: getFieldLabel(c.field),
-            sheetValue: formatValueForDisplay(c.oldValue),
-            contactValue: formatValueForDisplay(c.newValue)
-        }))
-    };
-}
-
-function getFieldLabel(field) {
-    const labels = {
-        prenom: 'Prénom',
-        nom: 'Nom',
-        telephone: 'Téléphone',
-        telephone_bis: 'Téléphone secondaire',
-        email: 'Email',
-        adresse: 'Adresse',
-        criticite: 'Criticité',
-        nombre_adulte: 'Adultes',
-        nombre_enfant: 'Enfants',
-        zakat_el_fitr: 'Zakat El Fitr',
-        sadaqa: 'Sadaqa',
-        langue: 'Langue',
-        se_deplace: 'Se déplace'
-    };
-    return labels[field] || field;
-}
-
-function formatValueForDisplay(value) {
-    if (value === true) return 'Oui';
-    if (value === false) return 'Non';
-    if (value === null || value === undefined || value === '') return '—';
-    return String(value);
-}
-
-// ─── Synchronisation directe (flux original) ─────────────────────────────────
-
-function reverseContactSync() {
-    try {
-        logInfo('Démarrage de la synchronisation Contact → Feuille');
-        const startTime = Date.now();
-
-        const results = {
-            total: 0, updated: 0, unchanged: 0, errors: 0, notFound: 0, details: []
-        };
-
-        const familyContacts = fetchAllFamilyContacts();
-
-        if (!familyContacts || familyContacts.length === 0) {
-            logInfo('Aucun contact famille trouvé');
-            return { success: true, message: 'Aucun contact à synchroniser', results };
-        }
-
-        results.total = familyContacts.length;
-
-        familyContacts.forEach(contact => {
-            try {
-                const syncResult = syncContactToSheet(contact);
-                if (syncResult.updated) {
-                    results.updated++;
-                    results.details.push({ familyId: syncResult.familyId, status: 'updated', changes: syncResult.changes });
-                } else if (syncResult.notFound) {
-                    results.notFound++;
-                } else {
-                    results.unchanged++;
-                }
-            } catch (e) {
+                logError(`Erreur décision famille ${familyDecision.familyId}`, e);
                 results.errors++;
-                logError('Erreur traitement contact', e);
             }
         });
 
-        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-        logInfo(`Synchronisation terminée en ${duration}s`, results);
-
-        if (results.updated > 0) {
-            notifyAdmin('🔄 Sync Contact → Feuille terminée',
-                `Traités: ${results.total}\nMis à jour: ${results.updated}\nInchangés: ${results.unchanged}\nNon trouvés: ${results.notFound}\nErreurs: ${results.errors}`);
-        }
-
-        return { success: true, results, duration };
+        logInfo('Décisions appliquées', results);
+        return { success: true, results };
 
     } catch (e) {
-        logError('Erreur fatale dans reverseContactSync', e);
+        logError('Échec application des décisions', e);
         return { success: false, error: e.toString() };
     }
 }
 
-function fetchAllFamilyContacts() {
-    try {
-        const mainGroupId = getOrCreateContactGroup('Famille dans le besoin');
-        if (!mainGroupId) return [];
+function _applyFamilyDecision(sheet, data, familyDecision, results) {
+    const { familyId, fields } = familyDecision;
 
-        const response = People.People.Connections.list('people/me', {
-            pageSize: 2000,
-            personFields: 'names,emailAddresses,phoneNumbers,addresses,userDefined,memberships'
-        });
-
-        if (!response.connections || response.connections.length === 0) return [];
-
-        return response.connections.filter(contact =>
-            contact.memberships && contact.memberships.some(m =>
-                m.contactGroupMembership &&
-                m.contactGroupMembership.contactGroupResourceName === mainGroupId
-            )
-        );
-    } catch (e) {
-        logError('Échec récupération contacts famille', e);
-        return [];
-    }
-}
-
-function syncContactToSheet(contact) {
-    let familyId = null;
-
-    if (contact.names && contact.names.length > 0) {
-        const match = (contact.names[0].givenName || '').match(/^(\d+)\s*-/);
-        if (match) familyId = match[1];
-    }
-
-    if (!familyId) return { updated: false, notFound: false };
-
-    const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
-    if (!sheet) throw new Error('Feuille Famille introuvable');
-
-    const data = sheet.getDataRange().getValues();
     let targetRow = -1;
     let existingData = null;
 
@@ -212,14 +46,277 @@ function syncContactToSheet(contact) {
         }
     }
 
-    if (targetRow === -1) return { updated: false, notFound: true, familyId };
+    if (targetRow === -1) {
+        logAvertissement(`Famille ${familyId} introuvable lors de l'application`);
+        return;
+    }
 
-    const contactData = extractContactData(contact);
-    const metadata = parseFamilyMetadataFromContact(contact.userDefined);
-    const changes = detectChanges(existingData, contactData, metadata);
+    const acceptedFields = fields.filter(f => f.action === 'accept');
+    const rejectedFields = fields.filter(f => f.action === 'reject');
 
-    if (changes.length === 0) return { updated: false, familyId };
+    acceptedFields.forEach(f => {
+        const rawValue = f.rawContactValue !== undefined ? f.rawContactValue : f.contactValue;
+        sheet.getRange(targetRow, f.column + 1).setValue(rawValue);
+        results.accepted++;
+    });
 
-    applyChangesToSheet(sheet, targetRow, existingData, contactData, metadata, changes);
-    return { updated: true, familyId, changes };
+    const acceptedLabels = acceptedFields.map(f => f.label);
+    const rejectedLabels = rejectedFields.map(f => f.label);
+
+    let commentParts = [];
+    if (acceptedLabels.length > 0) commentParts.push(`✅ Accepté: ${acceptedLabels.join(', ')}`);
+    if (rejectedLabels.length > 0) commentParts.push(`❌ Conservé: ${rejectedLabels.join(', ')}`);
+
+    if (commentParts.length > 0) {
+        appendSheetComment(sheet, targetRow, '🔄', `Sync confirmé — ${commentParts.join(' | ')}`);
+    }
+
+    if (rejectedFields.length > 0) {
+        const updatedRow = sheet.getRange(targetRow, 1, 1, sheet.getLastColumn()).getValues()[0];
+        _rebuildContactFromSheet(updatedRow, familyId);
+        results.rejected += rejectedFields.length;
+    }
+}
+
+function _rebuildContactFromSheet(rowData, familyId) {
+    try {
+        const familyData = {
+            id: familyId,
+            nom: safeGetColumn(rowData, OUTPUT_COLUMNS.NOM),
+            prenom: safeGetColumn(rowData, OUTPUT_COLUMNS.PRENOM),
+            email: safeGetColumn(rowData, OUTPUT_COLUMNS.EMAIL),
+            telephone: String(safeGetColumn(rowData, OUTPUT_COLUMNS.TELEPHONE, '')),
+            phoneBis: String(safeGetColumn(rowData, OUTPUT_COLUMNS.TELEPHONE_BIS, '')),
+            adresse: safeGetColumn(rowData, OUTPUT_COLUMNS.ADRESSE),
+            idQuartier: safeGetColumn(rowData, OUTPUT_COLUMNS.ID_QUARTIER),
+            nombreAdulte: parseInt(safeGetColumn(rowData, OUTPUT_COLUMNS.NOMBRE_ADULTE, 0)) || 0,
+            nombreEnfant: parseInt(safeGetColumn(rowData, OUTPUT_COLUMNS.NOMBRE_ENFANT, 0)) || 0,
+            criticite: parseInt(safeGetColumn(rowData, OUTPUT_COLUMNS.CRITICITE, 0)) || 0,
+            zakatElFitr: rowData[OUTPUT_COLUMNS.ZAKAT_EL_FITR] === true,
+            sadaqa: rowData[OUTPUT_COLUMNS.SADAQA] === true,
+            langue: safeGetColumn(rowData, OUTPUT_COLUMNS.LANGUE, CONFIG.LANGUAGES.FR),
+            seDeplace: rowData[OUTPUT_COLUMNS.SE_DEPLACE] === true
+        };
+
+        syncFamilyContact(familyData);
+        logInfo(`Contact reconstruit depuis la feuille pour la famille ${familyId}`);
+    } catch (e) {
+        logError(`Échec reconstruction contact famille ${familyId}`, e);
+    }
+}
+
+// ─── Extraction des données contact ──────────────────────────────────────────
+
+function extractContactData(contact) {
+    const data = { firstName: '', lastName: '', phone: '', phoneBis: '', email: '', addressCanonical: '' };
+
+    if (contact.names && contact.names.length > 0) {
+        data.firstName = contact.names[0].middleName || '';
+        data.lastName = contact.names[0].familyName || '';
+    }
+
+    if (contact.phoneNumbers && contact.phoneNumbers.length > 0) {
+        data.phone = normalizePhone(contact.phoneNumbers[0].value);
+        if (contact.phoneNumbers.length > 1) {
+            data.phoneBis = normalizePhone(contact.phoneNumbers[1].value);
+        }
+    }
+
+    if (contact.emailAddresses && contact.emailAddresses.length > 0) {
+        data.email = contact.emailAddresses[0].value;
+    }
+
+    if (contact.addresses && contact.addresses.length > 0) {
+        const addr = contact.addresses[0];
+        data.addressCanonical = formatAddressCanonical(
+            addr.streetAddress || '',
+            addr.postalCode || '',
+            addr.city || ''
+        );
+    }
+
+    return data;
+}
+
+// ─── Détection des changements ────────────────────────────────────────────────
+
+function detectChanges(existingData, contactData, metadata) {
+    const changes = [];
+
+    const checks = [
+        {
+            field: 'prenom', column: OUTPUT_COLUMNS.PRENOM,
+            sheetVal: () => (existingData[OUTPUT_COLUMNS.PRENOM] || '').trim(),
+            contactVal: () => contactData.firstName,
+            condition: (s, c) => c && c !== s
+        },
+        {
+            field: 'nom', column: OUTPUT_COLUMNS.NOM,
+            sheetVal: () => (existingData[OUTPUT_COLUMNS.NOM] || '').trim(),
+            contactVal: () => contactData.lastName,
+            condition: (s, c) => c && c !== s
+        },
+        {
+            field: 'telephone', column: OUTPUT_COLUMNS.TELEPHONE,
+            sheetVal: () => normalizePhone(String(existingData[OUTPUT_COLUMNS.TELEPHONE] || '')).replace(/[\s()]/g, ''),
+            contactVal: () => contactData.phone.replace(/[\s()]/g, ''),
+            condition: (s, c) => c && c !== s
+        },
+        {
+            field: 'telephone_bis', column: OUTPUT_COLUMNS.TELEPHONE_BIS,
+            sheetVal: () => normalizePhone(String(existingData[OUTPUT_COLUMNS.TELEPHONE_BIS] || '')).replace(/[\s()]/g, ''),
+            contactVal: () => contactData.phoneBis.replace(/[\s()]/g, ''),
+            condition: (s, c) => c !== s
+        },
+        {
+            field: 'email', column: OUTPUT_COLUMNS.EMAIL,
+            sheetVal: () => (existingData[OUTPUT_COLUMNS.EMAIL] || '').toLowerCase().trim(),
+            contactVal: () => contactData.email.toLowerCase().trim(),
+            condition: (s, c) => c && c !== s
+        },
+        {
+            field: 'adresse', column: OUTPUT_COLUMNS.ADRESSE,
+            sheetVal: () => (existingData[OUTPUT_COLUMNS.ADRESSE] || '').trim(),
+            contactVal: () => contactData.addressCanonical,
+            condition: (s, c) => c && c !== s && c.length > 0
+        },
+        {
+            field: 'criticite', column: OUTPUT_COLUMNS.CRITICITE,
+            sheetVal: () => parseInt(existingData[OUTPUT_COLUMNS.CRITICITE]) || 0,
+            contactVal: () => metadata.criticite,
+            condition: (s, c) => c !== s
+        },
+        {
+            field: 'nombre_adulte', column: OUTPUT_COLUMNS.NOMBRE_ADULTE,
+            sheetVal: () => parseInt(existingData[OUTPUT_COLUMNS.NOMBRE_ADULTE]) || 0,
+            contactVal: () => metadata.nombreAdulte,
+            condition: (s, c) => c !== s
+        },
+        {
+            field: 'nombre_enfant', column: OUTPUT_COLUMNS.NOMBRE_ENFANT,
+            sheetVal: () => parseInt(existingData[OUTPUT_COLUMNS.NOMBRE_ENFANT]) || 0,
+            contactVal: () => metadata.nombreEnfant,
+            condition: (s, c) => c !== s
+        },
+        {
+            field: 'zakat_el_fitr', column: OUTPUT_COLUMNS.ZAKAT_EL_FITR,
+            sheetVal: () => existingData[OUTPUT_COLUMNS.ZAKAT_EL_FITR] === true,
+            contactVal: () => metadata.zakatElFitr === true,
+            condition: (s, c) => c !== s
+        },
+        {
+            field: 'sadaqa', column: OUTPUT_COLUMNS.SADAQA,
+            sheetVal: () => existingData[OUTPUT_COLUMNS.SADAQA] === true,
+            contactVal: () => metadata.sadaqa === true,
+            condition: (s, c) => c !== s
+        },
+        {
+            field: 'langue', column: OUTPUT_COLUMNS.LANGUE,
+            sheetVal: () => existingData[OUTPUT_COLUMNS.LANGUE] || CONFIG.LANGUAGES.FR,
+            contactVal: () => metadata.langue,
+            condition: (s, c) => c !== s
+        },
+        {
+            field: 'se_deplace', column: OUTPUT_COLUMNS.SE_DEPLACE,
+            sheetVal: () => existingData[OUTPUT_COLUMNS.SE_DEPLACE] === true,
+            contactVal: () => metadata.seDeplace === true,
+            condition: (s, c) => c !== s
+        }
+    ];
+
+    checks.forEach(({ field, column, sheetVal, contactVal, condition }) => {
+        const s = sheetVal();
+        const c = contactVal();
+        if (condition(s, c)) {
+            changes.push({ field, column, oldValue: s, newValue: c });
+        }
+    });
+
+    return changes;
+}
+
+// ─── Application physique des changements ────────────────────────────────────
+
+function applyChangesToSheet(sheet, row, existingData, contactData, metadata, changes) {
+    const householdChanges = changes.filter(c => c.field === 'nombre_adulte' || c.field === 'nombre_enfant');
+
+    if (householdChanges.length > 0) {
+        let newAdultes = parseInt(existingData[OUTPUT_COLUMNS.NOMBRE_ADULTE]) || 0;
+        let newEnfants = parseInt(existingData[OUTPUT_COLUMNS.NOMBRE_ENFANT]) || 0;
+
+        householdChanges.forEach(c => {
+            if (c.field === 'nombre_adulte') newAdultes = c.newValue;
+            if (c.field === 'nombre_enfant') newEnfants = c.newValue;
+        });
+
+        const validation = validateHouseholdComposition(newAdultes, newEnfants);
+        if (!validation.isValid) {
+            logAvertissement(`Composition foyer invalide, ignorée : ${validation.error}`);
+            changes = changes.filter(c => c.field !== 'nombre_adulte' && c.field !== 'nombre_enfant');
+            appendSheetComment(sheet, row, '⚠️', `Sync ignoré : ${validation.error}`);
+            if (changes.length === 0) return;
+        }
+    }
+
+    changes.forEach(change => {
+        sheet.getRange(row, change.column + 1).setValue(change.newValue);
+    });
+
+    appendSheetComment(sheet, row, '🔄', 'Sync Contact → Feuille');
+}
+
+function extractContactName(contact) {
+    if (contact.names && contact.names.length > 0) {
+        return contact.names[0].displayName || 'Inconnu';
+    }
+    return 'Inconnu';
+}
+
+// ─── Parsing des métadonnées stockées dans userDefined ────────────────────────
+
+function parseFamilyMetadataFromContact(userDefined) {
+    const meta = {
+        criticite: 0,
+        nombreAdulte: 0,
+        nombreEnfant: 0,
+        zakatElFitr: false,
+        sadaqa: false,
+        langue: CONFIG.LANGUAGES.FR,
+        seDeplace: false
+    };
+
+    if (!userDefined || !Array.isArray(userDefined)) return meta;
+
+    userDefined.forEach(({ key, value }) => {
+        if (!key || value === undefined || value === null) return;
+        switch (key) {
+            case 'criticite':
+                meta.criticite = parseInt(value) || 0;
+                break;
+            case 'nombre_adulte':
+            case 'nombreAdulte':
+                meta.nombreAdulte = parseInt(value) || 0;
+                break;
+            case 'nombre_enfant':
+            case 'nombreEnfant':
+                meta.nombreEnfant = parseInt(value) || 0;
+                break;
+            case 'zakat_el_fitr':
+            case 'zakatElFitr':
+                meta.zakatElFitr = (value === true || value === 'true' || value === '1');
+                break;
+            case 'sadaqa':
+                meta.sadaqa = (value === true || value === 'true' || value === '1');
+                break;
+            case 'langue':
+                meta.langue = value || CONFIG.LANGUAGES.FR;
+                break;
+            case 'se_deplace':
+            case 'seDeplace':
+                meta.seDeplace = (value === true || value === 'true' || value === '1');
+                break;
+        }
+    });
+
+    return meta;
 }

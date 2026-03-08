@@ -12,55 +12,76 @@
 
         body {
             font-family: "Google Sans", "Roboto", Arial, sans-serif;
-            background: linear-gradient(135deg, #e8f0fe 0%, #f9fbff 100%);
-            padding: 30px;
+            background: #f0f4ff;
             color: #202124;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
 
-        .form-container {
+        .screen {
+            display: none;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .screen.active {
+            display: flex;
+        }
+
+        /* ── Intro ── */
+        #screenIntro {
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #e8f0fe, #f9fbff);
+        }
+
+        .intro-card {
             background: #fff;
-            padding: 30px 25px;
+            padding: 32px 28px;
             border-radius: 12px;
             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
-            animation: fadeIn 0.5s ease;
+            width: 460px;
         }
 
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        h2 {
+        .intro-card h2 {
             color: #1a73e8;
+            font-size: 1.4em;
             text-align: center;
-            font-size: 1.6em;
-            margin-bottom: 20px;
+            margin-bottom: 6px;
         }
 
-        h2::after {
+        .intro-card h2::after {
             content: "";
             display: block;
-            width: 60px;
+            width: 50px;
             height: 3px;
             background: #1a73e8;
-            margin: 10px auto 0;
+            margin: 8px auto 18px;
             border-radius: 2px;
         }
 
-        .alert {
+        .info-box {
+            background: #e3f2fd;
             padding: 14px 16px;
+            border-radius: 8px;
+            border-left: 4px solid #1a73e8;
+            font-size: 13px;
+            line-height: 1.7;
+            margin-bottom: 18px;
+        }
+
+        .info-box ul {
+            margin: 6px 0 0 14px;
+        }
+
+        .alert {
+            padding: 11px 14px;
             border-radius: 6px;
-            margin-bottom: 15px;
+            font-size: 13px;
+            margin-bottom: 12px;
             display: none;
-            font-size: 14px;
-            line-height: 1.5;
         }
 
         .alert-success {
@@ -75,72 +96,20 @@
             border-left: 4px solid #ea4335;
         }
 
-        .info-box {
-            background: #e3f2fd;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 25px;
-            border-left: 4px solid #1a73e8;
-            font-size: 14px;
-            line-height: 1.7;
-        }
-
-        .info-box h3 {
-            color: #1a73e8;
-            font-size: 15px;
-            margin-bottom: 10px;
-        }
-
-        .info-box ul {
-            margin: 8px 0 0 18px;
-        }
-
-        .info-box li {
-            margin: 4px 0;
-        }
-
-        .loading {
-            display: none;
-            text-align: center;
-            padding: 30px 0;
-        }
-
-        .spinner {
-            border: 3px solid #e0e0e0;
-            border-top: 3px solid #1a73e8;
-            border-radius: 50%;
-            width: 36px;
-            height: 36px;
-            animation: spin 0.8s linear infinite;
-            margin: 0 auto 12px;
-        }
-
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-
-        .loading p {
-            font-size: 14px;
-            color: #5f6368;
-        }
-
-        .button-group {
+        .btn-row {
             display: flex;
-            gap: 12px;
-            margin-top: 25px;
+            gap: 10px;
         }
 
-        button {
-            flex: 1;
-            padding: 12px 20px;
+        .btn {
+            padding: 11px 18px;
             border: none;
             border-radius: 6px;
             cursor: pointer;
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 600;
-            transition: all 0.2s ease;
+            transition: all 0.2s;
+            flex: 1;
         }
 
         .btn-primary {
@@ -150,7 +119,6 @@
 
         .btn-primary:hover {
             background: linear-gradient(135deg, #1669c1, #1557b0);
-            transform: translateY(-1px);
         }
 
         .btn-secondary {
@@ -162,42 +130,522 @@
         .btn-secondary:hover {
             background: #e8eaed;
         }
+
+        /* ── Chargement ── */
+        #screenLoading {
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            background: linear-gradient(135deg, #e8f0fe, #f9fbff);
+        }
+
+        .spinner {
+            border: 4px solid #e0e0e0;
+            border-top: 4px solid #1a73e8;
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        #screenLoading p {
+            font-size: 15px;
+            color: #5f6368;
+        }
+
+        /* ── Confirmation ── */
+        #screenConfirm {
+            background: #f8f9fa;
+        }
+
+        .confirm-header {
+            background: #1a73e8;
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+
+        .confirm-header h1 {
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .confirm-header .sub {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-top: 1px;
+        }
+
+        /* ── Barre progression globale ── */
+        .progress-bar-wrap {
+            background: #1558b0;
+            padding: 0 20px 10px;
+            flex-shrink: 0;
+        }
+
+        .progress-track {
+            background: rgba(255, 255, 255, 0.25);
+            border-radius: 4px;
+            height: 6px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            background: #fff;
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        .progress-label {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.85);
+            margin-top: 4px;
+            text-align: right;
+        }
+
+        /* ── Navigation famille ── */
+        .nav-bar {
+            background: #fff;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid #dadce0;
+            flex-shrink: 0;
+        }
+
+        .nav-family-name {
+            font-size: 14px;
+            font-weight: 700;
+            color: #1a73e8;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .nav-counter {
+            font-size: 12px;
+            color: #5f6368;
+            white-space: nowrap;
+        }
+
+        .btn-nav {
+            padding: 6px 14px;
+            border-radius: 5px;
+            border: 1px solid #dadce0;
+            background: #f1f3f4;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            color: #3c4043;
+        }
+
+        .btn-nav:hover:not(:disabled) {
+            background: #e8eaed;
+        }
+
+        .btn-nav:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .btn-gl {
+            padding: 6px 12px;
+            border-radius: 5px;
+            border: 1px solid;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .btn-gl-a {
+            background: #e6f4ea;
+            color: #137333;
+            border-color: #34a853;
+        }
+
+        .btn-gl-a:hover {
+            background: #ceead6;
+        }
+
+        .btn-gl-r {
+            background: #fce8e6;
+            color: #c5221f;
+            border-color: #ea4335;
+        }
+
+        .btn-gl-r:hover {
+            background: #f5c6cb;
+        }
+
+        /* ── Status famille ── */
+        .family-status {
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .status-done {
+            background: #e6f4ea;
+            color: #137333;
+        }
+
+        .status-partial {
+            background: #fff3e0;
+            color: #b06b00;
+        }
+
+        .status-pending {
+            background: #f1f3f4;
+            color: #80868b;
+        }
+
+        /* ── Carte famille ── */
+        .card-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 20px;
+        }
+
+        .family-card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);
+            overflow: hidden;
+            border: 1px solid #e0e0e0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        thead th {
+            background: #f1f3f4;
+            padding: 9px 16px;
+            text-align: left;
+            font-weight: 600;
+            color: #5f6368;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        tbody tr {
+            border-bottom: 1px solid #f1f3f4;
+        }
+
+        tbody tr:last-child {
+            border-bottom: none;
+        }
+
+        tbody td {
+            padding: 10px 16px;
+            vertical-align: middle;
+        }
+
+        .col-field {
+            width: 20%;
+            font-weight: 600;
+            color: #3c4043;
+        }
+
+        .col-sheet {
+            width: 28%;
+        }
+
+        .col-contact {
+            width: 28%;
+        }
+
+        .col-action {
+            width: 24%;
+        }
+
+        .pill {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 10px;
+            font-size: 12px;
+        }
+
+        .pill-sheet {
+            background: #e8f0fe;
+            color: #1a73e8;
+        }
+
+        .pill-contact {
+            background: #fce8e6;
+            color: #c5221f;
+        }
+
+        .dec-btns {
+            display: flex;
+            gap: 6px;
+        }
+
+        .btn-dec {
+            padding: 6px 12px;
+            border-radius: 5px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            flex: 1;
+            transition: all 0.12s;
+        }
+
+        .btn-acc {
+            background: #f1f3f4;
+            color: #3c4043;
+            border-color: #dadce0;
+        }
+
+        .btn-acc.active {
+            background: #e6f4ea;
+            color: #137333;
+            border-color: #34a853;
+        }
+
+        .btn-rej {
+            background: #f1f3f4;
+            color: #3c4043;
+            border-color: #dadce0;
+        }
+
+        .btn-rej.active {
+            background: #fce8e6;
+            color: #c5221f;
+            border-color: #ea4335;
+        }
+
+        /* ── Pied ── */
+        .confirm-footer {
+            background: #fff;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-top: 1px solid #dadce0;
+            flex-shrink: 0;
+        }
+
+        .footer-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .fields-count {
+            font-size: 12px;
+            color: #5f6368;
+        }
+
+        .warn {
+            font-size: 12px;
+            color: #b06b00;
+        }
+
+        .btn-apply {
+            padding: 10px 24px;
+            background: linear-gradient(135deg, #1a73e8, #1669c1);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .btn-apply:disabled {
+            background: #dadce0;
+            color: #9aa0a6;
+            cursor: not-allowed;
+        }
+
+        .btn-apply:not(:disabled):hover {
+            background: linear-gradient(135deg, #1669c1, #1557b0);
+        }
+
+        .btn-cancel-sm {
+            padding: 10px 18px;
+            background: #f1f3f4;
+            color: #202124;
+            border: 1px solid #dadce0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        /* ── Résultat ── */
+        #screenResult {
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 14px;
+            text-align: center;
+            padding: 40px;
+            background: linear-gradient(135deg, #e8f0fe, #f9fbff);
+        }
+
+        .res-icon {
+            font-size: 56px;
+        }
+
+        .res-title {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .res-stats {
+            display: flex;
+            gap: 16px;
+            margin-top: 6px;
+        }
+
+        .stat {
+            padding: 14px 22px;
+            border-radius: 8px;
+            min-width: 100px;
+        }
+
+        .stat .n {
+            font-size: 26px;
+            font-weight: 700;
+        }
+
+        .stat .l {
+            font-size: 11px;
+            margin-top: 3px;
+        }
+
+        .stat-a {
+            background: #e6f4ea;
+            color: #137333;
+        }
+
+        .stat-r {
+            background: #fce8e6;
+            color: #c5221f;
+        }
+
+        .stat-e {
+            background: #fff3e0;
+            color: #b06b00;
+        }
     </style>
 </head>
 
 <body>
-    <div class="form-container">
-        <h2>🔄 Sync Contact → Feuille</h2>
 
-        <div id="alertBox" class="alert"></div>
-
-        <div class="info-box">
-            <h3>ℹ️ Comment ça marche ?</h3>
-            <ul>
-                <li>Analyse tous les contacts du groupe "Famille dans le besoin"</li>
-                <li>Détecte les différences champ par champ avec la feuille</li>
-                <li>Vous présente un récapitulatif pour valider chaque modification</li>
-                <li>Applique uniquement les décisions que vous confirmez</li>
-            </ul>
-        </div>
-
-        <div class="button-group" id="actionButtons">
-            <button class="btn-secondary" onclick="google.script.host.close()">Annuler</button>
-            <button class="btn-primary" onclick="startScan()">🔍 Analyser les contacts</button>
-        </div>
-
-        <div class="loading" id="loadingBox">
-            <div class="spinner"></div>
-            <p>Analyse en cours, veuillez patienter...</p>
+    <!-- Écran 1 : Intro -->
+    <div id="screenIntro" class="screen active">
+        <div class="intro-card">
+            <h2>🔄 Sync Contact → Feuille</h2>
+            <div id="alertBox" class="alert"></div>
+            <div class="info-box">
+                <ul>
+                    <li>Analyse tous les contacts du groupe "Famille dans le besoin"</li>
+                    <li>Détecte les différences champ par champ avec la feuille</li>
+                    <li>Vous présente chaque famille pour valider les modifications</li>
+                    <li>Applique uniquement les décisions que vous confirmez</li>
+                </ul>
+            </div>
+            <div class="btn-row" id="introBtns">
+                <button class="btn btn-secondary" onclick="google.script.host.close()">Annuler</button>
+                <button class="btn btn-primary" onclick="startScan()">🔍 Analyser les contacts</button>
+            </div>
         </div>
     </div>
 
-    <script>
-        function startScan() {
-            document.getElementById('alertBox').style.display = 'none';
-            document.getElementById('actionButtons').style.display = 'none';
-            document.getElementById('loadingBox').style.display = 'block';
+    <!-- Écran 2 : Chargement -->
+    <div id="screenLoading" class="screen">
+        <div class="spinner"></div>
+        <p id="loadingMsg">Analyse en cours, veuillez patienter...</p>
+    </div>
 
+    <!-- Écran 3 : Confirmation (famille par famille) -->
+    <div id="screenConfirm" class="screen">
+
+        <div class="confirm-header">
+            <div>
+                <h1>🔄 Confirmation de synchronisation</h1>
+                <div class="sub" id="confirmSub"></div>
+            </div>
+        </div>
+
+        <div class="progress-bar-wrap">
+            <div class="progress-track">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-label" id="progressLabel"></div>
+        </div>
+
+        <div class="nav-bar">
+            <div class="nav-family-name" id="navFamilyName"></div>
+            <span class="family-status" id="familyStatus"></span>
+            <span class="nav-counter" id="navCounter"></span>
+            <button class="btn-nav" id="btnPrev" onclick="navigate(-1)" disabled>◀ Précédent</button>
+            <button class="btn-gl btn-gl-a" onclick="bulkCurrentFamily('accept')">✅ Tout accepter</button>
+            <button class="btn-gl btn-gl-r" onclick="bulkCurrentFamily('reject')">❌ Tout rejeter</button>
+            <button class="btn-nav" id="btnNext" onclick="navigate(1)">Suivant ▶</button>
+        </div>
+
+        <div class="card-area" id="cardArea"></div>
+
+        <div class="confirm-footer">
+            <div class="footer-left">
+                <button class="btn-cancel-sm" onclick="google.script.host.close()">Annuler</button>
+                <span class="fields-count" id="fieldsCount"></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <span class="warn" id="warnPending"></span>
+                <button class="btn-apply" id="applyBtn" disabled onclick="applyDecisions()">✅ Appliquer tout</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Écran 4 : Résultat -->
+    <div id="screenResult" class="screen">
+        <div class="res-icon">✅</div>
+        <div class="res-title">Synchronisation terminée</div>
+        <div class="res-stats" id="resStats"></div>
+        <button class="btn btn-primary" style="width:160px;margin-top:8px;"
+            onclick="google.script.host.close()">Fermer</button>
+    </div>
+
+    <script>
+        let RAW_CHANGES = [];
+        const decisions = {};
+        let currentIndex = 0;
+        let totalFields = 0;
+
+        // ── Navigation écrans ─────────────────────────────────────────────────
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        }
+
+        // ── Scan ──────────────────────────────────────────────────────────────
+        function startScan() {
+            showScreen('screenLoading');
             google.script.run
                 .withSuccessHandler(onScanComplete)
                 .withFailureHandler(onScanError)
@@ -205,39 +653,192 @@
         }
 
         function onScanComplete(result) {
-            document.getElementById('loadingBox').style.display = 'none';
-
             if (!result.success) {
-                showAlert('error', '❌ Erreur lors de l\'analyse : ' + result.error);
-                document.getElementById('actionButtons').style.display = 'flex';
+                showScreen('screenIntro');
+                showAlert('error', '❌ Erreur lors de l\'analyse : ' + (result.error || 'inconnue'));
+                return;
+            }
+            if (!result.changes || result.changes.length === 0) {
+                showScreen('screenIntro');
+                showAlert('success', '✅ Tout est synchronisé — aucune modification détectée.');
+                document.getElementById('introBtns').innerHTML =
+                    '<button class="btn btn-primary" onclick="google.script.host.close()">Fermer</button>';
                 return;
             }
 
-            if (!result.changes || result.changes.length === 0) {
-                showAlert('success', '✅ Tout est synchronisé — aucune modification détectée.');
-                document.getElementById('actionButtons').innerHTML =
-                    '<button class="btn-primary" style="flex:1" onclick="google.script.host.close()">Fermer</button>';
-                document.getElementById('actionButtons').style.display = 'flex';
-                return;
+            RAW_CHANGES = result.changes.sort((a, b) => parseInt(a.familyId) - parseInt(b.familyId));
+            totalFields = RAW_CHANGES.reduce((s, f) => s + f.changes.length, 0);
+            RAW_CHANGES.forEach(f => { decisions[f.familyId] = {}; });
+
+            document.getElementById('confirmSub').textContent =
+                RAW_CHANGES.length + ' famille(s) · ' + totalFields + ' modification(s) détectée(s)';
+
+            currentIndex = 0;
+            renderCurrentFamily();
+            updateGlobalProgress();
+            showScreen('screenConfirm');
+        }
+
+        function onScanError(err) {
+            showScreen('screenIntro');
+            showAlert('error', '❌ Erreur système : ' + (err.message || err));
+        }
+
+        // ── Rendu famille courante ────────────────────────────────────────────
+        function renderCurrentFamily() {
+            const family = RAW_CHANGES[currentIndex];
+
+            document.getElementById('navFamilyName').textContent = family.familyName;
+            document.getElementById('navCounter').textContent =
+                (currentIndex + 1) + ' / ' + RAW_CHANGES.length;
+            document.getElementById('btnPrev').disabled = currentIndex === 0;
+            document.getElementById('btnNext').disabled = currentIndex === RAW_CHANGES.length - 1;
+
+            const rows = family.changes.map(c => `
+                <tr>
+                    <td class="col-field">${esc(c.label)}</td>
+                    <td class="col-sheet"><span class="pill pill-sheet">${esc(c.sheetValue)}</span></td>
+                    <td class="col-contact"><span class="pill pill-contact">${esc(c.contactValue)}</span></td>
+                    <td class="col-action">
+                        <div class="dec-btns">
+                            <button class="btn-dec btn-acc ${decisions[family.familyId][c.field] === 'accept' ? 'active' : ''}"
+                                id="acc-${family.familyId}-${c.field}"
+                                onclick="decide('${family.familyId}','${c.field}','accept')">✅ Accepter</button>
+                            <button class="btn-dec btn-rej ${decisions[family.familyId][c.field] === 'reject' ? 'active' : ''}"
+                                id="rej-${family.familyId}-${c.field}"
+                                onclick="decide('${family.familyId}','${c.field}','reject')">❌ Rejeter</button>
+                        </div>
+                    </td>
+                </tr>`).join('');
+
+            document.getElementById('cardArea').innerHTML = `
+                <div class="family-card">
+                    <table>
+                        <thead>
+                            <tr><th>Champ</th><th>Valeur feuille</th><th>Valeur contact</th><th>Décision</th></tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>`;
+
+            updateFamilyStatus(family);
+        }
+
+        function navigate(dir) {
+            currentIndex += dir;
+            currentIndex = Math.max(0, Math.min(currentIndex, RAW_CHANGES.length - 1));
+            renderCurrentFamily();
+        }
+
+        // ── Décisions ─────────────────────────────────────────────────────────
+        function decide(familyId, field, action) {
+            decisions[familyId][field] = action;
+            const accBtn = document.getElementById('acc-' + familyId + '-' + field);
+            const rejBtn = document.getElementById('rej-' + familyId + '-' + field);
+            if (accBtn) accBtn.classList.toggle('active', action === 'accept');
+            if (rejBtn) rejBtn.classList.toggle('active', action === 'reject');
+            updateFamilyStatus(RAW_CHANGES[currentIndex]);
+            updateGlobalProgress();
+        }
+
+        function bulkCurrentFamily(action) {
+            const family = RAW_CHANGES[currentIndex];
+            family.changes.forEach(c => decide(family.familyId, c.field, action));
+        }
+
+        // ── Statut famille ────────────────────────────────────────────────────
+        function updateFamilyStatus(family) {
+            const decided = Object.keys(decisions[family.familyId]).length;
+            const total = family.changes.length;
+            const el = document.getElementById('familyStatus');
+
+            if (decided === 0) {
+                el.className = 'family-status status-pending';
+                el.textContent = 'En attente';
+            } else if (decided < total) {
+                el.className = 'family-status status-partial';
+                el.textContent = decided + '/' + total + ' décidés';
+            } else {
+                el.className = 'family-status status-done';
+                el.textContent = '✓ Complété';
             }
+        }
+
+        // ── Progression globale ───────────────────────────────────────────────
+        function updateGlobalProgress() {
+            const totalDecided = RAW_CHANGES.reduce((s, f) => s + Object.keys(decisions[f.familyId]).length, 0);
+            const familiesDone = RAW_CHANGES.filter(f =>
+                Object.keys(decisions[f.familyId]).length === f.changes.length).length;
+            const pct = totalFields > 0 ? Math.round(totalDecided / totalFields * 100) : 0;
+
+            document.getElementById('progressFill').style.width = pct + '%';
+            document.getElementById('progressLabel').textContent =
+                familiesDone + '/' + RAW_CHANGES.length + ' familles complétées · ' + totalDecided + '/' + totalFields + ' champs';
+
+            const allDone = totalDecided >= totalFields;
+            document.getElementById('applyBtn').disabled = !allDone;
+
+            const remaining = RAW_CHANGES.length - familiesDone;
+            document.getElementById('warnPending').textContent =
+                allDone ? '' : remaining + ' famille(s) sans décision complète';
+
+            document.getElementById('fieldsCount').textContent =
+                totalDecided + ' / ' + totalFields + ' champs décidés';
+        }
+
+        // ── Application ───────────────────────────────────────────────────────
+        function applyDecisions() {
+            const payload = RAW_CHANGES.map(family => ({
+                familyId: family.familyId,
+                fields: family.changes.map(c => ({
+                    field: c.field,
+                    column: c.column,
+                    label: c.label,
+                    action: decisions[family.familyId][c.field],
+                    contactValue: c.contactValue,
+                    sheetValue: c.sheetValue
+                }))
+            }));
+
+            document.getElementById('loadingMsg').textContent = 'Application des décisions en cours...';
+            showScreen('screenLoading');
 
             google.script.run
-                .withSuccessHandler(() => google.script.host.close())
-                .withFailureHandler(onScanError)
-                .showConfirmationDialog(result.changes);
+                .withSuccessHandler(onApplyComplete)
+                .withFailureHandler(onApplyError)
+                .applyContactSyncDecisions(payload);
         }
 
-        function onScanError(error) {
-            document.getElementById('loadingBox').style.display = 'none';
-            document.getElementById('actionButtons').style.display = 'flex';
-            showAlert('error', '❌ Erreur système : ' + error.message);
+        function onApplyComplete(result) {
+            if (!result.success) {
+                showScreen('screenConfirm');
+                alert('❌ Erreur : ' + (result.error || 'inconnue'));
+                return;
+            }
+            const r = result.results;
+            document.getElementById('resStats').innerHTML = `
+                <div class="stat stat-a"><div class="n">${r.accepted}</div><div class="l">Accepté(s)</div></div>
+                <div class="stat stat-r"><div class="n">${r.rejected}</div><div class="l">Conservé(s)</div></div>
+                ${r.errors > 0 ? `<div class="stat stat-e"><div class="n">${r.errors}</div><div class="l">Erreur(s)</div></div>` : ''}
+            `;
+            showScreen('screenResult');
         }
 
-        function showAlert(type, message) {
-            const box = document.getElementById('alertBox');
-            box.className = 'alert alert-' + type;
-            box.innerHTML = message;
-            box.style.display = 'block';
+        function onApplyError(err) {
+            showScreen('screenConfirm');
+            alert('❌ Erreur système : ' + (err.message || err));
+        }
+
+        // ── Utilitaires ───────────────────────────────────────────────────────
+        function showAlert(type, msg) {
+            const b = document.getElementById('alertBox');
+            b.className = 'alert alert-' + type;
+            b.innerHTML = msg;
+            b.style.display = 'block';
+        }
+
+        function esc(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
     </script>
 </body>
