@@ -1,13 +1,13 @@
 /**
- * @file src/services/reverseContactSyncService2.js (v8.0)
- * Partie 2 : Application des décisions, extraction et détection des changements
+ * @file src/services/reverseContactSyncService.js (partie 2)
+ * Application des décisions, extraction et détection des changements
  */
 
 // ─── Application des décisions admin ─────────────────────────────────────────
 
 function applyContactSyncDecisions(decisions) {
     try {
-        logInfo(`Application des décisions : ${decisions.length} famille(s)`);
+        logInfo(`Application des décisions: ${decisions.length} famille(s)`);
         const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
         if (!sheet) return { success: false, error: 'Feuille Famille introuvable' };
 
@@ -25,7 +25,6 @@ function applyContactSyncDecisions(decisions) {
 
         logInfo('Décisions appliquées', results);
         return { success: true, results };
-
     } catch (e) {
         logError('Échec application des décisions', e);
         return { success: false, error: e.toString() };
@@ -34,7 +33,6 @@ function applyContactSyncDecisions(decisions) {
 
 function _applyFamilyDecision(sheet, data, familyDecision, results) {
     const { familyId, fields } = familyDecision;
-
     let targetRow = -1;
     let existingData = null;
 
@@ -54,18 +52,58 @@ function _applyFamilyDecision(sheet, data, familyDecision, results) {
     const acceptedFields = fields.filter(f => f.action === 'accept');
     const rejectedFields = fields.filter(f => f.action === 'reject');
 
-    acceptedFields.forEach(f => {
+    const nonAddressFields = acceptedFields.filter(f => f.field !== 'adresse');
+    const addressField = acceptedFields.find(f => f.field === 'adresse');
+
+    nonAddressFields.forEach(f => {
         const rawValue = f.rawContactValue !== undefined ? f.rawContactValue : f.contactValue;
         sheet.getRange(targetRow, f.column + 1).setValue(rawValue);
         results.accepted++;
     });
 
+    if (addressField) {
+        const newAddress = addressField.rawContactValue !== undefined
+            ? addressField.rawContactValue
+            : addressField.contactValue;
+
+        const addressParts = parseAddressComponents(newAddress);
+        const validation = validateAddressAndGetQuartier(
+            addressParts.street,
+            addressParts.postalCode,
+            addressParts.city
+        );
+
+        sheet.getRange(targetRow, OUTPUT_COLUMNS.ADRESSE + 1).setValue(newAddress);
+        results.accepted++;
+
+        if (validation.isValid && validation.quartierId) {
+            sheet.getRange(targetRow, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue(validation.quartierId);
+            logInfo(`Quartier re-résolu après sync adresse famille ${familyId}: ${validation.quartierId}`);
+            appendSheetComment(sheet, targetRow, '📍', `Quartier mis à jour suite au changement d'adresse: ${validation.quartierName || validation.quartierId}`);
+        } else {
+            sheet.getRange(targetRow, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue('');
+            const reason = validation.isValid ? 'aucun quartier trouvé' : (validation.error || 'adresse invalide');
+            logAvertissement(`Impossible de re-résoudre le quartier après sync adresse famille ${familyId}: ${reason}`);
+            appendSheetComment(sheet, targetRow, '⚠️', `Quartier non résolu après changement d'adresse: ${reason}`);
+        }
+
+        if (validation.quartierInvalid) {
+            appendSheetComment(sheet, targetRow, '⚠️', validation.warning);
+        }
+    }
+
+    if (acceptedFields.length > 0) {
+        sheet.getRange(targetRow, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(CONFIG.STATUS.IN_PROGRESS);
+        logInfo(`Statut famille ${familyId} passé à "En cours" suite à l'acceptation de ${acceptedFields.length} champ(s)`);
+    }
+
     const acceptedLabels = acceptedFields.map(f => f.label);
     const rejectedLabels = rejectedFields.map(f => f.label);
+    const commentParts = [];
 
-    let commentParts = [];
     if (acceptedLabels.length > 0) commentParts.push(`✅ Accepté: ${acceptedLabels.join(', ')}`);
     if (rejectedLabels.length > 0) commentParts.push(`❌ Conservé: ${rejectedLabels.join(', ')}`);
+    if (acceptedFields.length > 0) commentParts.push('Statut → En cours');
 
     if (commentParts.length > 0) {
         appendSheetComment(sheet, targetRow, '🔄', `Sync confirmé — ${commentParts.join(' | ')}`);
@@ -99,7 +137,7 @@ function _rebuildContactFromSheet(rowData, familyId) {
         };
 
         syncFamilyContact(familyData);
-        logInfo(`Contact reconstruit depuis la feuille pour la famille ${familyId}`);
+        logInfo(`Contact reconstruit depuis la feuille pour famille ${familyId}`);
     } catch (e) {
         logError(`Échec reconstruction contact famille ${familyId}`, e);
     }
@@ -235,7 +273,7 @@ function detectChanges(existingData, contactData, metadata) {
     return changes;
 }
 
-// ─── Application physique des changements ────────────────────────────────────
+// ─── Application physique des changements (sync automatique) ─────────────────
 
 function applyChangesToSheet(sheet, row, existingData, contactData, metadata, changes) {
     const householdChanges = changes.filter(c => c.field === 'nombre_adulte' || c.field === 'nombre_enfant');
@@ -251,16 +289,45 @@ function applyChangesToSheet(sheet, row, existingData, contactData, metadata, ch
 
         const validation = validateHouseholdComposition(newAdultes, newEnfants);
         if (!validation.isValid) {
-            logAvertissement(`Composition foyer invalide, ignorée : ${validation.error}`);
+            logAvertissement(`Composition foyer invalide, ignorée: ${validation.error}`);
             changes = changes.filter(c => c.field !== 'nombre_adulte' && c.field !== 'nombre_enfant');
-            appendSheetComment(sheet, row, '⚠️', `Sync ignoré : ${validation.error}`);
+            appendSheetComment(sheet, row, '⚠️', `Sync ignoré: ${validation.error}`);
             if (changes.length === 0) return;
         }
     }
 
-    changes.forEach(change => {
+    const addressChange = changes.find(c => c.field === 'adresse');
+    const otherChanges = changes.filter(c => c.field !== 'adresse');
+
+    otherChanges.forEach(change => {
         sheet.getRange(row, change.column + 1).setValue(change.newValue);
     });
+
+    if (addressChange) {
+        sheet.getRange(row, OUTPUT_COLUMNS.ADRESSE + 1).setValue(addressChange.newValue);
+
+        const addressParts = parseAddressComponents(addressChange.newValue);
+        const validation = validateAddressAndGetQuartier(
+            addressParts.street,
+            addressParts.postalCode,
+            addressParts.city
+        );
+
+        if (validation.isValid && validation.quartierId) {
+            sheet.getRange(row, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue(validation.quartierId);
+            logInfo(`Quartier re-résolu après sync adresse (auto): ${validation.quartierId}`);
+            appendSheetComment(sheet, row, '📍', `Quartier mis à jour: ${validation.quartierName || validation.quartierId}`);
+        } else {
+            sheet.getRange(row, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue('');
+            const reason = validation.isValid ? 'aucun quartier trouvé' : (validation.error || 'adresse invalide');
+            logAvertissement(`Impossible de re-résoudre le quartier après sync adresse (auto): ${reason}`);
+            appendSheetComment(sheet, row, '⚠️', `Quartier non résolu après changement d'adresse: ${reason}`);
+        }
+
+        if (validation.quartierInvalid) {
+            appendSheetComment(sheet, row, '⚠️', validation.warning);
+        }
+    }
 
     appendSheetComment(sheet, row, '🔄', 'Sync Contact → Feuille');
 }

@@ -1,28 +1,26 @@
 /**
  * @file src/services/contactService.js
- * @description Contact management with FIXED label update logic
  */
+
+function padFamilyId(id) {
+    return String(id).padStart(3, '0');
+}
 
 function syncFamilyContact(familyData) {
     try {
-        const { id, nom, prenom, email, telephone, adresse } = familyData;
-
-        const existingContact = findContactByFamilyId(id);
+        const existingContact = findContactByFamilyId(familyData.id);
 
         if (existingContact) {
-            logInfo(`Deleting existing contact for family: ${id}`);
+            logInfo(`Suppression contact existant famille: ${familyData.id}`);
             People.People.deleteContact(existingContact.resourceName);
             Utilities.sleep(500);
-            logInfo(`Creating new contact for family: ${id}`);
-            createContact(familyData);
-        } else {
-            createContact(familyData);
-            logInfo(`Contact created for family: ${id}`);
         }
 
+        createContact(familyData);
+        logInfo(`Contact créé/mis à jour pour famille: ${familyData.id}`);
         return { success: true };
     } catch (e) {
-        logError('Contact sync failed', e);
+        logError('Échec synchronisation contact', e);
         return { success: false, error: e.toString() };
     }
 }
@@ -32,16 +30,15 @@ function deleteContactForArchivedFamily(familyId) {
         const contact = findContactByFamilyId(familyId);
 
         if (!contact) {
-            logInfo(`No contact found for family ${familyId}, skipping deletion`);
-            return { success: true, message: 'No contact to delete' };
+            logInfo(`Aucun contact trouvé pour famille ${familyId}, suppression ignorée`);
+            return { success: true, message: 'Aucun contact à supprimer' };
         }
 
         People.People.deleteContact(contact.resourceName);
-        logInfo(`Contact deleted for archived family: ${familyId}`);
-
-        return { success: true, message: 'Contact deleted successfully' };
+        logInfo(`Contact supprimé pour famille archivée: ${familyId}`);
+        return { success: true, message: 'Contact supprimé avec succès' };
     } catch (e) {
-        logError('Contact deletion failed', e);
+        logError('Échec suppression contact', e);
         return { success: false, error: e.toString() };
     }
 }
@@ -49,34 +46,40 @@ function deleteContactForArchivedFamily(familyId) {
 function findContactByFamilyId(familyId) {
     try {
         const searchId = String(familyId);
-        logInfo(`Searching for contact with family ID: ${searchId}`);
+        const paddedId = padFamilyId(familyId);
+        logInfo(`Recherche contact famille ID: ${searchId} (padded: ${paddedId})`);
 
         const response = People.People.Connections.list('people/me', {
             pageSize: 2000,
             personFields: 'names,emailAddresses,phoneNumbers,addresses,userDefined,memberships'
         });
 
-        if (response.connections && response.connections.length > 0) {
-            logInfo(`Scanning ${response.connections.length} contacts...`);
+        if (!response.connections || response.connections.length === 0) {
+            logInfo(`Aucun contact trouvé pour famille ID: ${searchId}`);
+            return null;
+        }
 
-            for (const contact of response.connections) {
-                if (contact.names && contact.names.length > 0) {
-                    const givenName = contact.names[0].givenName || '';
+        logInfo(`Analyse de ${response.connections.length} contacts...`);
 
-                    const match = givenName.match(/^(\d+)\s*-/);
-                    if (match && match[1] === searchId) {
-                        logInfo(`Contact found for family ${searchId}`);
-                        return contact;
-                    }
+        for (const contact of response.connections) {
+            if (!contact.names || contact.names.length === 0) continue;
+
+            const givenName = contact.names[0].givenName || '';
+            const match = givenName.match(/^(\d+)\s*-/);
+
+            if (match) {
+                const contactId = String(parseInt(match[1], 10));
+                if (contactId === searchId) {
+                    logInfo(`Contact trouvé pour famille ${searchId}`);
+                    return contact;
                 }
             }
         }
 
-        logInfo(`No contact found for family ID: ${searchId}`);
+        logInfo(`Aucun contact trouvé pour famille ID: ${searchId}`);
         return null;
-
     } catch (e) {
-        logError(`Contact search failed for family ${familyId}`, e);
+        logError(`Échec recherche contact famille ${familyId}`, e);
         return null;
     }
 }
@@ -84,89 +87,71 @@ function findContactByFamilyId(familyId) {
 function getOrCreateContactGroup(groupName) {
     const cache = CacheService.getScriptCache();
     const cacheKey = `contact_group_${groupName}`;
-
     const cachedGroupId = cache.get(cacheKey);
+
     if (cachedGroupId) {
         try {
             People.ContactGroups.get(cachedGroupId);
             return cachedGroupId;
         } catch (e) {
             if (e.message && e.message.includes('404')) {
-                logInfo(`Cached group ${groupName} no longer exists, clearing cache`);
+                logInfo(`Groupe en cache ${groupName} introuvable, suppression cache`);
                 cache.remove(cacheKey);
             } else {
-                logWarning(`Error validating cached group ${groupName}`, e);
+                logWarning(`Erreur validation groupe en cache ${groupName}`, e);
             }
         }
     }
 
     try {
-        const groups = People.ContactGroups.list({
-            pageSize: 1000
-        });
+        const groups = People.ContactGroups.list({ pageSize: 1000 });
 
         if (groups.contactGroups) {
             for (const group of groups.contactGroups) {
                 if (group.name === groupName) {
                     cache.put(cacheKey, group.resourceName, CONFIG.CACHE.VERY_LONG);
-                    logInfo(`Found existing contact group: ${groupName}`);
+                    logInfo(`Groupe contact existant trouvé: ${groupName}`);
                     return group.resourceName;
                 }
             }
         }
 
-        const newGroup = People.ContactGroups.create({
-            contactGroup: {
-                name: groupName
-            }
-        });
-
+        const newGroup = People.ContactGroups.create({ contactGroup: { name: groupName } });
         cache.put(cacheKey, newGroup.resourceName, CONFIG.CACHE.VERY_LONG);
-        logInfo(`New contact group created: ${groupName}`);
-
+        logInfo(`Nouveau groupe contact créé: ${groupName}`);
         return newGroup.resourceName;
-
     } catch (e) {
-        logError('Failed to get/create contact group', e);
+        logError('Échec récupération/création groupe contact', e);
         return null;
     }
 }
 
 function getLocationGroupName(quartierId) {
-    if (!quartierId) {
-        return null;
-    }
+    if (!quartierId) return null;
 
     try {
         const hierarchy = getLocationHierarchyFromQuartier(quartierId);
 
         if (hierarchy.error || !hierarchy.ville || !hierarchy.secteur) {
-            logWarning(`Cannot get hierarchy for quartier ${quartierId}`);
+            logWarning(`Impossible d'obtenir la hiérarchie pour quartier ${quartierId}`);
             return null;
         }
 
         return `${hierarchy.ville.nom} - ${hierarchy.secteur.nom}`;
-
     } catch (e) {
-        logError('Failed to get location group name', e);
+        logError('Échec récupération nom groupe localisation', e);
         return null;
     }
 }
 
 function buildCustomFields(familyData) {
     const {
-        criticite = 0,
-        nombreAdulte = 0,
-        nombreEnfant = 0,
-        zakatElFitr = false,
-        sadaqa = false,
-        langue = CONFIG.LANGUAGES.FR,
-        seDeplace = false
+        criticite = 0, nombreAdulte = 0, nombreEnfant = 0,
+        zakatElFitr = false, sadaqa = false,
+        langue = CONFIG.LANGUAGES.FR, seDeplace = false
     } = familyData;
 
-    const lastUpdate = formatDateTime(new Date());
-
-    const customFields = [
+    return [
         { key: 'Criticité', value: String(criticite) },
         { key: 'Adultes', value: String(nombreAdulte) },
         { key: 'Enfants', value: String(nombreEnfant) },
@@ -174,57 +159,29 @@ function buildCustomFields(familyData) {
         { key: 'Sadaqa', value: sadaqa ? 'Oui' : 'Non' },
         { key: 'Langue', value: langue },
         { key: 'Se Déplace', value: seDeplace ? 'Oui' : 'Non' },
-        { key: 'Dernière mise à jour', value: lastUpdate }
+        { key: 'Dernière mise à jour', value: formatDateTime(new Date()) }
     ];
-
-    return customFields;
 }
 
 function parseFamilyMetadataFromContact(userDefined) {
     const metadata = {
-        criticite: 0,
-        nombreAdulte: 0,
-        nombreEnfant: 0,
-        zakatElFitr: false,
-        sadaqa: false,
-        langue: CONFIG.LANGUAGES.FR,
-        seDeplace: false,
-        lastUpdate: null
+        criticite: 0, nombreAdulte: 0, nombreEnfant: 0,
+        zakatElFitr: false, sadaqa: false,
+        langue: CONFIG.LANGUAGES.FR, seDeplace: false, lastUpdate: null
     };
 
-    if (!userDefined || userDefined.length === 0) {
-        return metadata;
-    }
+    if (!userDefined || userDefined.length === 0) return metadata;
 
     userDefined.forEach(field => {
-        const key = field.key;
-        const value = field.value;
-
-        switch (key) {
-            case 'Criticité':
-                metadata.criticite = parseInt(value) || 0;
-                break;
-            case 'Adultes':
-                metadata.nombreAdulte = parseInt(value) || 0;
-                break;
-            case 'Enfants':
-                metadata.nombreEnfant = parseInt(value) || 0;
-                break;
-            case 'Zakat El Fitr':
-                metadata.zakatElFitr = parseOuiNonToBoolean(value);
-                break;
-            case 'Sadaqa':
-                metadata.sadaqa = parseOuiNonToBoolean(value);
-                break;
-            case 'Langue':
-                metadata.langue = value;
-                break;
-            case 'Se Déplace':
-                metadata.seDeplace = parseOuiNonToBoolean(value);
-                break;
-            case 'Dernière mise à jour':
-                metadata.lastUpdate = value;
-                break;
+        switch (field.key) {
+            case 'Criticité': metadata.criticite = parseInt(field.value) || 0; break;
+            case 'Adultes': metadata.nombreAdulte = parseInt(field.value) || 0; break;
+            case 'Enfants': metadata.nombreEnfant = parseInt(field.value) || 0; break;
+            case 'Zakat El Fitr': metadata.zakatElFitr = parseOuiNonToBoolean(field.value); break;
+            case 'Sadaqa': metadata.sadaqa = parseOuiNonToBoolean(field.value); break;
+            case 'Langue': metadata.langue = field.value; break;
+            case 'Se Déplace': metadata.seDeplace = parseOuiNonToBoolean(field.value); break;
+            case 'Dernière mise à jour': metadata.lastUpdate = field.value; break;
         }
     });
 
@@ -232,96 +189,75 @@ function parseFamilyMetadataFromContact(userDefined) {
 }
 
 function parseOuiNonToBoolean(value) {
-    if (typeof value === 'boolean') {
-        return value;
-    }
-
-    const strValue = String(value).trim().toLowerCase();
-
-    if (strValue === 'oui' || strValue === 'yes' || strValue === 'نعم') {
-        return true;
-    }
-
-    if (strValue === 'non' || strValue === 'no' || strValue === 'لا') {
-        return false;
-    }
-
+    if (typeof value === 'boolean') return value;
+    const str = String(value).trim().toLowerCase();
+    if (str === 'oui' || str === 'yes' || str === 'نعم') return true;
+    if (str === 'non' || str === 'no' || str === 'لا') return false;
     return false;
 }
 
-function createContact(familyData) {
-    const { id, nom, prenom, email, telephone, phoneBis, adresse, idQuartier } = familyData;
+function _buildContactResource(familyData) {
+    const { id, nom, prenom, email, telephone, phoneBis, adresse } = familyData;
+    const paddedId = padFamilyId(id);
 
-    const contactResource = {
+    const resource = {
         names: [{
-            givenName: `${id} -`,
+            givenName: `${paddedId} -`,
             middleName: prenom || '',
             familyName: nom || '',
-            displayName: `${id} - ${prenom} ${nom}`
+            displayName: `${paddedId} - ${prenom} ${nom}`
         }],
         userDefined: buildCustomFields(familyData)
     };
 
     if (telephone) {
         const normalizedPhone = normalizePhone(telephone);
-
         if (!normalizedPhone) {
-            logWarning(`Invalid phone for family ${id}: ${telephone}`);
+            logWarning(`Téléphone invalide pour famille ${id}: ${telephone}`);
         } else {
-            contactResource.phoneNumbers = [{
-                value: normalizedPhone,
-                type: 'mobile'
-            }];
-
+            resource.phoneNumbers = [{ value: normalizedPhone, type: 'mobile' }];
             if (phoneBis) {
                 const normalizedPhoneBis = normalizePhone(phoneBis);
                 if (normalizedPhoneBis) {
-                    contactResource.phoneNumbers.push({
-                        value: normalizedPhoneBis,
-                        type: 'home'
-                    });
+                    resource.phoneNumbers.push({ value: normalizedPhoneBis, type: 'home' });
                 }
             }
         }
     }
 
     if (email && isValidEmail(email)) {
-        contactResource.emailAddresses = [{
-            value: email,
-            type: 'home'
-        }];
+        resource.emailAddresses = [{ value: email, type: 'home' }];
     }
 
     if (adresse) {
-        const parsedAddress = parseAddressComponents(adresse);
-
-        const canonicalAddress = formatAddressCanonical(
-            parsedAddress.street,
-            parsedAddress.postalCode,
-            parsedAddress.city
-        );
-
-        logInfo(`Storing contact address in canonical format: "${canonicalAddress}"`);
-
-        contactResource.addresses = [{
-            streetAddress: parsedAddress.street,
-            city: parsedAddress.city,
-            postalCode: parsedAddress.postalCode,
-            country: parsedAddress.country,
+        const parsed = parseAddressComponents(adresse);
+        const canonical = formatAddressCanonical(parsed.street, parsed.postalCode, parsed.city);
+        resource.addresses = [{
+            streetAddress: parsed.street,
+            city: parsed.city,
+            postalCode: parsed.postalCode,
+            country: parsed.country,
             type: 'home',
-            formattedValue: canonicalAddress
+            formattedValue: canonical
         }];
     }
 
+    return resource;
+}
+
+function createContact(familyData) {
+    const { id, idQuartier } = familyData;
+    const resource = _buildContactResource(familyData);
     const memberships = [];
 
     const mainGroupId = getOrCreateContactGroup('Famille dans le besoin');
     if (mainGroupId) {
-        memberships.push({
-            contactGroupMembership: {
-                contactGroupResourceName: mainGroupId
-            }
-        });
+        memberships.push({ contactGroupMembership: { contactGroupResourceName: mainGroupId } });
+    }
+
+    const valideGroupId = getOrCreateContactGroup('Validé');
+    if (valideGroupId) {
+        memberships.push({ contactGroupMembership: { contactGroupResourceName: valideGroupId } });
     }
 
     if (idQuartier) {
@@ -329,83 +265,80 @@ function createContact(familyData) {
         if (locationGroupName) {
             const locationGroupId = getOrCreateContactGroup(locationGroupName);
             if (locationGroupId) {
-                memberships.push({
-                    contactGroupMembership: {
-                        contactGroupResourceName: locationGroupId
-                    }
-                });
+                memberships.push({ contactGroupMembership: { contactGroupResourceName: locationGroupId } });
             }
         }
     }
 
-    if (memberships.length > 0) {
-        contactResource.memberships = memberships;
-    }
+    if (memberships.length > 0) resource.memberships = memberships;
 
-    logInfo(`Creating contact for family ${id}`, {
-        displayName: `${id} - ${prenom} ${nom}`,
-        phone: contactResource.phoneNumbers ? contactResource.phoneNumbers[0].value : 'none',
-        email: email || 'none',
-        criticite: familyData.criticite,
-        household: `${familyData.nombreAdulte}A/${familyData.nombreEnfant}E`,
-        customFieldsCount: contactResource.userDefined.length
+    logInfo(`Création contact famille ${id} (padded: ${padFamilyId(id)})`, {
+        displayName: resource.names[0].displayName,
+        groupes: memberships.length
     });
 
-    People.People.createContact(contactResource);
-    logInfo(`Contact created with custom fields for family: ${id}`);
+    People.People.createContact(resource);
+    logInfo(`Contact créé avec labels: Famille dans le besoin, Validé — famille: ${id}`);
+}
+
+function createContactWithStatusLabel(familyData, statusLabel) {
+    try {
+        const { id } = familyData;
+        const resource = _buildContactResource(familyData);
+        const memberships = [];
+
+        const statusGroupId = getOrCreateContactGroup(statusLabel);
+        if (statusGroupId) {
+            memberships.push({ contactGroupMembership: { contactGroupResourceName: statusGroupId } });
+        }
+
+        if (memberships.length > 0) resource.memberships = memberships;
+
+        logInfo(`Création contact famille ${id} avec label: ${statusLabel}`);
+        People.People.createContact(resource);
+        logInfo(`Contact créé avec label ${statusLabel} pour famille: ${id}`);
+        return { success: true };
+    } catch (e) {
+        logError('Échec création contact avec label statut', e);
+        return { success: false, error: e.toString() };
+    }
 }
 
 function updateContactGroups(contactResourceName, idQuartier) {
     try {
-        const contact = People.People.get(contactResourceName, {
-            personFields: 'memberships'
-        });
-
+        const contact = People.People.get(contactResourceName, { personFields: 'memberships' });
         const currentMemberships = contact.memberships || [];
         const mainGroupId = getOrCreateContactGroup('Famille dans le besoin');
         const newLocationGroupName = idQuartier ? getLocationGroupName(idQuartier) : null;
         const newLocationGroupId = newLocationGroupName ? getOrCreateContactGroup(newLocationGroupName) : null;
-
         const locationGroupPattern = /^.+ - .+$/;
         const oldLocationGroups = [];
 
         currentMemberships.forEach(membership => {
-            if (membership.contactGroupMembership) {
-                const groupResourceName = membership.contactGroupMembership.contactGroupResourceName;
+            if (!membership.contactGroupMembership) return;
+            const groupResourceName = membership.contactGroupMembership.contactGroupResourceName;
+            if (groupResourceName === mainGroupId) return;
+            if (newLocationGroupId && groupResourceName === newLocationGroupId) return;
 
-                if (groupResourceName === mainGroupId) {
-                    return;
+            try {
+                const groupInfo = People.ContactGroups.get(groupResourceName);
+                if (groupInfo.name && locationGroupPattern.test(groupInfo.name)) {
+                    oldLocationGroups.push(groupResourceName);
+                    logInfo(`Ancien groupe localisation identifié: ${groupInfo.name}`);
                 }
-
-                if (newLocationGroupId && groupResourceName === newLocationGroupId) {
-                    return;
-                }
-
-                try {
-                    const groupInfo = People.ContactGroups.get(groupResourceName);
-
-                    if (groupInfo.name && locationGroupPattern.test(groupInfo.name)) {
-                        oldLocationGroups.push(groupResourceName);
-                        logInfo(`Old location group identified: ${groupInfo.name}`);
-                    }
-                } catch (e) {
-                    logWarning(`Cannot get group info for ${groupResourceName}`, e);
-                }
+            } catch (e) {
+                logWarning(`Impossible d'obtenir info groupe ${groupResourceName}`, e);
             }
         });
 
-        if (oldLocationGroups.length > 0) {
-            oldLocationGroups.forEach(oldGroupId => {
-                try {
-                    People.ContactGroups.Members.modify(oldGroupId, {
-                        resourceNamesToRemove: [contactResourceName]
-                    });
-                    logInfo(`Contact removed from old location group: ${oldGroupId}`);
-                } catch (e) {
-                    logError(`Failed to remove contact from group ${oldGroupId}`, e);
-                }
-            });
-        }
+        oldLocationGroups.forEach(oldGroupId => {
+            try {
+                People.ContactGroups.Members.modify(oldGroupId, { resourceNamesToRemove: [contactResourceName] });
+                logInfo(`Contact retiré de l'ancien groupe: ${oldGroupId}`);
+            } catch (e) {
+                logError(`Échec retrait contact du groupe ${oldGroupId}`, e);
+            }
+        });
 
         const hasMainGroup = currentMemberships.some(m =>
             m.contactGroupMembership &&
@@ -413,10 +346,8 @@ function updateContactGroups(contactResourceName, idQuartier) {
         );
 
         if (!hasMainGroup && mainGroupId) {
-            People.ContactGroups.Members.modify(mainGroupId, {
-                resourceNamesToAdd: [contactResourceName]
-            });
-            logInfo(`Contact added to main group: Famille dans le besoin`);
+            People.ContactGroups.Members.modify(mainGroupId, { resourceNamesToAdd: [contactResourceName] });
+            logInfo('Contact ajouté au groupe principal: Famille dans le besoin');
         }
 
         if (newLocationGroupId) {
@@ -424,201 +355,56 @@ function updateContactGroups(contactResourceName, idQuartier) {
                 m.contactGroupMembership &&
                 m.contactGroupMembership.contactGroupResourceName === newLocationGroupId
             );
-
             if (!hasNewLocationGroup) {
-                People.ContactGroups.Members.modify(newLocationGroupId, {
-                    resourceNamesToAdd: [contactResourceName]
-                });
-                logInfo(`Contact added to new location group: ${newLocationGroupName}`);
+                People.ContactGroups.Members.modify(newLocationGroupId, { resourceNamesToAdd: [contactResourceName] });
+                logInfo(`Contact ajouté au nouveau groupe localisation: ${newLocationGroupName}`);
             }
         }
-
     } catch (e) {
-        logError('Failed to update contact groups', e);
+        logError('Échec mise à jour groupes contact', e);
     }
 }
 
 function updateContactLabelsForStatus(familyId, statusLabel) {
     try {
-        logInfo(`Updating contact labels for family ${familyId} to: ${statusLabel}`);
-
+        logInfo(`Mise à jour labels contact famille ${familyId} vers: ${statusLabel}`);
         const contact = findContactByFamilyId(familyId);
 
         if (!contact) {
-            logWarning(`No contact found for family ${familyId}, skipping label update`);
-            return {
-                success: true,
-                message: 'No contact to update'
-            };
+            logWarning(`Aucun contact trouvé pour famille ${familyId}, mise à jour labels ignorée`);
+            return { success: true, message: 'Aucun contact à mettre à jour' };
         }
 
-        const contactResourceName = contact.resourceName;
-
-        let statusGroupId = getOrCreateContactGroup(statusLabel);
-
+        const statusGroupId = getOrCreateContactGroup(statusLabel);
         if (!statusGroupId) {
-            logError(`Failed to get/create group: ${statusLabel}`);
-            return {
-                success: false,
-                error: `Failed to create/get group: ${statusLabel}`
-            };
+            logError(`Échec récupération/création groupe: ${statusLabel}`);
+            return { success: false, error: `Impossible de créer/récupérer le groupe: ${statusLabel}` };
         }
 
-        logInfo(`Updating contact ${contactResourceName} to have only status label: ${statusLabel}`);
-
-        try {
-            const updatedContact = {
-                resourceName: contactResourceName,
-                memberships: [
-                    {
-                        contactGroupMembership: {
-                            contactGroupResourceName: statusGroupId
-                        }
-                    }
-                ],
+        People.People.updateContact(
+            {
+                resourceName: contact.resourceName,
+                memberships: [{ contactGroupMembership: { contactGroupResourceName: statusGroupId } }],
                 etag: contact.etag
-            };
+            },
+            contact.resourceName,
+            { updatePersonFields: 'memberships', personFields: 'memberships' }
+        );
 
-            People.People.updateContact(
-                updatedContact,
-                contactResourceName,
-                {
-                    updatePersonFields: 'memberships',
-                    personFields: 'memberships'
-                }
-            );
-
-            logInfo(`Successfully updated contact ${familyId} with ${statusLabel} label`);
-
-            return {
-                success: true,
-                message: `Labels updated: ${statusLabel}`
-            };
-
-        } catch (e) {
-            logError(`Failed to update contact memberships for family ${familyId}`, e);
-            return {
-                success: false,
-                error: `Failed to update contact: ${e.toString()}`
-            };
-        }
-
+        logInfo(`Labels mis à jour avec succès: ${statusLabel} — famille: ${familyId}`);
+        return { success: true, message: `Labels mis à jour: ${statusLabel}` };
     } catch (e) {
-        logError(`Failed to update contact labels for family ${familyId}`, e);
-        return {
-            success: false,
-            error: e.toString()
-        };
+        logError(`Échec mise à jour labels contact famille ${familyId}`, e);
+        return { success: false, error: e.toString() };
     }
 }
 
 function clearContactGroupCache(groupName) {
     try {
         const cache = CacheService.getScriptCache();
-        const cacheKey = `contact_group_${groupName}`;
-        cache.remove(cacheKey);
-        logInfo(`Cleared cache for contact group: ${groupName}`);
+        cache.remove(`contact_group_${groupName}`);
+        logInfo(`Cache groupe contact effacé: ${groupName}`);
     } catch (e) {
-        logWarning(`Failed to clear cache for group ${groupName}`, e);
-    }
-}
-
-function createContactWithStatusLabel(familyData, statusLabel) {
-    try {
-        const { id, nom, prenom, email, telephone, phoneBis, adresse, idQuartier } = familyData;
-
-        logInfo(`Creating contact for family ${id} with status label: ${statusLabel}`);
-
-        const contactResource = {
-            names: [{
-                givenName: `${id} -`,
-                middleName: prenom || '',
-                familyName: nom || '',
-                displayName: `${id} - ${prenom} ${nom}`
-            }],
-            userDefined: buildCustomFields(familyData)
-        };
-
-        if (telephone) {
-            const normalizedPhone = normalizePhone(telephone);
-
-            if (!normalizedPhone) {
-                logWarning(`Invalid phone for family ${id}: ${telephone}`);
-            } else {
-                contactResource.phoneNumbers = [{
-                    value: normalizedPhone,
-                    type: 'mobile'
-                }];
-
-                if (phoneBis) {
-                    const normalizedPhoneBis = normalizePhone(phoneBis);
-                    if (normalizedPhoneBis) {
-                        contactResource.phoneNumbers.push({
-                            value: normalizedPhoneBis,
-                            type: 'home'
-                        });
-                    }
-                }
-            }
-        }
-
-        if (email && isValidEmail(email)) {
-            contactResource.emailAddresses = [{
-                value: email,
-                type: 'home'
-            }];
-        }
-
-        if (adresse) {
-            const parsedAddress = parseAddressComponents(adresse);
-
-            const canonicalAddress = formatAddressCanonical(
-                parsedAddress.street,
-                parsedAddress.postalCode,
-                parsedAddress.city
-            );
-
-            logInfo(`Storing contact address in canonical format: "${canonicalAddress}"`);
-
-            contactResource.addresses = [{
-                streetAddress: parsedAddress.street,
-                city: parsedAddress.city,
-                postalCode: parsedAddress.postalCode,
-                country: parsedAddress.country,
-                type: 'home',
-                formattedValue: canonicalAddress
-            }];
-        }
-
-        const memberships = [];
-        const statusGroupId = getOrCreateContactGroup(statusLabel);
-
-        if (statusGroupId) {
-            memberships.push({
-                contactGroupMembership: {
-                    contactGroupResourceName: statusGroupId
-                }
-            });
-        }
-
-        if (memberships.length > 0) {
-            contactResource.memberships = memberships;
-        }
-
-        logInfo(`Creating contact for family ${id} with label: ${statusLabel}`, {
-            displayName: `${id} - ${prenom} ${nom}`,
-            phone: contactResource.phoneNumbers ? contactResource.phoneNumbers[0].value : 'none',
-            email: email || 'none',
-            label: statusLabel
-        });
-
-        People.People.createContact(contactResource);
-        logInfo(`Contact created with ${statusLabel} label for family: ${id}`);
-
-        return { success: true };
-
-    } catch (e) {
-        logError('Failed to create contact with status label', e);
-        return { success: false, error: e.toString() };
+        logWarning(`Échec effacement cache groupe ${groupName}`, e);
     }
 }

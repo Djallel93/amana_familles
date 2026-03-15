@@ -116,6 +116,26 @@
             font-weight: 500;
             color: #333;
         }
+
+        .status-badge {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 7px;
+            border-radius: 10px;
+            margin-left: 6px;
+            vertical-align: middle;
+        }
+
+        .status-badge.valide {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-badge.en-cours {
+            background: #fff3cd;
+            color: #856404;
+        }
     </style>
 </head>
 
@@ -143,7 +163,7 @@
                     <option value="">-- Choisir une famille --</option>
                 </select>
                 <small style="color: #666; display: block; margin-top: 5px;">
-                    💡 Sélectionnez une famille pour pré-remplir les champs (seules les familles validées)
+                    💡 Familles avec statut <strong>Validé</strong> ou <strong>En cours</strong>
                 </small>
             </div>
 
@@ -303,13 +323,11 @@
             const street = canonical.substring(0, commaIndex).trim();
             const rest = canonical.substring(commaIndex + 1).trim();
             const postalMatch = rest.match(/^(\d{5})\s*(.*)/);
-            if (postalMatch) {
-                return { street, postalCode: postalMatch[1], city: postalMatch[2].trim() };
-            }
+            if (postalMatch) return { street, postalCode: postalMatch[1], city: postalMatch[2].trim() };
             return { street, postalCode: '', city: rest };
         }
 
-        function loadFamiliesForMode(filterValidated) {
+        function loadFamiliesForUpdate() {
             google.script.run
                 .withSuccessHandler(function (families) {
                     allFamilies = families;
@@ -318,16 +336,18 @@
                 .withFailureHandler(function (error) {
                     console.error('Erreur chargement familles:', error);
                 })
-                .getAllFamilyIds(filterValidated);
+                .getAllFamilyIdsForUpdate();
         }
 
         function populateFamilyDropdown() {
             const select = document.getElementById('familyId');
             select.innerHTML = '<option value="">-- Choisir une famille --</option>';
+
             allFamilies.forEach(family => {
                 const option = document.createElement('option');
                 option.value = family.id;
-                option.textContent = `${family.id} - ${family.nom} ${family.prenom} (${family.telephone})`;
+                const statusTag = family.status === 'Validé' ? '✓' : '⏳';
+                option.textContent = `${statusTag} ${family.id} - ${family.nom} ${family.prenom} (${family.telephone})`;
                 option.dataset.family = JSON.stringify(family);
                 select.appendChild(option);
             });
@@ -370,7 +390,11 @@
                 city: parsed.city
             };
 
-            showAlert('success', '✅ Données de la famille chargées');
+            const statusLabel = family.status === 'Validé'
+                ? '<span class="status-badge valide">Validé</span>'
+                : '<span class="status-badge en-cours">En cours</span>';
+
+            showAlert('success', `✅ Données chargées — statut actuel: ${statusLabel}`);
         }
 
         function clearForm() {
@@ -391,9 +415,7 @@
             document.getElementById('modeUpdate').classList.toggle('active', mode === 'update');
             document.getElementById('familyIdGroup').style.display = mode === 'update' ? 'block' : 'none';
 
-            if (mode === 'update') {
-                loadFamiliesForMode(true);
-            }
+            if (mode === 'update') loadFamiliesForUpdate();
 
             const requiredFields = [
                 'lastName', 'firstName', 'phone', 'address', 'postalCode',
@@ -486,39 +508,27 @@
             let hasData = false;
 
             const textFields = {
-                lastName: 'lastName',
-                firstName: 'firstName',
-                phone: 'phone',
-                phoneBis: 'phoneBis',
-                email: 'email',
-                circonstances: 'circonstances',
-                ressentit: 'ressentit',
-                specificites: 'specificites',
-                langue: 'langue'
+                lastName: 'lastName', firstName: 'firstName', phone: 'phone',
+                phoneBis: 'phoneBis', email: 'email', circonstances: 'circonstances',
+                ressentit: 'ressentit', specificites: 'specificites', langue: 'langue'
             };
 
             Object.keys(textFields).forEach(fieldId => {
                 const value = document.getElementById(fieldId).value.trim();
-                if (value !== '') {
-                    updateData[textFields[fieldId]] = value;
-                    hasData = true;
-                }
+                if (value !== '') { updateData[textFields[fieldId]] = value; hasData = true; }
             });
 
             const numericFields = { nombreAdulte: 'nombreAdulte', nombreEnfant: 'nombreEnfant', criticite: 'criticite' };
             Object.keys(numericFields).forEach(fieldId => {
                 const value = document.getElementById(fieldId).value;
-                if (value !== '') {
-                    updateData[numericFields[fieldId]] = parseInt(value);
-                    hasData = true;
-                }
+                if (value !== '') { updateData[numericFields[fieldId]] = parseInt(value); hasData = true; }
             });
 
             const currentAddress = document.getElementById('address').value.trim();
             const currentPostalCode = document.getElementById('postalCode').value.trim();
             const currentCity = document.getElementById('city').value.trim();
-
-            const addressChanged = currentAddress !== originalAddressData.address ||
+            const addressChanged =
+                currentAddress !== originalAddressData.address ||
                 currentPostalCode !== originalAddressData.postalCode ||
                 currentCity !== originalAddressData.city;
 
@@ -561,13 +571,21 @@
             if (result.success) {
                 alertBox.className = 'alert alert-success';
                 alertBox.style.display = 'block';
-                alertBox.innerHTML = `<strong>✅ Succès!</strong><br>Famille enregistrée avec succès.<br>ID: <strong>${result.familyId}</strong><br>${result.quartierName ? 'Quartier: ' + result.quartierName : ''}<br>Criticité: ${result.criticite}<br>Langue: ${result.langue}<br>Zakat El Fitr: ${result.zakatElFitr ? 'Oui' : 'Non'}<br>Sadaqa: ${result.sadaqa ? 'Oui' : 'Non'}<br>Se Déplace: ${result.seDeplace ? 'Oui' : 'Non'}`;
+                alertBox.innerHTML = `<strong>✅ Succès!</strong><br>Famille enregistrée avec succès.<br>
+                    ID: <strong>${result.familyId}</strong><br>
+                    ${result.quartierName ? 'Quartier: ' + result.quartierName + '<br>' : ''}
+                    Criticité: ${result.criticite}<br>
+                    Langue: ${result.langue}<br>
+                    Zakat El Fitr: ${result.zakatElFitr ? 'Oui' : 'Non'}<br>
+                    Sadaqa: ${result.sadaqa ? 'Oui' : 'Non'}<br>
+                    Se Déplace: ${result.seDeplace ? 'Oui' : 'Non'}`;
                 clearForm();
                 setTimeout(() => { google.script.host.close(); }, 3000);
             } else if (result.duplicate) {
                 alertBox.className = 'alert alert-warning';
                 alertBox.style.display = 'block';
-                alertBox.innerHTML = `<strong>⚠️ Doublon détecté!</strong><br>${result.message}<br><br>La tentative a été enregistrée avec le statut "Rejeté" (ID: ${result.newId})`;
+                alertBox.innerHTML = `<strong>⚠️ Doublon détecté!</strong><br>${result.message}<br><br>
+                    La tentative a été enregistrée avec le statut "Rejeté" (ID: ${result.newId})`;
             } else {
                 alertBox.className = 'alert alert-error';
                 alertBox.style.display = 'block';
@@ -582,7 +600,9 @@
             if (result.success) {
                 alertBox.className = 'alert alert-success';
                 alertBox.style.display = 'block';
-                alertBox.innerHTML = `<strong>✅ Mise à jour réussie!</strong><br>Famille ID: <strong>${result.familyId}</strong><br>Champs mis à jour: ${result.updatedFields.join(', ')}`;
+                alertBox.innerHTML = `<strong>✅ Mise à jour réussie!</strong><br>
+                    Famille ID: <strong>${result.familyId}</strong><br>
+                    Champs mis à jour: ${result.updatedFields.join(', ')}`;
                 clearForm();
                 setTimeout(() => { google.script.host.close(); }, 3000);
             } else {

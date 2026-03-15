@@ -46,9 +46,6 @@ function calculateStatistics() {
     for (let i = 1; i < data.length; i++) {
         const row = data[i];
         const status = safeGetColumn(row, OUTPUT_COLUMNS.ETAT_DOSSIER);
-        const criticite = parseInt(safeGetColumn(row, OUTPUT_COLUMNS.CRITICITE, 0)) || 0;
-        const quartierId = safeGetColumn(row, OUTPUT_COLUMNS.ID_QUARTIER);
-        const langue = safeGetColumn(row, OUTPUT_COLUMNS.LANGUE, 'inconnu');
 
         if (status === CONFIG.STATUS.VALIDATED) stats.validated++;
         if (status === CONFIG.STATUS.IN_PROGRESS) stats.inProgress++;
@@ -60,6 +57,10 @@ function calculateStatistics() {
         if (row[OUTPUT_COLUMNS.SE_DEPLACE] === true) stats.seDeplace++;
         if (row[OUTPUT_COLUMNS.ZAKAT_EL_FITR] === true) stats.zakatElFitr++;
         if (row[OUTPUT_COLUMNS.SADAQA] === true) stats.sadaqa++;
+
+        const criticite = parseInt(safeGetColumn(row, OUTPUT_COLUMNS.CRITICITE, 0)) || 0;
+        const quartierId = safeGetColumn(row, OUTPUT_COLUMNS.ID_QUARTIER);
+        const langue = safeGetColumn(row, OUTPUT_COLUMNS.LANGUE, 'inconnu');
 
         if (criticite >= 0 && criticite <= 5) stats.byCriticite[criticite]++;
         if (quartierId) stats.byQuartier[quartierId] = (stats.byQuartier[quartierId] || 0) + 1;
@@ -99,7 +100,6 @@ function writeToFamilySheet(formData, options = {}) {
 /**
  * Met à jour une famille existante suite à une soumission de formulaire.
  * Compare champ par champ, valide l'adresse si elle change.
- * Retourne { changes: string[] }
  */
 function updateExistingFamily(duplicate, formData, addressValidationHint, docValidation) {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -121,7 +121,6 @@ function updateExistingFamily(duplicate, formData, addressValidationHint, docVal
 
     const changes = [];
 
-    // Téléphone principal
     const newPhone = normalizePhone(formData.phone || '');
     const oldPhone = normalizePhone(String(safeGetColumn(existingData, OUTPUT_COLUMNS.TELEPHONE) || ''));
     if (newPhone && newPhone !== oldPhone) {
@@ -129,7 +128,6 @@ function updateExistingFamily(duplicate, formData, addressValidationHint, docVal
         changes.push('téléphone');
     }
 
-    // Téléphone secondaire
     if (formData.phoneBis) {
         const newPhoneBis = normalizePhone(formData.phoneBis);
         const oldPhoneBis = normalizePhone(String(safeGetColumn(existingData, OUTPUT_COLUMNS.TELEPHONE_BIS) || ''));
@@ -139,7 +137,6 @@ function updateExistingFamily(duplicate, formData, addressValidationHint, docVal
         }
     }
 
-    // Email
     if (formData.email) {
         const newEmail = formData.email.toLowerCase().trim();
         const oldEmail = safeGetColumn(existingData, OUTPUT_COLUMNS.EMAIL, '').toLowerCase().trim();
@@ -149,7 +146,6 @@ function updateExistingFamily(duplicate, formData, addressValidationHint, docVal
         }
     }
 
-    // Adresse - validation GEO si changement détecté
     if (formData.address && formData.postalCode && formData.city) {
         const newAddress = formatAddressCanonical(formData.address, formData.postalCode, formData.city);
         const oldAddress = safeGetColumn(existingData, OUTPUT_COLUMNS.ADRESSE, '');
@@ -169,7 +165,6 @@ function updateExistingFamily(duplicate, formData, addressValidationHint, docVal
         }
     }
 
-    // Se déplace
     if (formData.seDeplace !== undefined) {
         const oldSeDeplace = existingData[OUTPUT_COLUMNS.SE_DEPLACE] === true;
         if (formData.seDeplace !== oldSeDeplace) {
@@ -178,7 +173,6 @@ function updateExistingFamily(duplicate, formData, addressValidationHint, docVal
         }
     }
 
-    // Composition du foyer
     if (formData.nombreAdulte !== undefined && formData.nombreAdulte !== null) {
         const newAdultes = parseInt(formData.nombreAdulte) || 0;
         const oldAdultes = parseInt(safeGetColumn(existingData, OUTPUT_COLUMNS.NOMBRE_ADULTE, 0)) || 0;
@@ -197,7 +191,6 @@ function updateExistingFamily(duplicate, formData, addressValidationHint, docVal
         }
     }
 
-    // Documents
     if (docValidation && docValidation.identityIds && docValidation.identityIds.length > 0) {
         updateFamilyCell(row, OUTPUT_COLUMNS.IDENTITE, formatDocumentLinks(docValidation.identityIds));
         changes.push('documents_identité');
@@ -207,7 +200,6 @@ function updateExistingFamily(duplicate, formData, addressValidationHint, docVal
         changes.push('documents_aides_état');
     }
 
-    // Langue
     if (formData.langue) {
         const oldLangue = safeGetColumn(existingData, OUTPUT_COLUMNS.LANGUE);
         if (formData.langue !== oldLangue) {
@@ -216,7 +208,6 @@ function updateExistingFamily(duplicate, formData, addressValidationHint, docVal
         }
     }
 
-    // Circonstances
     if (formData.circonstances) {
         const oldCirconstances = safeGetColumn(existingData, OUTPUT_COLUMNS.CIRCONSTANCES, '');
         if (formData.circonstances !== oldCirconstances) {
@@ -237,38 +228,89 @@ function updateExistingFamily(duplicate, formData, addressValidationHint, docVal
     return { changes };
 }
 
+/**
+ * Retourne toutes les familles avec filtre de statut optionnel.
+ * filterValidated=true  → Validé uniquement (comportement historique)
+ * filterValidated=false → toutes les familles sans filtre de statut
+ */
 function getAllFamilyIds(filterValidated = false) {
     const data = getFamilySheetData();
     if (!data) return [];
 
     const families = [];
+
     for (let i = 1; i < data.length; i++) {
         const row = data[i];
         const status = safeGetColumn(row, OUTPUT_COLUMNS.ETAT_DOSSIER);
+
         if (filterValidated && status !== CONFIG.STATUS.VALIDATED) continue;
 
         const familyId = safeGetColumn(row, OUTPUT_COLUMNS.ID);
-        if (familyId) {
-            families.push({
-                id: familyId,
-                nom: safeGetColumn(row, OUTPUT_COLUMNS.NOM),
-                prenom: safeGetColumn(row, OUTPUT_COLUMNS.PRENOM),
-                telephone: safeGetColumn(row, OUTPUT_COLUMNS.TELEPHONE),
-                email: safeGetColumn(row, OUTPUT_COLUMNS.EMAIL),
-                adresse: safeGetColumn(row, OUTPUT_COLUMNS.ADRESSE),
-                nombreAdulte: parseInt(safeGetColumn(row, OUTPUT_COLUMNS.NOMBRE_ADULTE, 0)) || 0,
-                nombreEnfant: parseInt(safeGetColumn(row, OUTPUT_COLUMNS.NOMBRE_ENFANT, 0)) || 0,
-                seDeplace: row[OUTPUT_COLUMNS.SE_DEPLACE] === true,
-                zakatElFitr: row[OUTPUT_COLUMNS.ZAKAT_EL_FITR] === true,
-                sadaqa: row[OUTPUT_COLUMNS.SADAQA] === true,
-                criticite: parseInt(safeGetColumn(row, OUTPUT_COLUMNS.CRITICITE, 0)) || 0,
-                langue: safeGetColumn(row, OUTPUT_COLUMNS.LANGUE, CONFIG.LANGUAGES.FR),
-                circonstances: safeGetColumn(row, OUTPUT_COLUMNS.CIRCONSTANCES),
-                ressentit: safeGetColumn(row, OUTPUT_COLUMNS.RESSENTIT),
-                specificites: safeGetColumn(row, OUTPUT_COLUMNS.SPECIFICITES),
-                status: status
-            });
-        }
+        if (!familyId) continue;
+
+        families.push({
+            id: familyId,
+            nom: safeGetColumn(row, OUTPUT_COLUMNS.NOM),
+            prenom: safeGetColumn(row, OUTPUT_COLUMNS.PRENOM),
+            telephone: safeGetColumn(row, OUTPUT_COLUMNS.TELEPHONE),
+            email: safeGetColumn(row, OUTPUT_COLUMNS.EMAIL),
+            adresse: safeGetColumn(row, OUTPUT_COLUMNS.ADRESSE),
+            nombreAdulte: parseInt(safeGetColumn(row, OUTPUT_COLUMNS.NOMBRE_ADULTE, 0)) || 0,
+            nombreEnfant: parseInt(safeGetColumn(row, OUTPUT_COLUMNS.NOMBRE_ENFANT, 0)) || 0,
+            seDeplace: row[OUTPUT_COLUMNS.SE_DEPLACE] === true,
+            zakatElFitr: row[OUTPUT_COLUMNS.ZAKAT_EL_FITR] === true,
+            sadaqa: row[OUTPUT_COLUMNS.SADAQA] === true,
+            criticite: parseInt(safeGetColumn(row, OUTPUT_COLUMNS.CRITICITE, 0)) || 0,
+            langue: safeGetColumn(row, OUTPUT_COLUMNS.LANGUE, CONFIG.LANGUAGES.FR),
+            circonstances: safeGetColumn(row, OUTPUT_COLUMNS.CIRCONSTANCES),
+            ressentit: safeGetColumn(row, OUTPUT_COLUMNS.RESSENTIT),
+            specificites: safeGetColumn(row, OUTPUT_COLUMNS.SPECIFICITES),
+            status: status
+        });
+    }
+
+    return families;
+}
+
+/**
+ * Retourne les familles dont le statut est Validé ou En cours.
+ * Utilisé par le formulaire de mise à jour manuelle.
+ */
+function getAllFamilyIdsForUpdate() {
+    const data = getFamilySheetData();
+    if (!data) return [];
+
+    const allowedStatuses = [CONFIG.STATUS.VALIDATED, CONFIG.STATUS.IN_PROGRESS];
+    const families = [];
+
+    for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        const status = safeGetColumn(row, OUTPUT_COLUMNS.ETAT_DOSSIER);
+
+        if (!allowedStatuses.includes(status)) continue;
+
+        const familyId = safeGetColumn(row, OUTPUT_COLUMNS.ID);
+        if (!familyId) continue;
+
+        families.push({
+            id: familyId,
+            nom: safeGetColumn(row, OUTPUT_COLUMNS.NOM),
+            prenom: safeGetColumn(row, OUTPUT_COLUMNS.PRENOM),
+            telephone: safeGetColumn(row, OUTPUT_COLUMNS.TELEPHONE),
+            email: safeGetColumn(row, OUTPUT_COLUMNS.EMAIL),
+            adresse: safeGetColumn(row, OUTPUT_COLUMNS.ADRESSE),
+            nombreAdulte: parseInt(safeGetColumn(row, OUTPUT_COLUMNS.NOMBRE_ADULTE, 0)) || 0,
+            nombreEnfant: parseInt(safeGetColumn(row, OUTPUT_COLUMNS.NOMBRE_ENFANT, 0)) || 0,
+            seDeplace: row[OUTPUT_COLUMNS.SE_DEPLACE] === true,
+            zakatElFitr: row[OUTPUT_COLUMNS.ZAKAT_EL_FITR] === true,
+            sadaqa: row[OUTPUT_COLUMNS.SADAQA] === true,
+            criticite: parseInt(safeGetColumn(row, OUTPUT_COLUMNS.CRITICITE, 0)) || 0,
+            langue: safeGetColumn(row, OUTPUT_COLUMNS.LANGUE, CONFIG.LANGUAGES.FR),
+            circonstances: safeGetColumn(row, OUTPUT_COLUMNS.CIRCONSTANCES),
+            ressentit: safeGetColumn(row, OUTPUT_COLUMNS.RESSENTIT),
+            specificites: safeGetColumn(row, OUTPUT_COLUMNS.SPECIFICITES),
+            status: status
+        });
     }
 
     return families;
@@ -278,7 +320,9 @@ function isFamilyRejected(familyId) {
     try {
         const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
         if (!sheet) return { isRejected: false };
+
         const data = sheet.getDataRange().getValues();
+
         for (let i = 1; i < data.length; i++) {
             const row = data[i];
             if (safeGetColumn(row, OUTPUT_COLUMNS.ID) == familyId &&
@@ -286,6 +330,7 @@ function isFamilyRejected(familyId) {
                 return { isRejected: true, row: i + 1 };
             }
         }
+
         return { isRejected: false };
     } catch (error) {
         logError('Erreur vérification famille rejetée', error);
