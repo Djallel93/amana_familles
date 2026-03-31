@@ -1,16 +1,8 @@
 /**
- * @file src/services/bulkImportService.js (REFACTORED v3.0)
- * @description Bulk import using new helper functions - ZERO duplication
+ * @file src/services/bulkImportService.js
  */
 
-/**
- * Process single bulk import row
- * @param {Array} row - Row data
- * @param {Sheet} sheet - Bulk Import sheet
- * @param {number} sheetRowNumber - Actual row number in sheet (1-based, >= 2)
- * @returns {Object} {success: boolean, familyId?: string, error?: string, quartierWarning?: string}
- */
-function processBulkImportRow(row, sheet, sheetRowNumber) {
+function processBulkImportRow(row, sheetRowNumber) {
     const formData = {
         lastName: row[BULK_COLUMNS.NOM],
         firstName: row[BULK_COLUMNS.PRENOM],
@@ -30,366 +22,159 @@ function processBulkImportRow(row, sheet, sheetRowNumber) {
         seDeplace: parseSeDeplace(row[BULK_COLUMNS.SE_DEPLACE])
     };
 
-    if (!formData.lastName || !formData.firstName) {
-        return {
-            success: false,
-            error: 'Nom et prénom requis'
-        };
-    }
-
-    if (!formData.address || !formData.postalCode || !formData.city) {
-        return {
-            success: false,
-            error: 'Adresse complète requise (adresse, code postal, ville)'
-        };
-    }
-
-    if (!formData.phone) {
-        return {
-            success: false,
-            error: 'Téléphone requis'
-        };
-    }
+    if (!formData.lastName || !formData.firstName) return { success: false, error: 'Nom et prénom requis' };
+    if (!formData.address || !formData.postalCode || !formData.city) return { success: false, error: 'Adresse complète requise' };
+    if (!formData.phone) return { success: false, error: 'Téléphone requis' };
 
     const criticite = parseInt(formData.criticite);
     if (isNaN(criticite) || criticite < CONFIG.CRITICITE.MIN || criticite > CONFIG.CRITICITE.MAX) {
-        return {
-            success: false,
-            error: `Criticité invalide. Doit être entre ${CONFIG.CRITICITE.MIN} et ${CONFIG.CRITICITE.MAX}`
-        };
+        return { success: false, error: `Criticité invalide. Doit être entre ${CONFIG.CRITICITE.MIN} et ${CONFIG.CRITICITE.MAX}` };
     }
 
-    if (!isValidPhone(formData.phone)) {
-        return {
-            success: false,
-            error: 'Numéro de téléphone invalide'
-        };
-    }
-
-    if (formData.email && !isValidEmail(formData.email)) {
-        return {
-            success: false,
-            error: 'Email invalide'
-        };
-    }
+    if (!isValidPhone(formData.phone)) return { success: false, error: 'Numéro de téléphone invalide' };
+    if (formData.email && !isValidEmail(formData.email)) return { success: false, error: 'Email invalide' };
 
     const householdValidation = validateHouseholdComposition(formData.nombreAdulte, formData.nombreEnfant);
-    if (!householdValidation.isValid) {
-        return {
-            success: false,
-            error: householdValidation.error
-        };
-    }
+    if (!householdValidation.isValid) return { success: false, error: householdValidation.error };
 
-    const addressValidation = validateAddressAndGetQuartier(
-        formData.address,
-        formData.postalCode,
-        formData.city
-    );
+    const addressValidation = validateAddressAndGetQuartier(formData.address, formData.postalCode, formData.city);
+    if (!addressValidation.isValid) return { success: false, error: `Adresse invalide: ${addressValidation.error}` };
 
-    if (!addressValidation.isValid) {
-        return {
-            success: false,
-            error: `Adresse invalide: ${addressValidation.error}`
-        };
-    }
-
-    let quartierWarning = null;
-    if (addressValidation.quartierInvalid) {
-        quartierWarning = addressValidation.warning;
-    }
-
-    const duplicate = findDuplicateFamily(
-        formData.phone,
-        formData.lastName,
-        formData.email
-    );
-
-    if (duplicate.exists) {
-        return {
-            success: false,
-            error: `Famille existe déjà (ID: ${duplicate.id})`
-        };
-    }
+    const duplicate = findDuplicateFamily(formData.phone, formData.lastName, formData.email);
+    if (duplicate.exists) return { success: false, error: `Famille existe déjà (ID: ${duplicate.id})` };
 
     const familyId = generateFamilyId();
-    const status = CONFIG.STATUS.IN_PROGRESS;
-    let comment = formatComment('📥', 'Importé en masse');
-
-    if (quartierWarning) {
-        comment = addComment(comment, quartierWarning);
-    }
-
-    // Use buildFamilyRow from familyDataService
     writeToFamilySheet(formData, {
-        status: status,
-        comment: comment,
-        familyId: familyId,
+        status: CONFIG.STATUS.IN_PROGRESS,
+        familyId,
         quartierId: addressValidation.quartierId,
-        quartierName: addressValidation.quartierName,
-        identityIds: [],
-        aidesEtatIds: [],
-        resourceIds: [],
-        criticite: criticite,
+        identityIds: [], aidesEtatIds: [], resourceIds: [],
+        criticite,
         langue: formData.langue,
         seDeplace: formData.seDeplace,
         zakatElFitr: false,
         sadaqa: false
     });
 
-    logInfo(`Family imported with "En cours" status: ${familyId} (Sheet row: ${sheetRowNumber})`, { criticite });
+    const messages = ['📥 Importé en masse'];
+    if (addressValidation.quartierInvalid) messages.push(`⚠️ ${addressValidation.warning}`);
+    appendSheetComments(familyId, CONFIG.AUDIT_SOURCES.IMPORT_EN_MASSE, messages);
 
-    return {
-        success: true,
-        familyId: familyId,
-        quartierWarning: quartierWarning
-    };
+    logInfo(`Famille importée: ${familyId} (ligne feuille: ${sheetRowNumber})`);
+    return { success: true, familyId, quartierWarning: addressValidation.quartierInvalid ? addressValidation.warning : null };
 }
 
-/**
- * Process bulk import with batch limit
- * @param {number} [batchSize=10] - Number of rows to process
- * @returns {Object} Processing results
- */
 function processBulkImport(batchSize = 10) {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BULK_IMPORT_SHEET_NAME);
-
-    if (!sheet) {
-        return {
-            success: false,
-            message: '❌ "Bulk Import" sheet not found. Create it first via menu.'
-        };
-    }
+    if (!sheet) return { success: false, message: '❌ Feuille "Bulk Import" introuvable.' };
 
     const lastRow = sheet.getLastRow();
-    const HEADER_ROW = 1;
     const FIRST_DATA_ROW = 2;
-
-    if (lastRow < FIRST_DATA_ROW) {
-        return {
-            success: false,
-            message: '⚠️ No data to process. Paste your data in "Bulk Import" sheet starting from row 2.'
-        };
-    }
+    if (lastRow < FIRST_DATA_ROW) return { success: false, message: '⚠️ Aucune donnée à traiter.' };
 
     const numDataRows = lastRow - FIRST_DATA_ROW + 1;
-    const dataRange = sheet.getRange(FIRST_DATA_ROW, 1, numDataRows, 17);
-    const data = dataRange.getValues();
-
-    const commentRange = sheet.getRange(FIRST_DATA_ROW, BULK_COLUMNS.COMMENTAIRE + 1, numDataRows, 1);
-    const comments = commentRange.getValues();
-
-    logInfo(`Bulk Import: lastRow=${lastRow}, numDataRows=${numDataRows}, firstDataRow=${FIRST_DATA_ROW}`);
+    const data = sheet.getRange(FIRST_DATA_ROW, 1, numDataRows, 17).getValues();
+    const comments = sheet.getRange(FIRST_DATA_ROW, BULK_COLUMNS.COMMENTAIRE + 1, numDataRows, 1).getValues();
 
     const pendingRows = [];
     data.forEach((row, arrayIndex) => {
         const comment = comments[arrayIndex][0];
         const sheetRowNumber = FIRST_DATA_ROW + arrayIndex;
-
         if (!comment || comment === '' || comment === 'En attente' || comment.includes('En cours...')) {
-            pendingRows.push({
-                row: row,
-                sheetRowNumber: sheetRowNumber,
-                arrayIndex: arrayIndex
-            });
+            pendingRows.push({ row, sheetRowNumber, arrayIndex });
         }
     });
 
     if (pendingRows.length === 0) {
-        return {
-            success: true,
-            message: '✅ All rows already processed.',
-            processed: 0,
-            succeeded: 0,
-            failed: 0,
-            skipped: 0,
-            remaining: 0,
-            errors: []
-        };
+        return { success: true, message: '✅ Toutes les lignes ont déjà été traitées.', processed: 0, succeeded: 0, failed: 0, skipped: 0, remaining: 0, errors: [] };
     }
 
-    logInfo(`Found ${pendingRows.length} pending rows to process`);
-
     const rowsToProcess = pendingRows.slice(0, batchSize);
-    const results = {
-        success: true,
-        processed: 0,
-        succeeded: 0,
-        failed: 0,
-        skipped: 0,
-        remaining: pendingRows.length - rowsToProcess.length,
-        errors: []
-    };
+    const results = { success: true, processed: 0, succeeded: 0, failed: 0, skipped: 0, remaining: pendingRows.length - rowsToProcess.length, errors: [] };
 
-    logInfo(`Processing ${rowsToProcess.length} imports (batch: ${batchSize})`);
-
-    rowsToProcess.forEach((item, processingIndex) => {
+    rowsToProcess.forEach(item => {
         const { row, sheetRowNumber } = item;
-
         try {
             sheet.getRange(sheetRowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue('⚙️ En cours...');
             SpreadsheetApp.flush();
 
-            const result = processBulkImportRow(row, sheet, sheetRowNumber);
+            const result = processBulkImportRow(row, sheetRowNumber);
 
             if (result.success) {
                 results.succeeded++;
                 let comment = `✅ Importée avec ID ${result.familyId}`;
-                if (result.quartierWarning) {
-                    comment += `\n${result.quartierWarning}`;
-                }
+                if (result.quartierWarning) comment += `\n${result.quartierWarning}`;
                 sheet.getRange(sheetRowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue(comment);
-                logInfo(`Row ${sheetRowNumber} processed successfully: ID ${result.familyId}`);
             } else {
                 results.failed++;
-                sheet.getRange(sheetRowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue(
-                    `❌ Erreur: ${result.error}`
-                );
+                sheet.getRange(sheetRowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue(`❌ Erreur: ${result.error}`);
                 results.errors.push({ row: sheetRowNumber, error: result.error });
-                logInfo(`Row ${sheetRowNumber} failed: ${result.error}`);
             }
-
             results.processed++;
-
         } catch (error) {
-            logError(`Error processing row ${sheetRowNumber}`, error);
+            logError(`Erreur ligne ${sheetRowNumber}`, error);
             results.failed++;
-            sheet.getRange(sheetRowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue(
-                `❌ System error: ${error.toString()}`
-            );
+            sheet.getRange(sheetRowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue(`❌ Erreur système: ${error.toString()}`);
             results.errors.push({ row: sheetRowNumber, error: error.toString() });
         }
     });
 
-    logInfo('Bulk import batch completed', results);
-
     if (results.succeeded > 0 || results.failed > 0) {
-        notifyAdmin(
-            '📥 Bulk Import Completed',
-            `Processed: ${results.processed}\nSucceeded: ${results.succeeded}\nFailed: ${results.failed}\nRemaining: ${results.remaining}\n\nNote: Toutes les familles importées ont le statut "En cours"`
-        );
+        notifyAdmin('📥 Import en masse terminé', `Traités: ${results.processed}\nRéussis: ${results.succeeded}\nÉchecs: ${results.failed}\nRestants: ${results.remaining}`);
     }
 
     return results;
 }
 
-/**
- * Get bulk import statistics
- * @returns {Object} Statistics object
- */
 function getBulkImportStatistics() {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BULK_IMPORT_SHEET_NAME);
-
-    if (!sheet) {
-        return {
-            total: 0,
-            pending: 0,
-            processing: 0,
-            success: 0,
-            error: 0
-        };
-    }
+    if (!sheet) return { total: 0, pending: 0, processing: 0, success: 0, error: 0 };
 
     const lastRow = sheet.getLastRow();
     const FIRST_DATA_ROW = 2;
-
-    if (lastRow < FIRST_DATA_ROW) {
-        return {
-            total: 0,
-            pending: 0,
-            processing: 0,
-            success: 0,
-            error: 0
-        };
-    }
+    if (lastRow < FIRST_DATA_ROW) return { total: 0, pending: 0, processing: 0, success: 0, error: 0 };
 
     const numDataRows = lastRow - FIRST_DATA_ROW + 1;
     const data = sheet.getRange(FIRST_DATA_ROW, BULK_COLUMNS.COMMENTAIRE + 1, numDataRows, 1).getValues();
-
-    const stats = {
-        total: numDataRows,
-        pending: 0,
-        processing: 0,
-        success: 0,
-        error: 0
-    };
+    const stats = { total: numDataRows, pending: 0, processing: 0, success: 0, error: 0 };
 
     data.forEach(row => {
         const comment = row[0];
-        if (!comment || comment === '' || comment === 'En attente') {
-            stats.pending++;
-        } else if (comment.includes('En cours')) {
-            stats.processing++;
-        } else if (comment.includes('✅') || comment.includes('Importée')) {
-            stats.success++;
-        } else if (comment.includes('❌') || comment.includes('Erreur')) {
-            stats.error++;
-        }
+        if (!comment || comment === '' || comment === 'En attente') stats.pending++;
+        else if (comment.includes('En cours')) stats.processing++;
+        else if (comment.includes('✅') || comment.includes('Importée')) stats.success++;
+        else if (comment.includes('❌') || comment.includes('Erreur')) stats.error++;
     });
 
     return stats;
 }
 
-/**
- * Clear all data from Bulk Import sheet (keep headers)
- * @returns {Object} {success: boolean, message: string}
- */
 function clearBulkImportSheet() {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BULK_IMPORT_SHEET_NAME);
-
-    if (!sheet) {
-        return {
-            success: false,
-            message: '❌ "Bulk Import" sheet not found'
-        };
-    }
-
+    if (!sheet) return { success: false, message: '❌ Feuille "Bulk Import" introuvable' };
     const lastRow = sheet.getLastRow();
     const FIRST_DATA_ROW = 2;
-
     if (lastRow >= FIRST_DATA_ROW) {
-        const rowsToDelete = lastRow - FIRST_DATA_ROW + 1;
-        sheet.deleteRows(FIRST_DATA_ROW, rowsToDelete);
-        logInfo('Bulk Import sheet cleared');
-        return {
-            success: true,
-            message: `✅ ${rowsToDelete} rows deleted`
-        };
+        sheet.deleteRows(FIRST_DATA_ROW, lastRow - FIRST_DATA_ROW + 1);
+        return { success: true, message: `✅ ${lastRow - FIRST_DATA_ROW + 1} lignes supprimées` };
     }
-
-    return {
-        success: true,
-        message: '✅ Sheet already empty'
-    };
+    return { success: true, message: '✅ Feuille déjà vide' };
 }
 
-/**
- * Reset "Processing" status to "Pending"
- */
 function resetProcessingStatus() {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BULK_IMPORT_SHEET_NAME);
     if (!sheet) return;
-
     const lastRow = sheet.getLastRow();
     const FIRST_DATA_ROW = 2;
-
     if (lastRow < FIRST_DATA_ROW) return;
-
     const numDataRows = lastRow - FIRST_DATA_ROW + 1;
     const data = sheet.getRange(FIRST_DATA_ROW, BULK_COLUMNS.COMMENTAIRE + 1, numDataRows, 1).getValues();
-
     let resetCount = 0;
     data.forEach((row, arrayIndex) => {
         if (row[0] && row[0].includes('En cours')) {
-            const sheetRowNumber = FIRST_DATA_ROW + arrayIndex;
-            sheet.getRange(sheetRowNumber, BULK_COLUMNS.COMMENTAIRE + 1).setValue(
-                'En attente (reset after timeout)'
-            );
+            sheet.getRange(FIRST_DATA_ROW + arrayIndex, BULK_COLUMNS.COMMENTAIRE + 1).setValue('En attente (reset après timeout)');
             resetCount++;
         }
     });
-
-    if (resetCount > 0) {
-        logInfo(`${resetCount} "Processing" rows reset in Bulk Import`);
-    }
+    if (resetCount > 0) logInfo(`${resetCount} lignes "En cours" réinitialisées dans Bulk Import`);
 }

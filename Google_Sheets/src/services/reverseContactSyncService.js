@@ -1,9 +1,12 @@
 /**
  * @file src/services/reverseContactSyncService.js (partie 2)
- * Application des décisions, extraction et détection des changements
  */
 
-// ─── Application des décisions admin ─────────────────────────────────────────
+const FIELD_EMOJI = {
+    telephone: '📞', telephone_bis: '📞', email: '📧', adresse: '📍',
+    prenom: '👤', nom: '👤', criticite: '⚠️', nombre_adulte: '👥',
+    nombre_enfant: '👥', zakat_el_fitr: '🌙', sadaqa: '💝', langue: '🌍', se_deplace: '🚗'
+};
 
 function applyContactSyncDecisions(decisions) {
     try {
@@ -37,21 +40,12 @@ function _applyFamilyDecision(sheet, data, familyDecision, results) {
     let existingData = null;
 
     for (let i = 1; i < data.length; i++) {
-        if (data[i][OUTPUT_COLUMNS.ID] == familyId) {
-            targetRow = i + 1;
-            existingData = data[i];
-            break;
-        }
+        if (data[i][OUTPUT_COLUMNS.ID] == familyId) { targetRow = i + 1; existingData = data[i]; break; }
     }
-
-    if (targetRow === -1) {
-        logAvertissement(`Famille ${familyId} introuvable lors de l'application`);
-        return;
-    }
+    if (targetRow === -1) { logWarning(`Famille ${familyId} introuvable lors de l'application`); return; }
 
     const acceptedFields = fields.filter(f => f.action === 'accept');
     const rejectedFields = fields.filter(f => f.action === 'reject');
-
     const nonAddressFields = acceptedFields.filter(f => f.field !== 'adresse');
     const addressField = acceptedFields.find(f => f.field === 'adresse');
 
@@ -62,54 +56,44 @@ function _applyFamilyDecision(sheet, data, familyDecision, results) {
     });
 
     if (addressField) {
-        const newAddress = addressField.rawContactValue !== undefined
-            ? addressField.rawContactValue
-            : addressField.contactValue;
-
+        const newAddress = addressField.rawContactValue !== undefined ? addressField.rawContactValue : addressField.contactValue;
         const addressParts = parseAddressComponents(newAddress);
-        const validation = validateAddressAndGetQuartier(
-            addressParts.street,
-            addressParts.postalCode,
-            addressParts.city
-        );
+        const validation = validateAddressAndGetQuartier(addressParts.street, addressParts.postalCode, addressParts.city);
 
         sheet.getRange(targetRow, OUTPUT_COLUMNS.ADRESSE + 1).setValue(newAddress);
         results.accepted++;
 
         if (validation.isValid && validation.quartierId) {
             sheet.getRange(targetRow, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue(validation.quartierId);
-            logInfo(`Quartier re-résolu après sync adresse famille ${familyId}: ${validation.quartierId}`);
-            appendSheetComment(sheet, targetRow, '📍', `Quartier mis à jour suite au changement d'adresse: ${validation.quartierName || validation.quartierId}`);
+            appendSheetComment(familyId, CONFIG.AUDIT_SOURCES.RESOLUTION_ADRESSE, `📍 Quartier mis à jour suite au changement d'adresse: ${validation.quartierName || validation.quartierId}`);
         } else {
             sheet.getRange(targetRow, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue('');
             const reason = validation.isValid ? 'aucun quartier trouvé' : (validation.error || 'adresse invalide');
-            logAvertissement(`Impossible de re-résoudre le quartier après sync adresse famille ${familyId}: ${reason}`);
-            appendSheetComment(sheet, targetRow, '⚠️', `Quartier non résolu après changement d'adresse: ${reason}`);
+            appendSheetComment(familyId, CONFIG.AUDIT_SOURCES.RESOLUTION_ADRESSE, `⚠️ Quartier non résolu après changement d'adresse: ${reason}`);
         }
 
         if (validation.quartierInvalid) {
-            appendSheetComment(sheet, targetRow, '⚠️', validation.warning);
+            appendSheetComment(familyId, CONFIG.AUDIT_SOURCES.RESOLUTION_ADRESSE, `⚠️ ${validation.warning}`);
         }
     }
 
     if (acceptedFields.length > 0) {
         sheet.getRange(targetRow, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(CONFIG.STATUS.IN_PROGRESS);
-        logInfo(`Statut famille ${familyId} passé à "En cours" suite à l'acceptation de ${acceptedFields.length} champ(s)`);
-    }
 
-    const acceptedLabels = acceptedFields.map(f => f.label);
-    const rejectedLabels = rejectedFields.map(f => f.label);
-    const commentParts = [];
-
-    if (acceptedLabels.length > 0) commentParts.push(`✅ Accepté: ${acceptedLabels.join(', ')}`);
-    if (rejectedLabels.length > 0) commentParts.push(`❌ Conservé: ${rejectedLabels.join(', ')}`);
-    if (acceptedFields.length > 0) commentParts.push('Statut → En cours');
-
-    if (commentParts.length > 0) {
-        appendSheetComment(sheet, targetRow, '🔄', `Sync confirmé — ${commentParts.join(' | ')}`);
+        const auditMessages = acceptedFields.map(f => {
+            const emoji = FIELD_EMOJI[f.field] || '📝';
+            return `${emoji} ${f.label}: ${f.sheetValue} → ${f.contactValue}`;
+        });
+        appendSheetComments(familyId, CONFIG.AUDIT_SOURCES.SYNCHRONISATION_CONTACT, auditMessages);
     }
 
     if (rejectedFields.length > 0) {
+        const rejectedMessages = rejectedFields.map(f => {
+            const emoji = FIELD_EMOJI[f.field] || '📝';
+            return `${emoji} ${f.label} conservé: ${f.sheetValue} (contact: ${f.contactValue})`;
+        });
+        appendSheetComments(familyId, CONFIG.AUDIT_SOURCES.SYNCHRONISATION_CONTACT, rejectedMessages);
+
         const updatedRow = sheet.getRange(targetRow, 1, 1, sheet.getLastColumn()).getValues()[0];
         _rebuildContactFromSheet(updatedRow, familyId);
         results.rejected += rejectedFields.length;
@@ -135,7 +119,6 @@ function _rebuildContactFromSheet(rowData, familyId) {
             langue: safeGetColumn(rowData, OUTPUT_COLUMNS.LANGUE, CONFIG.LANGUAGES.FR),
             seDeplace: rowData[OUTPUT_COLUMNS.SE_DEPLACE] === true
         };
-
         syncFamilyContact(familyData);
         logInfo(`Contact reconstruit depuis la feuille pour famille ${familyId}`);
     } catch (e) {
@@ -143,145 +126,55 @@ function _rebuildContactFromSheet(rowData, familyId) {
     }
 }
 
-// ─── Extraction des données contact ──────────────────────────────────────────
-
 function extractContactData(contact) {
     const data = { firstName: '', lastName: '', phone: '', phoneBis: '', email: '', addressCanonical: '' };
-
     if (contact.names && contact.names.length > 0) {
         data.firstName = contact.names[0].middleName || '';
         data.lastName = contact.names[0].familyName || '';
     }
-
     if (contact.phoneNumbers && contact.phoneNumbers.length > 0) {
         data.phone = normalizePhone(contact.phoneNumbers[0].value);
-        if (contact.phoneNumbers.length > 1) {
-            data.phoneBis = normalizePhone(contact.phoneNumbers[1].value);
-        }
+        if (contact.phoneNumbers.length > 1) data.phoneBis = normalizePhone(contact.phoneNumbers[1].value);
     }
-
-    if (contact.emailAddresses && contact.emailAddresses.length > 0) {
-        data.email = contact.emailAddresses[0].value;
-    }
-
+    if (contact.emailAddresses && contact.emailAddresses.length > 0) data.email = contact.emailAddresses[0].value;
     if (contact.addresses && contact.addresses.length > 0) {
         const addr = contact.addresses[0];
-        data.addressCanonical = formatAddressCanonical(
-            addr.streetAddress || '',
-            addr.postalCode || '',
-            addr.city || ''
-        );
+        data.addressCanonical = formatAddressCanonical(addr.streetAddress || '', addr.postalCode || '', addr.city || '');
     }
-
     return data;
 }
 
-// ─── Détection des changements ────────────────────────────────────────────────
-
 function detectChanges(existingData, contactData, metadata) {
-    const changes = [];
-
     const checks = [
-        {
-            field: 'prenom', column: OUTPUT_COLUMNS.PRENOM,
-            sheetVal: () => (existingData[OUTPUT_COLUMNS.PRENOM] || '').trim(),
-            contactVal: () => contactData.firstName,
-            condition: (s, c) => c && c !== s
-        },
-        {
-            field: 'nom', column: OUTPUT_COLUMNS.NOM,
-            sheetVal: () => (existingData[OUTPUT_COLUMNS.NOM] || '').trim(),
-            contactVal: () => contactData.lastName,
-            condition: (s, c) => c && c !== s
-        },
-        {
-            field: 'telephone', column: OUTPUT_COLUMNS.TELEPHONE,
-            sheetVal: () => normalizePhone(String(existingData[OUTPUT_COLUMNS.TELEPHONE] || '')).replace(/[\s()]/g, ''),
-            contactVal: () => contactData.phone.replace(/[\s()]/g, ''),
-            condition: (s, c) => c && c !== s
-        },
-        {
-            field: 'telephone_bis', column: OUTPUT_COLUMNS.TELEPHONE_BIS,
-            sheetVal: () => normalizePhone(String(existingData[OUTPUT_COLUMNS.TELEPHONE_BIS] || '')).replace(/[\s()]/g, ''),
-            contactVal: () => contactData.phoneBis.replace(/[\s()]/g, ''),
-            condition: (s, c) => c !== s
-        },
-        {
-            field: 'email', column: OUTPUT_COLUMNS.EMAIL,
-            sheetVal: () => (existingData[OUTPUT_COLUMNS.EMAIL] || '').toLowerCase().trim(),
-            contactVal: () => contactData.email.toLowerCase().trim(),
-            condition: (s, c) => c && c !== s
-        },
-        {
-            field: 'adresse', column: OUTPUT_COLUMNS.ADRESSE,
-            sheetVal: () => (existingData[OUTPUT_COLUMNS.ADRESSE] || '').trim(),
-            contactVal: () => contactData.addressCanonical,
-            condition: (s, c) => c && c !== s && c.length > 0
-        },
-        {
-            field: 'criticite', column: OUTPUT_COLUMNS.CRITICITE,
-            sheetVal: () => parseInt(existingData[OUTPUT_COLUMNS.CRITICITE]) || 0,
-            contactVal: () => metadata.criticite,
-            condition: (s, c) => c !== s
-        },
-        {
-            field: 'nombre_adulte', column: OUTPUT_COLUMNS.NOMBRE_ADULTE,
-            sheetVal: () => parseInt(existingData[OUTPUT_COLUMNS.NOMBRE_ADULTE]) || 0,
-            contactVal: () => metadata.nombreAdulte,
-            condition: (s, c) => c !== s
-        },
-        {
-            field: 'nombre_enfant', column: OUTPUT_COLUMNS.NOMBRE_ENFANT,
-            sheetVal: () => parseInt(existingData[OUTPUT_COLUMNS.NOMBRE_ENFANT]) || 0,
-            contactVal: () => metadata.nombreEnfant,
-            condition: (s, c) => c !== s
-        },
-        {
-            field: 'zakat_el_fitr', column: OUTPUT_COLUMNS.ZAKAT_EL_FITR,
-            sheetVal: () => existingData[OUTPUT_COLUMNS.ZAKAT_EL_FITR] === true,
-            contactVal: () => metadata.zakatElFitr === true,
-            condition: (s, c) => c !== s
-        },
-        {
-            field: 'sadaqa', column: OUTPUT_COLUMNS.SADAQA,
-            sheetVal: () => existingData[OUTPUT_COLUMNS.SADAQA] === true,
-            contactVal: () => metadata.sadaqa === true,
-            condition: (s, c) => c !== s
-        },
-        {
-            field: 'langue', column: OUTPUT_COLUMNS.LANGUE,
-            sheetVal: () => existingData[OUTPUT_COLUMNS.LANGUE] || CONFIG.LANGUAGES.FR,
-            contactVal: () => metadata.langue,
-            condition: (s, c) => c !== s
-        },
-        {
-            field: 'se_deplace', column: OUTPUT_COLUMNS.SE_DEPLACE,
-            sheetVal: () => existingData[OUTPUT_COLUMNS.SE_DEPLACE] === true,
-            contactVal: () => metadata.seDeplace === true,
-            condition: (s, c) => c !== s
-        }
+        { field: 'prenom', column: OUTPUT_COLUMNS.PRENOM, sheetVal: () => (existingData[OUTPUT_COLUMNS.PRENOM] || '').trim(), contactVal: () => contactData.firstName, condition: (s, c) => c && c !== s },
+        { field: 'nom', column: OUTPUT_COLUMNS.NOM, sheetVal: () => (existingData[OUTPUT_COLUMNS.NOM] || '').trim(), contactVal: () => contactData.lastName, condition: (s, c) => c && c !== s },
+        { field: 'telephone', column: OUTPUT_COLUMNS.TELEPHONE, sheetVal: () => normalizePhone(String(existingData[OUTPUT_COLUMNS.TELEPHONE] || '')).replace(/[\s()]/g, ''), contactVal: () => contactData.phone.replace(/[\s()]/g, ''), condition: (s, c) => c && c !== s },
+        { field: 'telephone_bis', column: OUTPUT_COLUMNS.TELEPHONE_BIS, sheetVal: () => normalizePhone(String(existingData[OUTPUT_COLUMNS.TELEPHONE_BIS] || '')).replace(/[\s()]/g, ''), contactVal: () => contactData.phoneBis.replace(/[\s()]/g, ''), condition: (s, c) => c !== s },
+        { field: 'email', column: OUTPUT_COLUMNS.EMAIL, sheetVal: () => (existingData[OUTPUT_COLUMNS.EMAIL] || '').toLowerCase().trim(), contactVal: () => contactData.email.toLowerCase().trim(), condition: (s, c) => c && c !== s },
+        { field: 'adresse', column: OUTPUT_COLUMNS.ADRESSE, sheetVal: () => (existingData[OUTPUT_COLUMNS.ADRESSE] || '').trim(), contactVal: () => contactData.addressCanonical, condition: (s, c) => c && c !== s && c.length > 0 },
+        { field: 'criticite', column: OUTPUT_COLUMNS.CRITICITE, sheetVal: () => parseInt(existingData[OUTPUT_COLUMNS.CRITICITE]) || 0, contactVal: () => metadata.criticite, condition: (s, c) => c !== s },
+        { field: 'nombre_adulte', column: OUTPUT_COLUMNS.NOMBRE_ADULTE, sheetVal: () => parseInt(existingData[OUTPUT_COLUMNS.NOMBRE_ADULTE]) || 0, contactVal: () => metadata.nombreAdulte, condition: (s, c) => c !== s },
+        { field: 'nombre_enfant', column: OUTPUT_COLUMNS.NOMBRE_ENFANT, sheetVal: () => parseInt(existingData[OUTPUT_COLUMNS.NOMBRE_ENFANT]) || 0, contactVal: () => metadata.nombreEnfant, condition: (s, c) => c !== s },
+        { field: 'zakat_el_fitr', column: OUTPUT_COLUMNS.ZAKAT_EL_FITR, sheetVal: () => existingData[OUTPUT_COLUMNS.ZAKAT_EL_FITR] === true, contactVal: () => metadata.zakatElFitr === true, condition: (s, c) => c !== s },
+        { field: 'sadaqa', column: OUTPUT_COLUMNS.SADAQA, sheetVal: () => existingData[OUTPUT_COLUMNS.SADAQA] === true, contactVal: () => metadata.sadaqa === true, condition: (s, c) => c !== s },
+        { field: 'langue', column: OUTPUT_COLUMNS.LANGUE, sheetVal: () => existingData[OUTPUT_COLUMNS.LANGUE] || CONFIG.LANGUAGES.FR, contactVal: () => metadata.langue, condition: (s, c) => c !== s },
+        { field: 'se_deplace', column: OUTPUT_COLUMNS.SE_DEPLACE, sheetVal: () => existingData[OUTPUT_COLUMNS.SE_DEPLACE] === true, contactVal: () => metadata.seDeplace === true, condition: (s, c) => c !== s }
     ];
 
+    const changes = [];
     checks.forEach(({ field, column, sheetVal, contactVal, condition }) => {
         const s = sheetVal();
         const c = contactVal();
-        if (condition(s, c)) {
-            changes.push({ field, column, oldValue: s, newValue: c });
-        }
+        if (condition(s, c)) changes.push({ field, column, oldValue: s, newValue: c });
     });
-
     return changes;
 }
 
-// ─── Application physique des changements (sync automatique) ─────────────────
-
-function applyChangesToSheet(sheet, row, existingData, contactData, metadata, changes) {
+function applyChangesToSheet(sheet, row, existingData, contactData, metadata, changes, familyId) {
     const householdChanges = changes.filter(c => c.field === 'nombre_adulte' || c.field === 'nombre_enfant');
-
     if (householdChanges.length > 0) {
         let newAdultes = parseInt(existingData[OUTPUT_COLUMNS.NOMBRE_ADULTE]) || 0;
         let newEnfants = parseInt(existingData[OUTPUT_COLUMNS.NOMBRE_ENFANT]) || 0;
-
         householdChanges.forEach(c => {
             if (c.field === 'nombre_adulte') newAdultes = c.newValue;
             if (c.field === 'nombre_enfant') newEnfants = c.newValue;
@@ -289,9 +182,9 @@ function applyChangesToSheet(sheet, row, existingData, contactData, metadata, ch
 
         const validation = validateHouseholdComposition(newAdultes, newEnfants);
         if (!validation.isValid) {
-            logAvertissement(`Composition foyer invalide, ignorée: ${validation.error}`);
+            logWarning(`Composition foyer invalide, ignorée: ${validation.error}`);
+            appendSheetComment(familyId, CONFIG.AUDIT_SOURCES.SYNCHRONISATION_CONTACT, `⚠️ Sync ignoré: ${validation.error}`);
             changes = changes.filter(c => c.field !== 'nombre_adulte' && c.field !== 'nombre_enfant');
-            appendSheetComment(sheet, row, '⚠️', `Sync ignoré: ${validation.error}`);
             if (changes.length === 0) return;
         }
     }
@@ -299,42 +192,36 @@ function applyChangesToSheet(sheet, row, existingData, contactData, metadata, ch
     const addressChange = changes.find(c => c.field === 'adresse');
     const otherChanges = changes.filter(c => c.field !== 'adresse');
 
-    otherChanges.forEach(change => {
-        sheet.getRange(row, change.column + 1).setValue(change.newValue);
-    });
+    otherChanges.forEach(change => { sheet.getRange(row, change.column + 1).setValue(change.newValue); });
 
     if (addressChange) {
         sheet.getRange(row, OUTPUT_COLUMNS.ADRESSE + 1).setValue(addressChange.newValue);
-
         const addressParts = parseAddressComponents(addressChange.newValue);
-        const validation = validateAddressAndGetQuartier(
-            addressParts.street,
-            addressParts.postalCode,
-            addressParts.city
-        );
+        const validation = validateAddressAndGetQuartier(addressParts.street, addressParts.postalCode, addressParts.city);
 
         if (validation.isValid && validation.quartierId) {
             sheet.getRange(row, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue(validation.quartierId);
-            logInfo(`Quartier re-résolu après sync adresse (auto): ${validation.quartierId}`);
-            appendSheetComment(sheet, row, '📍', `Quartier mis à jour: ${validation.quartierName || validation.quartierId}`);
+            appendSheetComment(familyId, CONFIG.AUDIT_SOURCES.RESOLUTION_ADRESSE, `📍 Quartier mis à jour (sync auto): ${validation.quartierName || validation.quartierId}`);
         } else {
             sheet.getRange(row, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue('');
             const reason = validation.isValid ? 'aucun quartier trouvé' : (validation.error || 'adresse invalide');
-            logAvertissement(`Impossible de re-résoudre le quartier après sync adresse (auto): ${reason}`);
-            appendSheetComment(sheet, row, '⚠️', `Quartier non résolu après changement d'adresse: ${reason}`);
+            appendSheetComment(familyId, CONFIG.AUDIT_SOURCES.RESOLUTION_ADRESSE, `⚠️ Quartier non résolu après sync adresse: ${reason}`);
         }
 
         if (validation.quartierInvalid) {
-            appendSheetComment(sheet, row, '⚠️', validation.warning);
+            appendSheetComment(familyId, CONFIG.AUDIT_SOURCES.RESOLUTION_ADRESSE, `⚠️ ${validation.warning}`);
         }
     }
 
-    appendSheetComment(sheet, row, '🔄', 'Sync Contact → Feuille');
+    const auditMessages = changes.map(c => {
+        const emoji = FIELD_EMOJI[c.field] || '📝';
+        const label = getFieldLabel(c.field);
+        return `${emoji} ${label}: ${formatValueForDisplay(c.oldValue)} → ${formatValueForDisplay(c.newValue)}`;
+    });
+    appendSheetComments(familyId, CONFIG.AUDIT_SOURCES.SYNCHRONISATION_CONTACT, auditMessages);
 }
 
 function extractContactName(contact) {
-    if (contact.names && contact.names.length > 0) {
-        return contact.names[0].displayName || 'Inconnu';
-    }
+    if (contact.names && contact.names.length > 0) return contact.names[0].displayName || 'Inconnu';
     return 'Inconnu';
 }

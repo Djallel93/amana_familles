@@ -1,6 +1,5 @@
 /**
  * @file src/handlers/formHandler.js
- * @description Gestionnaire principal des soumissions de formulaires multilingues et admin
  */
 
 function onFormSubmit(e) {
@@ -9,12 +8,9 @@ function onFormSubmit(e) {
         const sheetName = sheet.getName();
         const row = e.range.getRow();
 
-        logInfo(`📋 Traitement feuille: ${sheetName}, ligne: ${row}`);
+        logInfo(`Traitement feuille: ${sheetName}, ligne: ${row}`);
 
-        if (sheetName === CONFIG.SHEETS.FAMILLE) {
-            logInfo('⏭️ Feuille Famille ignorée - sortie uniquement');
-            return;
-        }
+        if (sheetName === CONFIG.SHEETS.FAMILLE) return;
 
         const detectedLanguage = detectLanguageFromSheet(sheetName);
 
@@ -29,12 +25,11 @@ function onFormSubmit(e) {
         formData.langue = detectedLanguage;
 
         if (isConsentRefused(formData)) {
-            logInfo('🚫 Soumission ignorée: consentement refusé');
+            logInfo('Soumission ignorée: consentement refusé');
             return;
         }
 
         processInsert(formData);
-
     } catch (error) {
         logError('Échec traitement soumission formulaire', error);
         notifyAdmin('❌ Erreur traitement formulaire', `Erreur: ${error.toString()}\nFeuille: ${e.range.getSheet().getName()}\nLigne: ${e.range.getRow()}`);
@@ -43,8 +38,7 @@ function onFormSubmit(e) {
 
 function processGoogleFormSubmission(sheet, row, language = CONFIG.LANGUAGES.FR) {
     try {
-        logInfo('📱 Traitement soumission formulaire admin');
-
+        logInfo('Traitement soumission formulaire admin');
         const values = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
         const formData = parseGoogleFormData(values);
         formData.langue = language;
@@ -61,9 +55,7 @@ function processGoogleFormSubmission(sheet, row, language = CONFIG.LANGUAGES.FR)
         }
 
         const duplicate = findDuplicateFamily(formData.phone, formData.lastName, formData.email);
-
         if (duplicate.exists) {
-            logInfo('📄 Validation documents (mise à jour formulaire admin)');
             const docValidation = validateDocuments(formData.identityDoc, formData.aidesEtatDoc, formData.resourceDoc);
             const updateResult = updateExistingFamily(duplicate, formData, null, docValidation.isValid ? docValidation : { identityIds: [], aidesEtatIds: [], resourceIds: [] });
             sheet.getRange(row, statusColumn).setValue(`✅ Mis à jour: ${duplicate.id}`);
@@ -71,28 +63,19 @@ function processGoogleFormSubmission(sheet, row, language = CONFIG.LANGUAGES.FR)
             return;
         }
 
-        logInfo('🏠 Validation adresse');
         const addressValidation = validateAddressAndGetQuartier(formData.address, formData.postalCode, formData.city);
-
         if (!addressValidation.isValid) {
-            const errorMessage = `Adresse invalide: ${addressValidation.error}`;
-            sheet.getRange(row, statusColumn).setValue(`❌ ${errorMessage}`);
+            sheet.getRange(row, statusColumn).setValue(`❌ Adresse invalide: ${addressValidation.error}`);
             notifyAdmin('⚠️ Formulaire admin rejeté', `Adresse invalide\nFamille: ${formData.lastName} ${formData.firstName}`);
             return;
         }
 
-        logInfo('✅ Adresse validée');
         const familyId = generateFamilyId();
-        let initialComment = '';
-        if (addressValidation.quartierInvalid) initialComment = formatComment('⚠️', addressValidation.warning);
-
         const familleSheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
         const newRow = writeToFamilySheet(formData, {
             status: CONFIG.STATUS.IN_PROGRESS,
-            comment: initialComment,
-            familyId: familyId,
+            familyId,
             quartierId: addressValidation.quartierId,
-            quartierName: addressValidation.quartierName,
             identityIds: [], aidesEtatIds: [], resourceIds: [],
             criticite: formData.criticite,
             langue: language,
@@ -101,12 +84,13 @@ function processGoogleFormSubmission(sheet, row, language = CONFIG.LANGUAGES.FR)
             sadaqa: formData.sadaqa || false
         });
 
-        appendSheetComment(familleSheet, newRow, '📋', 'Soumis via formulaire admin');
+        if (addressValidation.quartierInvalid) {
+            appendSheetComment(familyId, CONFIG.AUDIT_SOURCES.RESOLUTION_ADRESSE, `⚠️ ${addressValidation.warning}`);
+        }
 
+        appendSheetComment(familyId, CONFIG.AUDIT_SOURCES.SOUMISSION_FORMULAIRE, '📋 Soumis via formulaire admin');
         sheet.getRange(row, statusColumn).setValue(`✅ Créé: ${familyId}`);
         notifyAdmin('✅ Nouvelle famille (formulaire admin)', _buildInsertNotification(familyId, formData, addressValidation));
-        logInfo('Formulaire admin traité avec succès');
-
     } catch (error) {
         logError('Échec traitement formulaire admin', error);
         notifyAdmin('❌ Erreur formulaire admin', `Erreur: ${error.toString()}`);
@@ -115,7 +99,7 @@ function processGoogleFormSubmission(sheet, row, language = CONFIG.LANGUAGES.FR)
 
 function processInsert(formData) {
     try {
-        logInfo('➕ Traitement soumission INSERT');
+        logInfo('Traitement soumission INSERT');
 
         const fieldValidation = validateRequiredFields(formData);
         if (!fieldValidation.isValid) {
@@ -123,55 +107,35 @@ function processInsert(formData) {
             return;
         }
 
-        logInfo('🔍 Vérification doublon');
         const duplicate = findDuplicateFamily(formData.phone, formData.lastName, formData.email);
-
         if (duplicate.exists) {
-            logInfo(`🔄 Doublon trouvé (${duplicate.matchType}) - mise à jour famille ${duplicate.id}`);
-
-            logInfo('📄 Validation documents (mise à jour)');
+            logInfo(`Doublon trouvé (${duplicate.matchType}) - mise à jour famille ${duplicate.id}`);
             const docValidation = validateDocuments(formData.identityDoc, formData.aidesEtatDoc, formData.resourceDoc);
             if (!docValidation.isValid) {
-                logAvertissement(`Documents invalides lors de la mise à jour famille ${duplicate.id}: ${docValidation.errors.join(', ')}`);
+                logWarning(`Documents invalides lors de la mise à jour famille ${duplicate.id}: ${docValidation.errors.join(', ')}`);
             }
-
             const updateResult = updateExistingFamily(duplicate, formData, null, docValidation.isValid ? docValidation : { identityIds: [], aidesEtatIds: [], resourceIds: [] });
             _notifyAdminUpdate(duplicate, formData, updateResult);
-            logInfo('✅ Mise à jour doublon traitée avec succès');
             return;
         }
 
-        logInfo('🏠 Validation adresse');
         const addressValidation = validateAddressAndGetQuartier(formData.address, formData.postalCode, formData.city);
-
         if (!addressValidation.isValid) {
             notifyAdmin('⚠️ Soumission rejetée', `Adresse invalide\nFamille: ${formData.lastName} ${formData.firstName}`);
             return;
         }
-        logInfo('✅ Adresse validée');
 
-        logInfo('📄 Validation documents');
         const docValidation = validateDocuments(formData.identityDoc, formData.aidesEtatDoc, formData.resourceDoc);
-
         if (!docValidation.isValid) {
             notifyAdmin('⚠️ Soumission rejetée', `Documents invalides: ${docValidation.errors.join(', ')}\nFamille: ${formData.lastName} ${formData.firstName}`);
             return;
         }
-        logInfo('✅ Documents validés');
 
         const familyId = generateFamilyId();
-        let initialComment = '';
-        if (addressValidation.quartierInvalid) {
-            initialComment = formatComment('⚠️', `${addressValidation.warning}\nVérifier l'adresse avant validation.`);
-        }
-
-        const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
-        const newRow = writeToFamilySheet(formData, {
+        writeToFamilySheet(formData, {
             status: CONFIG.STATUS.IN_PROGRESS,
-            comment: initialComment,
-            familyId: familyId,
+            familyId,
             quartierId: addressValidation.quartierId,
-            quartierName: addressValidation.quartierName,
             identityIds: docValidation.identityIds,
             aidesEtatIds: docValidation.aidesEtatIds,
             resourceIds: docValidation.resourceIds,
@@ -182,11 +146,13 @@ function processInsert(formData) {
             sadaqa: formData.sadaqa || false
         });
 
-        appendSheetComment(sheet, newRow, '📋', `Soumis via formulaire (${formData.langue || CONFIG.LANGUAGES.FR})`);
+        if (addressValidation.quartierInvalid) {
+            appendSheetComment(familyId, CONFIG.AUDIT_SOURCES.RESOLUTION_ADRESSE, `⚠️ ${addressValidation.warning}`);
+        }
 
+        appendSheetComment(familyId, CONFIG.AUDIT_SOURCES.SOUMISSION_FORMULAIRE, `📋 Soumis via formulaire (${formData.langue || CONFIG.LANGUAGES.FR})`);
         notifyAdmin('✅ Nouvelle soumission', _buildInsertNotification(familyId, formData, addressValidation));
-        logInfo('✅ Soumission INSERT traitée avec succès');
-
+        logInfo('Soumission INSERT traitée avec succès');
     } catch (error) {
         logError('Échec traitement INSERT', error);
         notifyAdmin('❌ Erreur INSERT', `Erreur: ${error.toString()}\nFamille: ${formData.lastName} ${formData.firstName}`);

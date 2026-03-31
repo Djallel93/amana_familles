@@ -1,27 +1,24 @@
 /**
- * @file src/core/config.js (FINAL - WITH ELIGIBILITY CHECKBOXES)
- * @description Complete configuration with eligibility tracking
+ * @file src/core/config.js
  */
 
 const CONFIG = {
-    // 📋 Noms des feuilles
     SHEETS: {
         GOOGLE_FORM: 'Famille - Admin',
         FORM_FR: 'Familles – FR',
         FORM_AR: 'Familles – AR',
         FORM_EN: 'Familles – EN',
         FAMILLE: 'Famille',
-        FORM_UPDATE: 'Mise à Jour Famille'
+        FORM_UPDATE: 'Mise à Jour Famille',
+        AUDIT: 'Audit'
     },
 
-    // 🌍 Langues supportées (FULL NAMES)
     LANGUAGES: {
         FR: 'Français',
         AR: 'Arabe',
         EN: 'Anglais'
     },
 
-    // 📧 Configuration des emails de vérification
     EMAIL_VERIFICATION: {
         SUBJECT: {
             'Français': '🔔 Mise à jour de vos informations',
@@ -31,7 +28,6 @@ const CONFIG = {
         FROM_NAME: 'Gestion des Familles'
     },
 
-    // ⏱️ Configuration du cache (en secondes)
     CACHE: {
         SHORT: 300,
         MEDIUM: 1800,
@@ -39,7 +35,6 @@ const CONFIG = {
         VERY_LONG: 21600
     },
 
-    // 📊 Valeurs de statut
     STATUS: {
         REJECTED: 'Rejeté',
         RECEIVED: 'Recu',
@@ -57,17 +52,30 @@ const CONFIG = {
         SKIPPED: 'Ignoré'
     },
 
-    // 📄 Types de documents
     DOC_TYPES: {
         IDENTITY: 'identity',
         AIDES_ETAT: 'aides_etat',
         RESOURCE: 'resource'
     },
 
-    // ⚠️ Validation de criticité
     CRITICITE: {
         MIN: 0,
         MAX: 5
+    },
+
+    AUDIT_SOURCES: {
+        SAISIE_MANUELLE: 'saisie_manuelle',
+        SOUMISSION_FORMULAIRE: 'soumission_formulaire',
+        IMPORT_EN_MASSE: 'import_en_masse',
+        MISE_A_JOUR_EN_MASSE: 'mise_a_jour_en_masse',
+        VALIDATION: 'validation',
+        REJET: 'rejet',
+        ARCHIVAGE: 'archivage',
+        SYNCHRONISATION_CONTACT: 'synchronisation_contact',
+        RESOLUTION_ADRESSE: 'resolution_adresse',
+        VERIFICATION_EMAIL: 'verification_email',
+        SYSTEME: 'systeme',
+        MIGRATION: 'migration'
     },
 
     OAUTH_CONFIG: {
@@ -76,13 +84,11 @@ const CONFIG = {
         FORMS_API_BASE_URL: 'https://forms.googleapis.com/v1'
     },
 
-    // 🌍 Configuration API géographique v5.0
     GEO_API: {
         VERSION: '5.0',
         MAX_DISTANCE: 50
     },
 
-    // 🚫 Phrases de refus de consentement
     REFUSAL_PHRASES: [
         'Je refuse que mes données personnelles soient collectées et traitées',
         'أرفض جمع ومعالجة بياناتي الشخصية',
@@ -93,72 +99,27 @@ const CONFIG = {
 const BULK_IMPORT_SHEET_NAME = 'Bulk Import';
 const BULK_UPDATE_SHEET_NAME = 'Bulk Update';
 
-// 🗂️ Indices de colonnes pour Bulk Import (0-based)
 const BULK_COLUMNS = {
-    NOM: 0,
-    PRENOM: 1,
-    NOMBRE_ADULTE: 2,
-    NOMBRE_ENFANT: 3,
-    ADRESSE: 4,
-    CODE_POSTAL: 5,
-    VILLE: 6,
-    TELEPHONE: 7,
-    TELEPHONE_BIS: 8,
-    EMAIL: 9,
-    SE_DEPLACE: 10,
-    CIRCONSTANCES: 11,
-    RESSENTIT: 12,
-    SPECIFICITES: 13,
-    CRITICITE: 14,
-    LANGUE: 15,
-    COMMENTAIRE: 16
+    NOM: 0, PRENOM: 1, NOMBRE_ADULTE: 2, NOMBRE_ENFANT: 3,
+    ADRESSE: 4, CODE_POSTAL: 5, VILLE: 6, TELEPHONE: 7,
+    TELEPHONE_BIS: 8, EMAIL: 9, SE_DEPLACE: 10, CIRCONSTANCES: 11,
+    RESSENTIT: 12, SPECIFICITES: 13, CRITICITE: 14, LANGUE: 15, COMMENTAIRE: 16
 };
 
-// 🗂️ Indices de colonnes pour Bulk Update (0-based)
 const BULK_UPDATE_COLUMNS = {
-    ID: 0,
-    NOM: 1,
-    PRENOM: 2,
-    NOMBRE_ADULTE: 3,
-    NOMBRE_ENFANT: 4,
-    ADRESSE: 5,
-    CODE_POSTAL: 6,
-    VILLE: 7,
-    TELEPHONE: 8,
-    TELEPHONE_BIS: 9,
-    EMAIL: 10,
-    SE_DEPLACE: 11,
-    CIRCONSTANCES: 12,
-    RESSENTIT: 13,
-    SPECIFICITES: 14,
-    CRITICITE: 15,
-    LANGUE: 16,
-    COMMENTAIRE: 17
+    ID: 0, NOM: 1, PRENOM: 2, NOMBRE_ADULTE: 3, NOMBRE_ENFANT: 4,
+    ADRESSE: 5, CODE_POSTAL: 6, VILLE: 7, TELEPHONE: 8, TELEPHONE_BIS: 9,
+    EMAIL: 10, SE_DEPLACE: 11, CIRCONSTANCES: 12, RESSENTIT: 13,
+    SPECIFICITES: 14, CRITICITE: 15, LANGUE: 16, COMMENTAIRE: 17
 };
 
-// 🗂️ Indices de colonnes pour Google Form (0-based) - ADMIN FORM
 const GOOGLE_FORM_COLUMNS = {
-    TIMESTAMP: 0,
-    DATE_SAISIE: 1,
-    NOM: 2,
-    PRENOM: 3,
-    TELEPHONE: 4,
-    TELEPHONE_BIS: 5,
-    EMAIL: 6,
-    ADRESSE: 7,
-    CODE_POSTAL: 8,
-    VILLE: 9,
-    SE_DEPLACE: 10,
-    NOMBRE_ADULTE: 11,
-    NOMBRE_ENFANT: 12,
-    CRITICITE: 13,
-    CIRCONSTANCES: 14,
-    RESSENTIT: 15,
-    SPECIFICITES: 16,
-    ELIGIBILITY: 17 // NEW: "Cette famille est éligible pour ?"
+    TIMESTAMP: 0, DATE_SAISIE: 1, NOM: 2, PRENOM: 3, TELEPHONE: 4,
+    TELEPHONE_BIS: 5, EMAIL: 6, ADRESSE: 7, CODE_POSTAL: 8, VILLE: 9,
+    SE_DEPLACE: 10, NOMBRE_ADULTE: 11, NOMBRE_ENFANT: 12, CRITICITE: 13,
+    CIRCONSTANCES: 14, RESSENTIT: 15, SPECIFICITES: 16, ELIGIBILITY: 17
 };
 
-// 🌐 Mappage multilingue des colonnes
 const COLUMN_MAP = {
     'Timestamp': 'timestamp',
     'Email address': 'email',
@@ -243,52 +204,31 @@ const COLUMN_MAP = {
     'Please submit any proof of income or financial support': 'resourceDoc'
 };
 
-// 🗂️ Indices de colonnes pour la feuille de sortie (0-based)
 const OUTPUT_COLUMNS = {
-    ID: 0,
-    NOM: 1,
-    PRENOM: 2,
-    ZAKAT_EL_FITR: 3,
-    SADAQA: 4,
-    NOMBRE_ADULTE: 5,
-    NOMBRE_ENFANT: 6,
-    ADRESSE: 7,
-    ID_QUARTIER: 8,
-    SE_DEPLACE: 9,
-    EMAIL: 10,
-    TELEPHONE: 11,
-    TELEPHONE_BIS: 12,
-    IDENTITE: 13,
-    AIDES_ETAT: 14,
-    CIRCONSTANCES: 15,
-    RESSENTIT: 16,
-    SPECIFICITES: 17,
-    CRITICITE: 18,
-    LANGUE: 19,
-    ETAT_DOSSIER: 20,
-    COMMENTAIRE_DOSSIER: 21
+    ID: 0, NOM: 1, PRENOM: 2, ZAKAT_EL_FITR: 3, SADAQA: 4,
+    NOMBRE_ADULTE: 5, NOMBRE_ENFANT: 6, ADRESSE: 7, ID_QUARTIER: 8,
+    SE_DEPLACE: 9, EMAIL: 10, TELEPHONE: 11, TELEPHONE_BIS: 12,
+    IDENTITE: 13, AIDES_ETAT: 14, CIRCONSTANCES: 15, RESSENTIT: 16,
+    SPECIFICITES: 17, CRITICITE: 18, LANGUE: 19, ETAT_DOSSIER: 20
 };
 
-/**
- * 🔑 Récupérer une propriété de script avec mise en cache
- */
+const AUDIT_COLUMNS = {
+    TIMESTAMP: 0,
+    FAMILLE_ID: 1,
+    SOURCE: 2,
+    MESSAGE: 3
+};
+
 function getProperty(key) {
     const cache = CacheService.getScriptCache();
     let value = cache.get(`prop_${key}`);
-
     if (!value) {
         value = PropertiesService.getScriptProperties().getProperty(key);
-        if (value) {
-            cache.put(`prop_${key}`, value, CONFIG.CACHE.VERY_LONG);
-        }
+        if (value) cache.put(`prop_${key}`, value, CONFIG.CACHE.VERY_LONG);
     }
-
     return value;
 }
 
-/**
- * ⚙️ Récupérer toutes les propriétés de script requises
- */
 function getScriptConfig() {
     return {
         gestionFamillesFolderId: getProperty('GESTION_FAMILLES_FOLDER_ID'),
@@ -304,108 +244,51 @@ function getScriptConfig() {
     };
 }
 
-/**
- * 🆔 Générer un ID de famille auto-incrémenté (numérique)
- */
 function generateFamilyId() {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
     if (!sheet) {
-        logError('❌ Impossible de trouver la feuille Famille pour générer l\'ID');
+        logError('Impossible de trouver la feuille Famille pour générer l\'ID');
         return Date.now();
     }
-
     const data = sheet.getDataRange().getValues();
     let maxId = 0;
-
     for (let i = 1; i < data.length; i++) {
         const id = data[i][OUTPUT_COLUMNS.ID];
         if (id) {
             const num = parseInt(id);
-            if (!isNaN(num) && num > maxId) {
-                maxId = num;
-            }
+            if (!isNaN(num) && num > maxId) maxId = num;
         }
     }
-
     const newId = maxId + 1;
-    logInfo(`🆔 Nouvel ID généré: ${newId} (précédent max: ${maxId})`);
+    logInfo(`Nouvel ID généré: ${newId}`);
     return newId;
 }
 
-/**
- * 🌍 Detect language from sheet name (returns full name)
- */
 function detectLanguageFromSheet(sheetName) {
     if (sheetName === CONFIG.SHEETS.FORM_FR) return CONFIG.LANGUAGES.FR;
     if (sheetName === CONFIG.SHEETS.FORM_AR) return CONFIG.LANGUAGES.AR;
     if (sheetName === CONFIG.SHEETS.FORM_EN) return CONFIG.LANGUAGES.EN;
-    return CONFIG.LANGUAGES.FR; // Default
+    return CONFIG.LANGUAGES.FR;
 }
 
-/**
- * 🌍 Get language code from full name (for backward compatibility)
- */
 function getLanguageCode(languageName) {
-    const mapping = {
-        'Français': 'fr',
-        'Arabe': 'ar',
-        'Anglais': 'en'
-    };
+    const mapping = { 'Français': 'fr', 'Arabe': 'ar', 'Anglais': 'en' };
     return mapping[languageName] || 'fr';
 }
 
-/**
- * Parse boolean from form answer (Oui/Non, Yes/No, نعم/لا)
- */
 function parseSeDeplace(value) {
-    if (typeof value === 'boolean') {
-        return value;
-    }
-
+    if (typeof value === 'boolean') return value;
     const strValue = String(value).trim().toLowerCase();
-
-    // French
-    if (strValue === 'oui') return true;
-    if (strValue === 'non') return false;
-
-    // English
-    if (strValue === 'yes') return true;
-    if (strValue === 'no') return false;
-
-    // Arabic
-    if (strValue === 'نعم') return true;
-    if (strValue === 'لا') return false;
-
-    // Default to false if unrecognized
+    if (strValue === 'oui' || strValue === 'yes' || strValue === 'نعم') return true;
+    if (strValue === 'non' || strValue === 'no' || strValue === 'لا') return false;
     return false;
 }
 
-/**
- * NEW: Parse eligibility checkboxes from Admin form
- * Input: "Sadaqa, Zakat El Fitr" or "Sadaqa" or "Zakat El Fitr" or empty
- * Output: { zakatElFitr: boolean, sadaqa: boolean }
- */
 function parseEligibility(value) {
-    const result = {
-        zakatElFitr: false,
-        sadaqa: false
-    };
-
-    if (!value) {
-        return result;
-    }
-
+    const result = { zakatElFitr: false, sadaqa: false };
+    if (!value) return result;
     const strValue = String(value).toLowerCase().trim();
-
-    // Check for Sadaqa
-    if (strValue.includes('sadaqa') || strValue.includes('sadaka')) {
-        result.sadaqa = true;
-    }
-
-    // Check for Zakat El Fitr
-    if (strValue.includes('zakat') || strValue.includes('fitr')) {
-        result.zakatElFitr = true;
-    }
-
+    if (strValue.includes('sadaqa') || strValue.includes('sadaka')) result.sadaqa = true;
+    if (strValue.includes('zakat') || strValue.includes('fitr')) result.zakatElFitr = true;
     return result;
 }

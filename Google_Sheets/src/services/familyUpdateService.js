@@ -1,9 +1,11 @@
+/**
+ * @file src/services/familyUpdateService.js
+ */
+
 function updateFamilyById(familyId, updateData) {
     try {
         const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
-        if (!sheet) {
-            return { success: false, error: 'Feuille Famille introuvable' };
-        }
+        if (!sheet) return { success: false, error: 'Feuille Famille introuvable' };
 
         const data = sheet.getDataRange().getValues();
         let targetRow = -1;
@@ -15,9 +17,7 @@ function updateFamilyById(familyId, updateData) {
             }
         }
 
-        if (targetRow === -1) {
-            return { success: false, error: `Famille introuvable: ${familyId}` };
-        }
+        if (targetRow === -1) return { success: false, error: `Famille introuvable: ${familyId}` };
 
         const existingData = data[targetRow - 1];
         const changes = [];
@@ -25,111 +25,67 @@ function updateFamilyById(familyId, updateData) {
         delete updateData.forceInProgress;
         let quartierWarning = null;
 
-        if (updateData.lastName) {
-            sheet.getRange(targetRow, OUTPUT_COLUMNS.NOM + 1).setValue(updateData.lastName);
-            changes.push('nom');
-        }
-
-        if (updateData.firstName) {
-            sheet.getRange(targetRow, OUTPUT_COLUMNS.PRENOM + 1).setValue(updateData.firstName);
-            changes.push('prenom');
-        }
+        if (updateData.lastName) { sheet.getRange(targetRow, OUTPUT_COLUMNS.NOM + 1).setValue(updateData.lastName); changes.push('nom'); }
+        if (updateData.firstName) { sheet.getRange(targetRow, OUTPUT_COLUMNS.PRENOM + 1).setValue(updateData.firstName); changes.push('prenom'); }
 
         if (updateData.phone) {
             const normalizedPhone = normalizePhone(updateData.phone);
-            if (!isValidPhone(normalizedPhone)) {
-                return { success: false, error: 'Numéro de téléphone invalide' };
-            }
+            if (!isValidPhone(normalizedPhone)) return { success: false, error: 'Numéro de téléphone invalide' };
             sheet.getRange(targetRow, OUTPUT_COLUMNS.TELEPHONE + 1).setValue(normalizedPhone);
             changes.push('telephone');
         }
 
         if (updateData.phoneBis) {
-            const normalizedPhoneBis = normalizePhone(updateData.phoneBis);
-            sheet.getRange(targetRow, OUTPUT_COLUMNS.TELEPHONE_BIS + 1).setValue(normalizedPhoneBis);
+            sheet.getRange(targetRow, OUTPUT_COLUMNS.TELEPHONE_BIS + 1).setValue(normalizePhone(updateData.phoneBis));
             changes.push('telephone_bis');
         }
 
         if (updateData.email) {
-            if (!isValidEmail(updateData.email)) {
-                return { success: false, error: 'Email invalide' };
-            }
+            if (!isValidEmail(updateData.email)) return { success: false, error: 'Email invalide' };
             sheet.getRange(targetRow, OUTPUT_COLUMNS.EMAIL + 1).setValue(updateData.email);
             changes.push('email');
         }
 
         if (updateData.nombreAdulte !== undefined && updateData.nombreAdulte !== null) {
             const adultes = parseInt(updateData.nombreAdulte);
-            if (isNaN(adultes) || adultes < 0) {
-                return { success: false, error: "Nombre d'adultes invalide" };
-            }
+            if (isNaN(adultes) || adultes < 0) return { success: false, error: "Nombre d'adultes invalide" };
             sheet.getRange(targetRow, OUTPUT_COLUMNS.NOMBRE_ADULTE + 1).setValue(adultes);
             changes.push('nombre_adulte');
         }
 
         if (updateData.nombreEnfant !== undefined && updateData.nombreEnfant !== null) {
             const enfants = parseInt(updateData.nombreEnfant);
-            if (isNaN(enfants) || enfants < 0) {
-                return { success: false, error: "Nombre d'enfants invalide" };
-            }
+            if (isNaN(enfants) || enfants < 0) return { success: false, error: "Nombre d'enfants invalide" };
             sheet.getRange(targetRow, OUTPUT_COLUMNS.NOMBRE_ENFANT + 1).setValue(enfants);
             changes.push('nombre_enfant');
         }
 
         if (updateData.address || updateData.postalCode || updateData.city) {
-            const newAddress = updateData.address;
-            const newPostalCode = updateData.postalCode;
-            const newCity = updateData.city;
-
             const existingParsed = parseAddressComponents(existingData[OUTPUT_COLUMNS.ADRESSE]);
-            const resolvedAddress = newAddress || existingParsed.street || '';
-            const resolvedPostalCode = newPostalCode || existingParsed.postalCode || '';
-            const resolvedCity = newCity || existingParsed.city || '';
+            const resolvedAddress = updateData.address || existingParsed.street || '';
+            const resolvedPostalCode = updateData.postalCode || existingParsed.postalCode || '';
+            const resolvedCity = updateData.city || existingParsed.city || '';
 
             if (resolvedAddress && resolvedPostalCode && resolvedCity) {
-                const addressValidation = validateAddressAndGetQuartier(
-                    resolvedAddress,
-                    resolvedPostalCode,
-                    resolvedCity
-                );
+                const addressValidation = validateAddressAndGetQuartier(resolvedAddress, resolvedPostalCode, resolvedCity);
+                if (!addressValidation.isValid) return { success: false, error: `Adresse invalide: ${addressValidation.error}` };
 
-                if (!addressValidation.isValid) {
-                    return { success: false, error: `Adresse invalide: ${addressValidation.error}` };
-                }
-
-                const fullAddress = formatAddressCanonical(resolvedAddress, resolvedPostalCode, resolvedCity);
-                sheet.getRange(targetRow, OUTPUT_COLUMNS.ADRESSE + 1).setValue(fullAddress);
+                sheet.getRange(targetRow, OUTPUT_COLUMNS.ADRESSE + 1).setValue(formatAddressCanonical(resolvedAddress, resolvedPostalCode, resolvedCity));
                 sheet.getRange(targetRow, OUTPUT_COLUMNS.ID_QUARTIER + 1).setValue(addressValidation.quartierId || '');
                 changes.push('adresse');
 
-                if (addressValidation.quartierInvalid) {
-                    quartierWarning = addressValidation.warning;
-                }
+                if (addressValidation.quartierInvalid) quartierWarning = addressValidation.warning;
             }
         }
 
-        if (updateData.circonstances) {
-            sheet.getRange(targetRow, OUTPUT_COLUMNS.CIRCONSTANCES + 1).setValue(updateData.circonstances);
-            changes.push('circonstances');
-        }
-
-        if (updateData.ressentit) {
-            sheet.getRange(targetRow, OUTPUT_COLUMNS.RESSENTIT + 1).setValue(updateData.ressentit);
-            changes.push('ressentit');
-        }
-
-        if (updateData.specificites) {
-            sheet.getRange(targetRow, OUTPUT_COLUMNS.SPECIFICITES + 1).setValue(updateData.specificites);
-            changes.push('specificites');
-        }
+        if (updateData.circonstances) { sheet.getRange(targetRow, OUTPUT_COLUMNS.CIRCONSTANCES + 1).setValue(updateData.circonstances); changes.push('circonstances'); }
+        if (updateData.ressentit) { sheet.getRange(targetRow, OUTPUT_COLUMNS.RESSENTIT + 1).setValue(updateData.ressentit); changes.push('ressentit'); }
+        if (updateData.specificites) { sheet.getRange(targetRow, OUTPUT_COLUMNS.SPECIFICITES + 1).setValue(updateData.specificites); changes.push('specificites'); }
 
         if (updateData.criticite !== undefined && updateData.criticite !== null) {
             const criticite = parseInt(updateData.criticite);
             if (isNaN(criticite) || criticite < CONFIG.CRITICITE.MIN || criticite > CONFIG.CRITICITE.MAX) {
-                return {
-                    success: false,
-                    error: `Criticité invalide. Doit être entre ${CONFIG.CRITICITE.MIN} et ${CONFIG.CRITICITE.MAX}`
-                };
+                return { success: false, error: `Criticité invalide. Doit être entre ${CONFIG.CRITICITE.MIN} et ${CONFIG.CRITICITE.MAX}` };
             }
             sheet.getRange(targetRow, OUTPUT_COLUMNS.CRITICITE + 1).setValue(criticite);
             changes.push('criticite');
@@ -137,43 +93,26 @@ function updateFamilyById(familyId, updateData) {
 
         if (updateData.langue) {
             const validLanguages = [CONFIG.LANGUAGES.FR, CONFIG.LANGUAGES.AR, CONFIG.LANGUAGES.EN];
-            if (!validLanguages.includes(updateData.langue)) {
-                return { success: false, error: 'Langue invalide (doit être: Français, Arabe, ou Anglais)' };
-            }
+            if (!validLanguages.includes(updateData.langue)) return { success: false, error: 'Langue invalide' };
             sheet.getRange(targetRow, OUTPUT_COLUMNS.LANGUE + 1).setValue(updateData.langue);
             changes.push('langue');
         }
 
-        if (updateData.seDeplace !== undefined) {
-            sheet.getRange(targetRow, OUTPUT_COLUMNS.SE_DEPLACE + 1).setValue(updateData.seDeplace === true);
-            changes.push('se_deplace');
-        }
-
-        if (updateData.zakatElFitr !== undefined) {
-            sheet.getRange(targetRow, OUTPUT_COLUMNS.ZAKAT_EL_FITR + 1).setValue(updateData.zakatElFitr === true);
-            changes.push('zakat_el_fitr');
-        }
-
-        if (updateData.sadaqa !== undefined) {
-            sheet.getRange(targetRow, OUTPUT_COLUMNS.SADAQA + 1).setValue(updateData.sadaqa === true);
-            changes.push('sadaqa');
-        }
+        if (updateData.seDeplace !== undefined) { sheet.getRange(targetRow, OUTPUT_COLUMNS.SE_DEPLACE + 1).setValue(updateData.seDeplace === true); changes.push('se_deplace'); }
+        if (updateData.zakatElFitr !== undefined) { sheet.getRange(targetRow, OUTPUT_COLUMNS.ZAKAT_EL_FITR + 1).setValue(updateData.zakatElFitr === true); changes.push('zakat_el_fitr'); }
+        if (updateData.sadaqa !== undefined) { sheet.getRange(targetRow, OUTPUT_COLUMNS.SADAQA + 1).setValue(updateData.sadaqa === true); changes.push('sadaqa'); }
 
         const currentStatus = existingData[OUTPUT_COLUMNS.ETAT_DOSSIER];
         if (forceInProgress || (quartierWarning && currentStatus === CONFIG.STATUS.VALIDATED)) {
             sheet.getRange(targetRow, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).setValue(CONFIG.STATUS.IN_PROGRESS);
-            changes.push('statut (changé à En cours)');
+            changes.push('statut → En cours');
         }
 
         if (changes.length > 0) {
-            let commentMsg = `Mis à jour: ${changes.join(', ')}`;
-            if (forceInProgress) {
-                commentMsg += ' | Statut → En cours (màj en masse)';
-            }
-            if (quartierWarning) {
-                commentMsg += ` | ${quartierWarning}`;
-            }
-            appendSheetComment(sheet, targetRow, '📝', commentMsg);
+            const source = forceInProgress ? CONFIG.AUDIT_SOURCES.MISE_A_JOUR_EN_MASSE : CONFIG.AUDIT_SOURCES.SOUMISSION_FORMULAIRE;
+            let commentMsg = `📝 Mis à jour: ${changes.join(', ')}`;
+            if (quartierWarning) commentMsg += ` | ⚠️ ${quartierWarning}`;
+            appendSheetComment(familyId, source, commentMsg);
         }
 
         const finalStatus = sheet.getRange(targetRow, OUTPUT_COLUMNS.ETAT_DOSSIER + 1).getValue();
@@ -195,54 +134,36 @@ function updateFamilyById(familyId, updateData) {
         cache.remove(`api_family_${familyId}`);
         cache.remove(`folder_${familyId}`);
 
-        logInfo('Family updated successfully', { familyId, changes, forceInProgress });
-
-        return {
-            success: true,
-            familyId: familyId,
-            updatedFields: changes,
-            quartierWarning: quartierWarning
-        };
-
+        logInfo('Famille mise à jour avec succès', { familyId, changes, forceInProgress });
+        return { success: true, familyId, updatedFields: changes, quartierWarning };
     } catch (error) {
-        logError('Failed to update family', error);
+        logError('Échec mise à jour famille', error);
         return { success: false, error: error.toString() };
     }
 }
 
 function processManualUpdate(familyId, updateData) {
     try {
-        logInfo('Processing manual update', { familyId, updateData });
+        logInfo('Traitement mise à jour manuelle', { familyId, updateData });
 
-        if (!familyId) {
-            return { success: false, error: 'ID famille obligatoire' };
-        }
+        if (!familyId) return { success: false, error: 'ID famille obligatoire' };
 
         const hasData = Object.keys(updateData).some(key => {
             const value = updateData[key];
             return value !== '' && value !== null && value !== undefined;
         });
 
-        if (!hasData) {
-            return { success: false, error: 'Au moins un champ doit être renseigné pour la mise à jour' };
-        }
+        if (!hasData) return { success: false, error: 'Au moins un champ doit être renseigné pour la mise à jour' };
 
         const result = updateFamilyById(familyId, updateData);
 
         if (result.success) {
-            logInfo('Manual update processed successfully', result);
-            return {
-                success: true,
-                familyId: result.familyId,
-                updatedFields: result.updatedFields,
-                quartierWarning: result.quartierWarning
-            };
-        } else {
-            return { success: false, error: result.error };
+            logInfo('Mise à jour manuelle traitée avec succès', result);
+            return { success: true, familyId: result.familyId, updatedFields: result.updatedFields, quartierWarning: result.quartierWarning };
         }
-
+        return { success: false, error: result.error };
     } catch (error) {
-        logError('Manual update processing failed', error);
+        logError('Échec mise à jour manuelle', error);
         return { success: false, error: error.toString() };
     }
 }

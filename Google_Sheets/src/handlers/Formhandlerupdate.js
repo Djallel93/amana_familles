@@ -1,11 +1,10 @@
 /**
  * @file src/handlers/formHandlerUpdate.js
- * @description Traitement des mises à jour via formulaire et parsing du formulaire admin
  */
 
 function processUpdate(formData) {
     try {
-        logInfo('✏️ Traitement soumission UPDATE');
+        logInfo('Traitement soumission UPDATE');
         const familyId = formData.familyId || formData.id;
 
         if (!familyId) {
@@ -30,7 +29,7 @@ function processUpdate(formData) {
 
         const result = updateFamilyById(familyId, updateData);
         if (result.success) {
-            logInfo('✅ Formulaire UPDATE traité avec succès', { familyId, updatedFields: result.updatedFields });
+            logInfo('Formulaire UPDATE traité avec succès', { familyId, updatedFields: result.updatedFields });
             notifyAdmin('✅ Famille mise à jour via formulaire', `ID: ${familyId}\nChamps mis à jour: ${result.updatedFields.join(', ')}`);
         } else {
             logError('Échec traitement mise à jour', { familyId, error: result.error });
@@ -71,12 +70,8 @@ function buildUpdateData(formData) {
 }
 
 function validateUpdateData(updateData) {
-    if (updateData.email && !isValidEmail(updateData.email)) {
-        return { isValid: false, error: 'Email invalide' };
-    }
-    if (updateData.phone && !isValidPhone(updateData.phone)) {
-        return { isValid: false, error: 'Téléphone invalide' };
-    }
+    if (updateData.email && !isValidEmail(updateData.email)) return { isValid: false, error: 'Email invalide' };
+    if (updateData.phone && !isValidPhone(updateData.phone)) return { isValid: false, error: 'Téléphone invalide' };
     if (updateData.criticite !== undefined) {
         if (isNaN(updateData.criticite) || updateData.criticite < CONFIG.CRITICITE.MIN || updateData.criticite > CONFIG.CRITICITE.MAX) {
             return { isValid: false, error: 'Criticité invalide (doit être entre 0 et 5)' };
@@ -88,12 +83,8 @@ function validateUpdateData(updateData) {
     return { isValid: true };
 }
 
-/**
- * Parse les données du formulaire admin Google Form
- */
 function parseGoogleFormData(values) {
     const eligibility = parseEligibility(values[GOOGLE_FORM_COLUMNS.ELIGIBILITY]);
-
     return {
         timestamp: values[GOOGLE_FORM_COLUMNS.TIMESTAMP] || new Date(),
         dateSaisie: values[GOOGLE_FORM_COLUMNS.DATE_SAISIE] || '',
@@ -117,22 +108,16 @@ function parseGoogleFormData(values) {
     };
 }
 
-/**
- * Détecte si le formulaire est un INSERT ou UPDATE (formulaires avec ID famille)
- */
 function detectFormType(formData, sheetName) {
     if (formData.familyId || formData.id) {
-        logInfo('🆔 ID famille détecté - formulaire UPDATE');
+        logInfo('ID famille détecté - formulaire UPDATE');
         return 'UPDATE';
     }
-    const updateKeywords = [
-        'update', 'mise à jour', 'mise a jour', 'maj',
-        'modification', 'تحديث', 'actualisation', 'modifier'
-    ];
+    const updateKeywords = ['update', 'mise à jour', 'mise a jour', 'maj', 'modification', 'تحديث', 'actualisation', 'modifier'];
     if (updateKeywords.some(k => sheetName.toLowerCase().includes(k))) {
-        logInfo('🔤 Mot-clé mise à jour détecté dans le nom de feuille - UPDATE');
+        logInfo('Mot-clé mise à jour détecté - UPDATE');
         return 'UPDATE';
     }
-    logInfo('➕ Aucun indicateur de mise à jour - INSERT');
+    logInfo('Aucun indicateur de mise à jour - INSERT');
     return 'INSERT';
 }

@@ -1,65 +1,152 @@
 /**
- * @file src/services/sheetAccessService.js (UPDATED v3.0)
- * @description Helpers lecture/écriture feuille
- * CHANGE: appendSheetComment now includes comment history management (merged from addComment)
+ * @file src/services/sheetAccessService.js
  */
 
 /**
- * Récupère les données de la feuille Famille validée
- * @returns {Array[]|null} Tableau de données ou null en cas d'erreur
+ * Crée la feuille Audit si elle n'existe pas et initialise les en-têtes.
+ * @returns {Sheet}
  */
+function getOrCreateAuditSheet() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName(CONFIG.SHEETS.AUDIT);
+    if (!sheet) {
+        sheet = ss.insertSheet(CONFIG.SHEETS.AUDIT);
+        sheet.getRange(1, 1, 1, 4).setValues([['timestamp', 'famille_id', 'source', 'message']]);
+        sheet.getRange(1, 1, 1, 4).setFontWeight('bold');
+        sheet.setFrozenRows(1);
+        logInfo('Feuille Audit créée');
+    }
+    return sheet;
+}
+
+/**
+ * Écrit une ligne dans la feuille Audit (insertion en position 2 pour ordre décroissant).
+ * @param {string|number} familleId
+ * @param {string} source - Valeur de CONFIG.AUDIT_SOURCES
+ * @param {string} message
+ */
+function appendSheetComment(familleId, source, message) {
+    try {
+        const sheet = getOrCreateAuditSheet();
+        const timestamp = formatDateTime();
+        sheet.insertRowAfter(1);
+        sheet.getRange(2, 1, 1, 4).setValues([[timestamp, familleId, source, message]]);
+    } catch (error) {
+        logError(`Échec écriture audit (famille ${familleId})`, error);
+    }
+}
+
+/**
+ * Écrit plusieurs lignes d'audit en une seule opération (optimisé pour les syncs multi-champs).
+ * @param {string|number} familleId
+ * @param {string} source
+ * @param {Array<string>} messages
+ */
+function appendSheetComments(familleId, source, messages) {
+    if (!messages || messages.length === 0) return;
+    try {
+        const sheet = getOrCreateAuditSheet();
+        const timestamp = formatDateTime();
+        const rows = messages.map(msg => [timestamp, familleId, source, msg]);
+        sheet.insertRowsAfter(1, rows.length);
+        sheet.getRange(2, 1, rows.length, 4).setValues(rows);
+    } catch (error) {
+        logError(`Échec écriture audit groupé (famille ${familleId})`, error);
+    }
+}
+
+/**
+ * Migre le contenu de la colonne commentaire_dossier vers la feuille Audit
+ * puis supprime la colonne.
+ * @returns {Object} {success: boolean, migrated: number, errors: number}
+ */
+function migrateCommentsToAudit() {
+    const familleSheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
+    if (!familleSheet) return { success: false, migrated: 0, errors: 0 };
+
+    getOrCreateAuditSheet();
+
+    const data = familleSheet.getDataRange().getValues();
+    const COMMENT_COL_INDEX = 21;
+    const timestampRegex = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+(.+)$/;
+    const FALLBACK_TIMESTAMP = '2000-01-01 00:00:00';
+
+    let migrated = 0;
+    let errors = 0;
+
+    for (let i = 1; i < data.length; i++) {
+        const familleId = data[i][OUTPUT_COLUMNS.ID];
+        const rawComment = data[i][COMMENT_COL_INDEX];
+
+        if (!rawComment || String(rawComment).trim() === '') continue;
+
+        const lines = String(rawComment).split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+        try {
+            const auditSheet = getOrCreateAuditSheet();
+            const rows = lines.map(line => {
+                const match = line.match(timestampRegex);
+                const timestamp = match ? match[1] : FALLBACK_TIMESTAMP;
+                const message = match ? match[2] : line;
+                return [timestamp, familleId, CONFIG.AUDIT_SOURCES.MIGRATION, message];
+            });
+
+            if (rows.length > 0) {
+                auditSheet.insertRowsAfter(1, rows.length);
+                auditSheet.getRange(2, 1, rows.length, 4).setValues(rows);
+                migrated += rows.length;
+            }
+        } catch (e) {
+            logError(`Erreur migration commentaires famille ${familleId}`, e);
+            errors++;
+        }
+    }
+
+    try {
+        familleSheet.deleteColumn(COMMENT_COL_INDEX + 1);
+        logInfo(`Colonne commentaire_dossier supprimée`);
+    } catch (e) {
+        logError('Échec suppression colonne commentaire_dossier', e);
+        return { success: false, migrated, errors };
+    }
+
+    logInfo(`Migration terminée: ${migrated} entrées migrées, ${errors} erreurs`);
+    return { success: true, migrated, errors };
+}
+
 function getFamilySheetData() {
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
-
     if (!sheet) {
         logError('Feuille Famille introuvable');
         return null;
     }
-
     return sheet.getDataRange().getValues();
 }
 
 /**
- * Trouve une ligne famille par ID
- * @param {string|number} familyId - ID famille à chercher
- * @returns {Object|null} {row: number, data: Array} ou null si introuvable
+ * @returns {Object|null} {row: number, data: Array} ou null
  */
 function findFamilyRowById(familyId) {
     const data = getFamilySheetData();
-
-    if (!data) {
-        return null;
-    }
-
+    if (!data) return null;
     for (let i = 1; i < data.length; i++) {
-        if (data[i][OUTPUT_COLUMNS.ID] === familyId ||
-            data[i][OUTPUT_COLUMNS.ID] == familyId) {
-            return {
-                row: i + 1,
-                data: data[i]
-            };
+        if (data[i][OUTPUT_COLUMNS.ID] === familyId || data[i][OUTPUT_COLUMNS.ID] == familyId) {
+            return { row: i + 1, data: data[i] };
         }
     }
-
     return null;
 }
 
 /**
- * Met à jour une seule cellule dans la feuille Famille avec gestion d'erreur
- * @param {number} row - Numéro de ligne (1-based)
- * @param {number} columnIndex - Index de colonne (0-based)
- * @param {*} value - Valeur à définir
- * @returns {boolean} Statut succès
+ * @returns {boolean}
  */
 function updateFamilyCell(row, columnIndex, value) {
     try {
         const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
-
         if (!sheet) {
             logError('Feuille Famille introuvable');
             return false;
         }
-
         sheet.getRange(row, columnIndex + 1).setValue(value);
         return true;
     } catch (error) {
@@ -69,82 +156,33 @@ function updateFamilyCell(row, columnIndex, value) {
 }
 
 /**
- * Ajoute un commentaire au champ commentaire d'une famille (MERGED with addComment logic)
- * @param {Sheet} sheet - Objet feuille
- * @param {number} row - Numéro de ligne (1-based)
- * @param {string} emoji - Emoji pour le commentaire
- * @param {string} message - Message du commentaire
- * @returns {boolean} Statut succès
- */
-function appendSheetComment(sheet, row, emoji, message) {
-    try {
-        const existingComment = sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).getValue() || '';
-        const newComment = formatComment(emoji, message);
-        const comments = existingComment ?
-            existingComment.split('\n').filter(c => c.trim()) :
-            [];
-
-        comments.unshift(newComment);
-        const recentComments = comments.slice(0, 5);
-
-        const updatedComment = recentComments.join('\n');
-
-        sheet.getRange(row, OUTPUT_COLUMNS.COMMENTAIRE_DOSSIER + 1).setValue(updatedComment);
-        return true;
-    } catch (error) {
-        logError(`Échec ajout commentaire ligne ${row}`, error);
-        return false;
-    }
-}
-
-/**
- * Récupère toutes les familles validées avec filtre optionnel
- * @param {Function} [filterFn] - Fonction de filtrage optionnelle (row) => boolean
- * @param {Array[]} [cachedData=null] - Données déjà récupérées (optimisation)
- * @returns {Array[]} Tableau de données de lignes
+ * @param {Function} [filterFn]
+ * @param {Array[]} [cachedData=null]
+ * @returns {Array[]}
  */
 function getValidatedFamilyRows(filterFn = null, cachedData = null) {
     const data = cachedData || getFamilySheetData();
-
-    if (!data) {
-        return [];
-    }
+    if (!data) return [];
 
     const validatedRows = [];
-
     for (let i = 1; i < data.length; i++) {
         const row = data[i];
-
-        if (row[OUTPUT_COLUMNS.ETAT_DOSSIER] !== CONFIG.STATUS.VALIDATED) {
-            continue;
-        }
-
-        if (filterFn && !filterFn(row)) {
-            continue;
-        }
-
+        if (row[OUTPUT_COLUMNS.ETAT_DOSSIER] !== CONFIG.STATUS.VALIDATED) continue;
+        if (filterFn && !filterFn(row)) continue;
         validatedRows.push(row);
     }
-
     return validatedRows;
 }
 
 /**
- * Getter sécurisé de valeur de colonne avec null safety
- * @param {Array} row - Tableau de données de ligne
- * @param {number} columnIndex - Index de colonne (0-based)
- * @param {*} [defaultValue=''] - Valeur par défaut si null/undefined
- * @returns {*} Valeur de colonne ou valeur par défaut
+ * @param {Array} row
+ * @param {number} columnIndex
+ * @param {*} [defaultValue='']
+ * @returns {*}
  */
 function safeGetColumn(row, columnIndex, defaultValue = '') {
-    if (!row || !Array.isArray(row)) {
-        return defaultValue;
-    }
-
-    if (columnIndex < 0 || columnIndex >= row.length) {
-        return defaultValue;
-    }
-
+    if (!row || !Array.isArray(row)) return defaultValue;
+    if (columnIndex < 0 || columnIndex >= row.length) return defaultValue;
     const value = row[columnIndex];
     return (value === null || value === undefined) ? defaultValue : value;
 }

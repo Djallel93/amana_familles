@@ -1,36 +1,28 @@
 /**
- * @file src/services/reverseContactSyncService.js (v8.0)
- * Partie 1 : Scan des différences et synchronisation directe
+ * @file src/services/reverseContactScanService.js (partie 1)
  */
-
-// ─── Scan lecture seule ───────────────────────────────────────────────────────
 
 function scanContactChanges() {
     try {
         logInfo('Démarrage du scan Contact → Feuille (lecture seule)');
         const contacts = fetchAllFamilyContacts();
-
         if (!contacts || contacts.length === 0) {
             logInfo('Aucun contact famille trouvé dans le groupe');
             return { success: true, changes: [] };
         }
 
         const results = [];
-
         contacts.forEach(contact => {
             try {
                 const diff = computeContactDiff(contact);
-                if (diff && diff.changes.length > 0) {
-                    results.push(diff);
-                }
+                if (diff && diff.changes.length > 0) results.push(diff);
             } catch (e) {
                 logError('Erreur lors du scan du contact', e);
             }
         });
 
-        logInfo(`Scan terminé : ${results.length} famille(s) avec des modifications`);
+        logInfo(`Scan terminé: ${results.length} famille(s) avec des modifications`);
         return { success: true, changes: results };
-
     } catch (e) {
         logError('Échec du scan des contacts', e);
         return { success: false, error: e.toString() };
@@ -39,12 +31,10 @@ function scanContactChanges() {
 
 function computeContactDiff(contact) {
     let familyId = null;
-
     if (contact.names && contact.names.length > 0) {
         const match = (contact.names[0].givenName || '').match(/^(\d+)\s*-/);
         if (match) familyId = match[1];
     }
-
     if (!familyId) return null;
 
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -52,27 +42,21 @@ function computeContactDiff(contact) {
 
     const data = sheet.getDataRange().getValues();
     let existingData = null;
-
     for (let i = 1; i < data.length; i++) {
-        if (data[i][OUTPUT_COLUMNS.ID] == familyId) {
-            existingData = data[i];
-            break;
-        }
+        if (data[i][OUTPUT_COLUMNS.ID] == familyId) { existingData = data[i]; break; }
     }
-
     if (!existingData) return null;
 
     const contactData = extractContactData(contact);
     const metadata = parseFamilyMetadataFromContact(contact.userDefined);
     const changes = detectChanges(existingData, contactData, metadata);
-
     if (changes.length === 0) return null;
 
     const prenom = existingData[OUTPUT_COLUMNS.PRENOM] || '';
     const nom = existingData[OUTPUT_COLUMNS.NOM] || '';
 
     return {
-        familyId: familyId,
+        familyId,
         familyName: `${familyId} - ${prenom} ${nom}`.trim(),
         changes: changes.map(c => ({
             field: c.field,
@@ -86,19 +70,10 @@ function computeContactDiff(contact) {
 
 function getFieldLabel(field) {
     const labels = {
-        prenom: 'Prénom',
-        nom: 'Nom',
-        telephone: 'Téléphone',
-        telephone_bis: 'Téléphone secondaire',
-        email: 'Email',
-        adresse: 'Adresse',
-        criticite: 'Criticité',
-        nombre_adulte: 'Adultes',
-        nombre_enfant: 'Enfants',
-        zakat_el_fitr: 'Zakat El Fitr',
-        sadaqa: 'Sadaqa',
-        langue: 'Langue',
-        se_deplace: 'Se déplace'
+        prenom: 'Prénom', nom: 'Nom', telephone: 'Téléphone', telephone_bis: 'Téléphone secondaire',
+        email: 'Email', adresse: 'Adresse', criticite: 'Criticité', nombre_adulte: 'Adultes',
+        nombre_enfant: 'Enfants', zakat_el_fitr: 'Zakat El Fitr', sadaqa: 'Sadaqa',
+        langue: 'Langue', se_deplace: 'Se déplace'
     };
     return labels[field] || field;
 }
@@ -110,32 +85,25 @@ function formatValueForDisplay(value) {
     return String(value);
 }
 
-// ─── Synchronisation directe (flux original) ─────────────────────────────────
-
 function reverseContactSync() {
     try {
         logInfo('Démarrage de la synchronisation Contact → Feuille');
         const startTime = Date.now();
-
-        const results = {
-            total: 0, updated: 0, unchanged: 0, errors: 0, notFound: 0, details: []
-        };
+        const results = { total: 0, updated: 0, unchanged: 0, errors: 0, notFound: 0, details: [] };
 
         const familyContacts = fetchAllFamilyContacts();
-
         if (!familyContacts || familyContacts.length === 0) {
             logInfo('Aucun contact famille trouvé');
             return { success: true, message: 'Aucun contact à synchroniser', results };
         }
 
         results.total = familyContacts.length;
-
         familyContacts.forEach(contact => {
             try {
                 const syncResult = syncContactToSheet(contact);
                 if (syncResult.updated) {
                     results.updated++;
-                    results.details.push({ familyId: syncResult.familyId, status: 'updated', changes: syncResult.changes });
+                    results.details.push({ familyId: syncResult.familyId, status: 'mis à jour', changes: syncResult.changes });
                 } else if (syncResult.notFound) {
                     results.notFound++;
                 } else {
@@ -156,7 +124,6 @@ function reverseContactSync() {
         }
 
         return { success: true, results, duration };
-
     } catch (e) {
         logError('Erreur fatale dans reverseContactSync', e);
         return { success: false, error: e.toString() };
@@ -189,12 +156,10 @@ function fetchAllFamilyContacts() {
 
 function syncContactToSheet(contact) {
     let familyId = null;
-
     if (contact.names && contact.names.length > 0) {
         const match = (contact.names[0].givenName || '').match(/^(\d+)\s*-/);
         if (match) familyId = match[1];
     }
-
     if (!familyId) return { updated: false, notFound: false };
 
     const sheet = getSheetByName(CONFIG.SHEETS.FAMILLE);
@@ -205,11 +170,7 @@ function syncContactToSheet(contact) {
     let existingData = null;
 
     for (let i = 1; i < data.length; i++) {
-        if (data[i][OUTPUT_COLUMNS.ID] == familyId) {
-            targetRow = i + 1;
-            existingData = data[i];
-            break;
-        }
+        if (data[i][OUTPUT_COLUMNS.ID] == familyId) { targetRow = i + 1; existingData = data[i]; break; }
     }
 
     if (targetRow === -1) return { updated: false, notFound: true, familyId };
@@ -220,6 +181,6 @@ function syncContactToSheet(contact) {
 
     if (changes.length === 0) return { updated: false, familyId };
 
-    applyChangesToSheet(sheet, targetRow, existingData, contactData, metadata, changes);
+    applyChangesToSheet(sheet, targetRow, existingData, contactData, metadata, changes, familyId);
     return { updated: true, familyId, changes };
 }
